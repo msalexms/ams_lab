@@ -5,3 +5,5 @@ entrada
 copias
 .claude
 *.md
+.env
+.env.*

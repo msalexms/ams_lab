@@ -160,6 +160,18 @@ ol.pasos li { padding: 3px 0; }
 .form .check input { width: 18px; height: 18px; accent-color: var(--tinta); }
 .form .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: end; }
 .nuevo-tipo { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--linea2); background: var(--bg); }
+.form .mono { font-family: var(--mono, ui-monospace, monospace); font-size: 14px; }
+.form .ayuda { font-size: .72rem; color: var(--gris); }
+
+/* ---------- IA: texto plano, sin recuadros de colores (diseño «hoja de datos») ---------- */
+.pad { padding: 14px 20px; }
+.ia-aviso { color: var(--aviso); font-size: .85rem; margin: 10px 20px 0; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.ia-aviso.sin-pad { margin: 0; }
+.ia-atajo { margin: 10px 20px 0; font-size: .9rem; }
+.ia-atajo a { text-decoration: none; border-bottom: 1px solid var(--linea); }
+.ia-dudas ul { margin: 6px 0 0; padding-left: 18px; font-size: .9rem; }
+.ia-dudas li { padding: 2px 0; }
+.ia-foto { max-width: 260px; }
 
 .vacio { border: 1px solid var(--linea); background: var(--hoja); padding: 28px; text-align: center; color: var(--gris); }
 

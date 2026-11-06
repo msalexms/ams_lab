@@ -6,6 +6,14 @@ Almacén digital personal de componentes electrónicos: inventario con stock y f
 - Sin contraseña: pensada solo para la red de casa (o Tailscale). No la publiques en internet tal cual.
 - Copia de seguridad: automática cada día (ver abajo), `npm run copia` para hacer una ya, o «exportar» en http://localhost:4321/api/exportar (solo datos, sin fotos)
 
+## Añadir con IA
+
+Botón «Añadir con IA»: foto y/o texto de una pieza → el modelo propone nombre, tipo (o una ficha nueva con pines y datos) → **tú lo revisas y guardas**. Nada entra en el inventario sin confirmar; las fichas nuevas quedan «sin comprobar» hasta que las marques como revisadas.
+
+- Proveedor: OpenCode Go (API compatible con OpenAI). Variables: `IA_CLAVE` (sin ella no aparece el botón), `IA_MODELO` (por defecto `kimi-k3`; tiene que entender imágenes), `IA_URL` (opcional).
+- En local: copia `.env.example` a `.env` y pon la clave (`npm start` lo carga; no se sube a git ni entra en la imagen). En el servidor: variables del stack en Portainer.
+- Cada consulta se guarda en la tabla `ia_tareas`: si cierras la pestaña mientras piensa, la propuesta te espera en «Añadir con IA».
+
 ## Docker (homelab)
 
 ```sh

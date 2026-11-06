@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server/index.mjs",
-    "dev": "node --watch-path=server server/index.mjs",
+    "start": "node --env-file-if-exists=.env server/index.mjs",
+    "dev": "node --env-file-if-exists=.env --watch-path=server server/index.mjs",
     "dibujos": "node scripts/dibujos.mjs",
     "pines": "node scripts/pines.mjs && node scripts/catalogo.mjs",
     "catalogo": "node scripts/catalogo.mjs",
