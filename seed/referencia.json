@@ -1,0 +1,128 @@
+{
+  "categorias": [
+    {
+      "id": "micro",
+      "nombre": "Microcontroladores"
+    },
+    {
+      "id": "sensor",
+      "nombre": "Sensores"
+    },
+    {
+      "id": "entrada",
+      "nombre": "Pulsadores y mandos"
+    },
+    {
+      "id": "pantalla",
+      "nombre": "Pantallas y LED"
+    },
+    {
+      "id": "actuador",
+      "nombre": "Motores y sonido"
+    },
+    {
+      "id": "comunicacion",
+      "nombre": "Comunicación"
+    },
+    {
+      "id": "modulo",
+      "nombre": "Módulos y placas"
+    },
+    {
+      "id": "alimentacion",
+      "nombre": "Alimentación"
+    },
+    {
+      "id": "semi",
+      "nombre": "Semiconductores"
+    },
+    {
+      "id": "pasivo",
+      "nombre": "Pasivos"
+    },
+    {
+      "id": "conector",
+      "nombre": "Conectores y cables"
+    },
+    {
+      "id": "montaje",
+      "nombre": "Tornillería y montaje"
+    },
+    {
+      "id": "herramienta",
+      "nombre": "Herramientas"
+    },
+    {
+      "id": "otro",
+      "nombre": "Otros"
+    }
+  ],
+  "funciones_pin": [
+    {
+      "id": "vcc",
+      "nombre": "Alimentación",
+      "color_claro": "#d63c3c",
+      "color_oscuro": "#e8736b",
+      "tachado": false
+    },
+    {
+      "id": "gnd",
+      "nombre": "Masa",
+      "color_claro": "#6f6d66",
+      "color_oscuro": "#8f8d86",
+      "tachado": false
+    },
+    {
+      "id": "bus",
+      "nombre": "Bus (I2C, SPI, UART, I2S)",
+      "color_claro": "#2a73b8",
+      "color_oscuro": "#5fa8e3",
+      "tachado": false
+    },
+    {
+      "id": "dig",
+      "nombre": "Señal digital",
+      "color_claro": "#1b8a52",
+      "color_oscuro": "#4fc58a",
+      "tachado": false
+    },
+    {
+      "id": "ana",
+      "nombre": "Analógico",
+      "color_claro": "#b97800",
+      "color_oscuro": "#e0a542",
+      "tachado": false
+    },
+    {
+      "id": "otro",
+      "nombre": "Otros",
+      "color_claro": "#6b5cc4",
+      "color_oscuro": "#a597ef",
+      "tachado": false
+    },
+    {
+      "id": "no",
+      "nombre": "No usar",
+      "color_claro": "#b5b2a8",
+      "color_oscuro": "#4d4c48",
+      "tachado": true
+    }
+  ],
+  "dificultades": [
+    {
+      "nivel": 1,
+      "nombre": "fácil"
+    },
+    {
+      "nivel": 2,
+      "nombre": "media"
+    },
+    {
+      "nivel": 3,
+      "nombre": "difícil"
+    }
+  ],
+  "ajustes": {
+    "tema": "auto"
+  }
+}

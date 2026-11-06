@@ -1,0 +1,13 @@
+# Homelab: copia la carpeta al servidor y `docker compose up -d --build` → http://<servidor>:4321
+# La base de datos y las fotos quedan en ./data (haz copia de esa carpeta). Solo red local / Tailscale.
+services:
+  ams-lab:
+    build: .
+    container_name: ams-lab
+    restart: unless-stopped
+    ports:
+      - "4321:4321"
+    environment:
+      - AMS_LAB_PASS=${AMS_LAB_PASS:-}
+    volumes:
+      - ./data:/data

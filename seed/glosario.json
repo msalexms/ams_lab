@@ -1,0 +1,1686 @@
+{
+  "esp32-wrover-freenove": {
+    "nombre": "ESP32-WROVER (Freenove)",
+    "categoria": "micro",
+    "alias": [
+      "ESP32-WROVER-DEV",
+      "ESP32 CAM Freenove"
+    ],
+    "resumen": "ESP32 con Wi-Fi, Bluetooth, 8 MB de PSRAM y conector para cámara OV2640.",
+    "voltaje": "3,3 V en los pines · 5 V por USB",
+    "interfaz": [
+      "Wi-Fi",
+      "Bluetooth",
+      "I2C",
+      "SPI",
+      "I2S",
+      "UART",
+      "ADC",
+      "cámara"
+    ],
+    "usos": "Proyectos con cámara (videovigilancia, fotos a la SD), o cualquier proyecto que necesite mucha RAM (audio, pantallas grandes).",
+    "conexion": "Por USB (micro). En el IDE: placa «ESP32 Wrover Module», PSRAM activada.",
+    "ojo": "Con cámara puesta se gastan muchos GPIO (los del conector). GPIO 16 y 17 los usa la PSRAM: no los uses. Ningún pin aguanta 5 V.",
+    "pines": [
+      [
+        "3V3",
+        "Salida 3,3 V",
+        "vcc"
+      ],
+      [
+        "5V",
+        "Entrada 5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "GPIO 2 · 12–15",
+        "Libres con cámara",
+        "dig"
+      ],
+      [
+        "GPIO 32 · 33",
+        "Analógico (ADC1)",
+        "ana"
+      ],
+      [
+        "GPIO 4 · 5 · 18 · 19 · 21–23 · 25–27 · 34–36 · 39",
+        "Cámara",
+        "no"
+      ],
+      [
+        "GPIO 16 · 17",
+        "PSRAM, no usar",
+        "no"
+      ],
+      [
+        "GPIO 0",
+        "Botón BOOT",
+        "otro"
+      ]
+    ]
+  },
+  "esp32-s3-devkit": {
+    "nombre": "ESP32-S3 DevKit",
+    "categoria": "micro",
+    "alias": [
+      "ESP32-S3-WROOM",
+      "S3"
+    ],
+    "resumen": "ESP32 más moderno: USB nativo, más pines, instrucciones para IA ligera y audio.",
+    "voltaje": "3,3 V en los pines · 5 V por USB",
+    "interfaz": [
+      "Wi-Fi",
+      "Bluetooth LE",
+      "USB nativo",
+      "I2C",
+      "SPI",
+      "I2S",
+      "UART",
+      "ADC"
+    ],
+    "usos": "Audio (micrófono I2S + altavoz), teclados/ratones USB, detección de voz o imágenes con modelos pequeños.",
+    "conexion": "Tiene dos USB: «UART» (pasa por un conversor, el de siempre para subir código) y «USB» (USB nativo del chip: puede hacerse pasar por teclado, ratón, etc.).",
+    "ojo": "Si no sube el código: mantén BOOT, pulsa RESET y suelta. Bluetooth solo LE (no el clásico). Ningún pin aguanta 5 V.",
+    "pines": [
+      [
+        "3V3",
+        "Salida 3,3 V",
+        "vcc"
+      ],
+      [
+        "5V",
+        "Entrada 5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "GPIO 8 · 9",
+        "I2C: SDA · SCL",
+        "bus"
+      ],
+      [
+        "GPIO 11 · 12 · 13 · 10",
+        "SPI: MOSI · SCK · MISO · CS",
+        "bus"
+      ],
+      [
+        "GPIO 43 · 44",
+        "UART: TX · RX",
+        "bus"
+      ],
+      [
+        "GPIO 1–10",
+        "Analógico (ADC1)",
+        "ana"
+      ],
+      [
+        "GPIO 19 · 20",
+        "USB nativo, no usar",
+        "no"
+      ],
+      [
+        "GPIO 0",
+        "Botón BOOT",
+        "otro"
+      ]
+    ]
+  },
+  "esp32-wroom-devkit": {
+    "nombre": "ESP32-WROOM-32 DevKit (38 pines)",
+    "categoria": "micro",
+    "alias": [
+      "ESP32 DevKitC",
+      "NodeMCU-32S"
+    ],
+    "resumen": "El ESP32 clásico: Wi-Fi, Bluetooth, dos núcleos. El caballo de batalla para casi todo.",
+    "voltaje": "3,3 V en los pines · 5 V por USB o VIN",
+    "interfaz": [
+      "Wi-Fi",
+      "Bluetooth",
+      "I2C",
+      "SPI",
+      "I2S",
+      "UART",
+      "ADC",
+      "DAC",
+      "táctil"
+    ],
+    "pines": [
+      [
+        "3V3",
+        "Salida 3,3 V",
+        "vcc"
+      ],
+      [
+        "VIN",
+        "Entrada 5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "GPIO 21 · 22",
+        "I2C: SDA · SCL",
+        "bus"
+      ],
+      [
+        "GPIO 23 · 19 · 18 · 5",
+        "SPI: MOSI · MISO · SCK · CS",
+        "bus"
+      ],
+      [
+        "GPIO 16 · 17",
+        "UART2: RX · TX",
+        "bus"
+      ],
+      [
+        "GPIO 32–39",
+        "Analógico (ADC1)",
+        "ana"
+      ],
+      [
+        "GPIO 25 · 26",
+        "Salida analógica (DAC)",
+        "ana"
+      ],
+      [
+        "GPIO 34–39",
+        "Solo entrada",
+        "otro"
+      ],
+      [
+        "GPIO 0 · 2 · 12 · 15",
+        "Arranque, con cuidado",
+        "otro"
+      ],
+      [
+        "GPIO 6–11",
+        "Flash, no usar",
+        "no"
+      ]
+    ],
+    "usos": "Sensores Wi-Fi, Home Assistant (ESPHome), control de motores, pantallas…",
+    "ojo": "Las entradas analógicas de ADC2 no funcionan con el Wi-Fi encendido: usa ADC1 (GPIO32–39). Ningún pin aguanta 5 V."
+  },
+  "freenove-gpio-extension": {
+    "nombre": "Placa de extensión GPIO Freenove",
+    "categoria": "modulo",
+    "resumen": "Base donde se pincha el ESP32 de Freenove: saca todos los pines con nombre a la protoboard y añade entrada de alimentación de 7–12 V.",
+    "voltaje": "Entrada 7–12 V (jack) o USB · da 5 V y 3,3 V a la protoboard",
+    "usos": "Montar prototipos sin buscar qué pin es cuál: cada pin está rotulado.",
+    "ojo": "Fíjate en la orientación del ESP32 al pincharlo (la antena hacia fuera de la placa).",
+    "pines": [
+      [
+        "Jack",
+        "Entrada 7–12 V",
+        "vcc"
+      ],
+      [
+        "5V",
+        "Salida 5 V",
+        "vcc"
+      ],
+      [
+        "3V3",
+        "Salida 3,3 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "Filas GPIO",
+        "Mismo pin del ESP32",
+        "dig"
+      ]
+    ]
+  },
+  "esp32-expansion-board": {
+    "nombre": "Placa de expansión para ESP32 (morada)",
+    "categoria": "modulo",
+    "alias": [
+      "ESP32 shield",
+      "breakout 38 pines"
+    ],
+    "resumen": "Base para el ESP32 de 38 pines: cada GPIO tiene su trío señal / VCC / GND para enchufar sensores directamente con cables dupont.",
+    "voltaje": "Entrada DC 6,5–16 V (jack), micro-USB o USB-C · puente para elegir 3,3 V o 5 V en los pines VCC",
+    "pines": [
+      [
+        "Jack DC",
+        "Entrada 6,5–16 V",
+        "vcc"
+      ],
+      [
+        "Fila roja",
+        "VCC 3,3 o 5 V (puente)",
+        "vcc"
+      ],
+      [
+        "Fila negra",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "Fila amarilla",
+        "Señal (GPIO)",
+        "dig"
+      ]
+    ],
+    "usos": "Proyectos fijos con varios sensores sin protoboard (domótica, estación meteo).",
+    "ojo": "Con el puente en 5 V, los sensores reciben 5 V y pueden devolver 5 V a un pin del ESP32 (que solo aguanta 3,3 V). Ponlo en 3,3 V salvo que el sensor necesite 5 V."
+  },
+  "hc-sr04": {
+    "nombre": "HC-SR04 (ultrasonidos)",
+    "categoria": "sensor",
+    "alias": [
+      "sonar",
+      "distancia"
+    ],
+    "resumen": "Mide distancias de 2 cm a ~4 m con un pitido de ultrasonidos y su eco (como un murciélago).",
+    "voltaje": "5 V",
+    "interfaz": "2 pines digitales (Trig, Echo)",
+    "pines": [
+      [
+        "Vcc",
+        "5 V",
+        "vcc"
+      ],
+      [
+        "Trig",
+        "Disparo (pulso 10 µs)",
+        "dig"
+      ],
+      [
+        "Echo",
+        "Eco, sale a 5 V: divisor",
+        "dig"
+      ],
+      [
+        "Gnd",
+        "Masa",
+        "gnd"
+      ]
+    ],
+    "conexion": "Distancia (cm) = duración del pulso Echo (µs) / 58.",
+    "ojo": "Echo sale a 5 V: al ESP32 pásalo por un divisor (1 kΩ + 2 kΩ) para bajarlo a 3,3 V. Falla con superficies blandas o muy inclinadas."
+  },
+  "vl53l0x": {
+    "nombre": "VL53L0X (distancia láser)",
+    "categoria": "sensor",
+    "alias": [
+      "ToF",
+      "VL53L0/1XV2"
+    ],
+    "resumen": "Mide distancia con un láser invisible y el tiempo que tarda en volver (ToF). Hasta ~1,2–2 m, muy preciso y pequeño.",
+    "voltaje": "3–5 V (lleva regulador)",
+    "interfaz": "I2C (dirección 0x29)",
+    "pines": [
+      [
+        "VIN",
+        "3–5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "SCL",
+        "I2C reloj",
+        "bus"
+      ],
+      [
+        "SDA",
+        "I2C datos",
+        "bus"
+      ],
+      [
+        "GPIO1",
+        "Interrupción",
+        "dig"
+      ],
+      [
+        "XSHUT",
+        "Apagar / cambiar dirección",
+        "dig"
+      ]
+    ],
+    "ojo": "Si tiene una película protectora en el sensor, quítala. La luz solar fuerte lo ciega."
+  },
+  "hc-sr501": {
+    "nombre": "HC-SR501 (movimiento PIR)",
+    "categoria": "sensor",
+    "alias": [
+      "PIR",
+      "presencia"
+    ],
+    "resumen": "Detecta personas o animales que se mueven por el calor que desprenden. Alcance ~3–7 m.",
+    "voltaje": "5–20 V de alimentación · salida de 3,3 V (apta para ESP32)",
+    "interfaz": "1 pin digital",
+    "pines": [
+      [
+        "VCC",
+        "5–20 V",
+        "vcc"
+      ],
+      [
+        "OUT",
+        "HIGH al detectar (3,3 V)",
+        "dig"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ]
+    ],
+    "conexion": "Dos potenciómetros: sensibilidad (distancia) y tiempo que mantiene la salida en HIGH (3 s a 5 min). Puente H = redispara mientras haya movimiento.",
+    "ojo": "Tarda ~1 minuto en estabilizarse tras encenderlo: al principio da falsas detecciones. No ve a través del cristal."
+  },
+  "ens160-aht21": {
+    "nombre": "ENS160 + AHT21 (calidad del aire)",
+    "categoria": "sensor",
+    "alias": [
+      "CO2",
+      "TVOC",
+      "temperatura",
+      "humedad"
+    ],
+    "resumen": "Dos sensores en una placa: el ENS160 estima la calidad del aire (CO₂ equivalente, compuestos orgánicos volátiles, índice AQI) y el AHT21 mide temperatura y humedad.",
+    "voltaje": "VIN 5 V o pin 3V3",
+    "interfaz": "I2C (ENS160 en 0x53, AHT21 en 0x38)",
+    "pines": [
+      [
+        "VIN",
+        "5 V",
+        "vcc"
+      ],
+      [
+        "3V3",
+        "3,3 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "SCL",
+        "I2C reloj",
+        "bus"
+      ],
+      [
+        "SDA",
+        "I2C datos",
+        "bus"
+      ],
+      [
+        "ADD",
+        "Dirección del ENS160",
+        "otro"
+      ],
+      [
+        "INT",
+        "Interrupción",
+        "dig"
+      ],
+      [
+        "CS",
+        "Solo modo SPI",
+        "no"
+      ]
+    ],
+    "ojo": "El CO₂ es una ESTIMACIÓN a partir de otros gases, no un CO₂ real. Necesita ~1 h la primera vez y unos minutos en cada arranque. Pasa la temperatura y humedad del AHT21 al ENS160 para que sea más preciso."
+  },
+  "sensor-agua": {
+    "nombre": "Sensor de nivel de agua",
+    "categoria": "sensor",
+    "alias": [
+      "water sensor",
+      "lluvia",
+      "fugas"
+    ],
+    "resumen": "Placa con pistas al aire: cuanta más superficie moja el agua, mayor es la señal analógica.",
+    "voltaje": "3,3–5 V",
+    "interfaz": "1 pin analógico",
+    "pines": [
+      [
+        "+",
+        "Alimentación (desde un GPIO)",
+        "vcc"
+      ],
+      [
+        "−",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "S",
+        "Nivel (analógico)",
+        "ana"
+      ]
+    ],
+    "usos": "Detector de fugas bajo la lavadora, aviso de lluvia, nivel aproximado de un depósito.",
+    "ojo": "Si está siempre alimentado, las pistas se corroen en días. Aliméntalo desde un GPIO y enciéndelo solo al medir. Mide «cuánto moja», no centímetros exactos."
+  },
+  "ky-037": {
+    "nombre": "KY-037 (sensor de sonido)",
+    "categoria": "sensor",
+    "alias": [
+      "micrófono",
+      "sound sensor",
+      "KY-038"
+    ],
+    "resumen": "Micrófono con comparador: avisa cuando hay un ruido por encima de un umbral (palmada, golpe) y da también una señal analógica del volumen.",
+    "voltaje": "3,3–5 V",
+    "interfaz": "1 pin digital (DO) + 1 analógico (AO)",
+    "pines": [
+      [
+        "+",
+        "3,3–5 V",
+        "vcc"
+      ],
+      [
+        "G",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "AO",
+        "Volumen (analógico)",
+        "ana"
+      ],
+      [
+        "DO",
+        "Supera el umbral",
+        "dig"
+      ]
+    ],
+    "conexion": "Gira el tornillo del potenciómetro azul hasta que el LED se apague en silencio y se encienda con una palmada.",
+    "ojo": "No sirve para grabar audio ni reconocer voz (para eso, el INMP441)."
+  },
+  "inmp441": {
+    "nombre": "INMP441 (micrófono digital I2S)",
+    "categoria": "sensor",
+    "alias": [
+      "micrófono I2S",
+      "MEMS"
+    ],
+    "resumen": "Micrófono digital de buena calidad: envía el audio ya convertido por I2S. Sirve para grabar, medir decibelios o reconocer voz.",
+    "voltaje": "3,3 V",
+    "interfaz": "I2S",
+    "pines": [
+      [
+        "VDD",
+        "3,3 V (no 5 V)",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "SCK",
+        "I2S reloj (BCLK)",
+        "bus"
+      ],
+      [
+        "WS",
+        "I2S canal (LRCLK)",
+        "bus"
+      ],
+      [
+        "SD",
+        "I2S datos",
+        "bus"
+      ],
+      [
+        "L/R",
+        "GND = izquierdo",
+        "otro"
+      ]
+    ],
+    "ojo": "Solo 3,3 V. El agujero del micrófono está en una cara: no lo tapes. Con dos INMP441 (uno L y otro R) tienes estéreo."
+  },
+  "mpu6050": {
+    "nombre": "MPU6050 (acelerómetro + giroscopio)",
+    "categoria": "sensor",
+    "alias": [
+      "GY-521",
+      "IMU",
+      "inclinación"
+    ],
+    "resumen": "Mide aceleración y giro en 3 ejes: sabes cómo está inclinado, si se cae o si vibra.",
+    "voltaje": "3,3–5 V (lleva regulador)",
+    "interfaz": "I2C (0x68; 0x69 con AD0 a VCC)",
+    "pines": [
+      [
+        "VCC",
+        "3,3–5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "SCL",
+        "I2C reloj",
+        "bus"
+      ],
+      [
+        "SDA",
+        "I2C datos",
+        "bus"
+      ],
+      [
+        "INT",
+        "Interrupción",
+        "dig"
+      ],
+      [
+        "AD0",
+        "Dirección 0x68 / 0x69",
+        "otro"
+      ],
+      [
+        "XDA · XCL",
+        "Bus auxiliar",
+        "no"
+      ]
+    ],
+    "ojo": "El giroscopio deriva con el tiempo: combina los dos sensores (filtro complementario o la librería con DMP) para un ángulo estable."
+  },
+  "hmc5883l": {
+    "nombre": "HMC5883L (brújula / magnetómetro)",
+    "categoria": "sensor",
+    "alias": [
+      "GY-271",
+      "QMC5883L",
+      "compás"
+    ],
+    "resumen": "Mide el campo magnético en 3 ejes: con él sabes hacia dónde está el norte.",
+    "voltaje": "3,3–5 V",
+    "interfaz": "I2C",
+    "pines": [
+      [
+        "VCC",
+        "3,3–5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "SCL",
+        "I2C reloj",
+        "bus"
+      ],
+      [
+        "SDA",
+        "I2C datos",
+        "bus"
+      ],
+      [
+        "DRDY",
+        "Dato listo",
+        "dig"
+      ]
+    ],
+    "ojo": "Muchos módulos vendidos como HMC5883L llevan en realidad el QMC5883L (dirección 0x0D en vez de 0x1E) y necesitan otra librería: escanea el bus I2C para saberlo. Hay que calibrarlo y alejarlo de motores, imanes y hierro."
+  },
+  "gps-neo6m": {
+    "nombre": "GPS u-blox NEO-6M",
+    "categoria": "comunicacion",
+    "alias": [
+      "GY-NEO6MV2",
+      "GPS"
+    ],
+    "resumen": "Recibe satélites GPS: da posición, altitud, velocidad y la hora exacta.",
+    "voltaje": "3,3–5 V",
+    "interfaz": "UART (9600 baudios, frases NMEA)",
+    "pines": [
+      [
+        "VCC",
+        "3,3–5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "TX",
+        "Datos → RX del ESP32",
+        "bus"
+      ],
+      [
+        "RX",
+        "Config ← TX del ESP32",
+        "bus"
+      ]
+    ],
+    "conexion": "En el ESP32 usa un UART hardware (Serial2: GPIO16 RX, GPIO17 TX) y la librería TinyGPS++.",
+    "ojo": "Necesita ver el cielo: dentro de casa casi nunca engancha. La primera vez puede tardar varios minutos. El LED parpadea cuando ya tiene posición."
+  },
+  "pn532": {
+    "nombre": "PN532 (NFC / RFID)",
+    "categoria": "comunicacion",
+    "alias": [
+      "NFC",
+      "RFID 13,56 MHz"
+    ],
+    "resumen": "Lee y escribe tarjetas y llaveros NFC (13,56 MHz), incluidas las MIFARE y las pegatinas NTAG; también habla con móviles.",
+    "voltaje": "3,3–5 V",
+    "interfaz": "I2C (0x24), SPI o UART, según los interruptores de la placa",
+    "pines": [
+      [
+        "VCC",
+        "3,3–5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "SDA",
+        "I2C datos",
+        "bus"
+      ],
+      [
+        "SCL",
+        "I2C reloj",
+        "bus"
+      ],
+      [
+        "Interruptores 1 · 2",
+        "Modo I2C / SPI / UART",
+        "otro"
+      ]
+    ],
+    "conexion": "Elige el modo con los dos micro-interruptores de la placa (I2C: 1 = ON, 2 = OFF, según la serigrafía).",
+    "ojo": "Las tarjetas de bancos y DNI no se pueden copiar (y no debes intentarlo). La antena es la propia placa: la tarjeta tiene que estar a menos de ~5 cm."
+  },
+  "rf433-rx": {
+    "nombre": "SRX882S (receptor 433 MHz)",
+    "categoria": "comunicacion",
+    "alias": [
+      "RF 433",
+      "receptor radio"
+    ],
+    "resumen": "Receptor de radio de 433 MHz (superheterodino, bastante sensible). Capta los mandos de garaje, timbres y enchufes RF baratos.",
+    "voltaje": "3,3–5 V",
+    "interfaz": "1 pin digital (DATA)",
+    "conexion": "Librería rc-switch. Suelda una antena de 17,3 cm (un cuarto de onda) para ganar alcance.",
+    "ojo": "Solo recibe; para emitir, el STX882. Usa la banda libre: hay mucho ruido, filtra por código.",
+    "pines": [
+      [
+        "VCC",
+        "3,3–5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "DATA",
+        "Datos recibidos",
+        "dig"
+      ],
+      [
+        "ANT",
+        "Antena de 17,3 cm",
+        "otro"
+      ]
+    ]
+  },
+  "rf433-tx": {
+    "nombre": "STX882 (emisor 433 MHz)",
+    "categoria": "comunicacion",
+    "alias": [
+      "RF 433",
+      "emisor radio"
+    ],
+    "resumen": "Emisor de radio de 433 MHz: imita mandos de enchufes RF o envía datos sencillos a otro microcontrolador.",
+    "voltaje": "1,2–5 V (más voltaje = más alcance)",
+    "interfaz": "1 pin digital (DATA)",
+    "conexion": "Librería rc-switch. Antena de 17,3 cm.",
+    "ojo": "Solo para tus propios dispositivos. No transmitas continuamente: bloqueas la banda a los vecinos.",
+    "pines": [
+      [
+        "VCC",
+        "1,2–5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "DATA",
+        "Datos a emitir",
+        "dig"
+      ],
+      [
+        "ANT",
+        "Antena de 17,3 cm",
+        "otro"
+      ]
+    ]
+  },
+  "infrarrojo": {
+    "nombre": "Infrarrojos (receptor y LED)",
+    "categoria": "comunicacion",
+    "alias": [
+      "IR",
+      "VS1838B",
+      "mando"
+    ],
+    "resumen": "El receptor (3 patas, con cúpula) lee los mandos de la tele; el LED IR los imita.",
+    "voltaje": "3,3–5 V",
+    "interfaz": "1 pin digital",
+    "pines": [
+      [
+        "Receptor VCC",
+        "3,3–5 V",
+        "vcc"
+      ],
+      [
+        "Receptor GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "Receptor OUT",
+        "Código recibido",
+        "dig"
+      ],
+      [
+        "LED pata larga",
+        "GPIO con 100 Ω",
+        "dig"
+      ],
+      [
+        "LED pata corta",
+        "Masa",
+        "gnd"
+      ]
+    ],
+    "conexion": "Librería IRremoteESP8266. LED IR con una resistencia de ~100 Ω (mejor a través de un transistor para más alcance).",
+    "ojo": "La cámara del móvil ve la luz infrarroja: úsala para comprobar si el LED emite."
+  },
+  "tft-st7735": {
+    "nombre": "TFT 1,8\" 128×160 SPI (ST7735)",
+    "categoria": "pantalla",
+    "alias": [
+      "TFT",
+      "pantalla color",
+      "ST7735S"
+    ],
+    "resumen": "Pantalla a color de 1,8 pulgadas con lector de tarjetas SD en la parte de atrás.",
+    "voltaje": "VCC 5 V o 3,3 V (lleva regulador) · lógica 3,3 V",
+    "interfaz": "SPI",
+    "pines": [
+      [
+        "VCC",
+        "3,3–5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "LED",
+        "Luz de fondo (3,3 V)",
+        "vcc"
+      ],
+      [
+        "SCK",
+        "SPI reloj",
+        "bus"
+      ],
+      [
+        "SDA",
+        "SPI datos (MOSI)",
+        "bus"
+      ],
+      [
+        "CS",
+        "Selección pantalla",
+        "bus"
+      ],
+      [
+        "A0",
+        "Dato / comando (DC)",
+        "dig"
+      ],
+      [
+        "RESET",
+        "Reinicio",
+        "dig"
+      ],
+      [
+        "SD_CS",
+        "Selección tarjeta SD",
+        "bus"
+      ],
+      [
+        "SD_MOSI · MISO · SCK",
+        "SPI de la SD",
+        "bus"
+      ]
+    ],
+    "conexion": "Librería TFT_eSPI o Adafruit ST7735 (modelo «INITR_BLACKTAB» si los colores salen raros).",
+    "ojo": "Si se ve desplazada o con colores cambiados, prueba otra variante de inicialización (black/green/red tab)."
+  },
+  "oled-ssd1306": {
+    "nombre": "OLED 0,96\" 128×64 (SSD1306)",
+    "categoria": "pantalla",
+    "alias": [
+      "OLED",
+      "SSD1306"
+    ],
+    "resumen": "Pantalla pequeña monocromo muy nítida y de bajo consumo, perfecta para mostrar datos.",
+    "voltaje": "3,3–5 V",
+    "interfaz": "I2C (0x3C, a veces 0x3D)",
+    "pines": [
+      [
+        "VCC",
+        "3,3–5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "SCL",
+        "I2C reloj",
+        "bus"
+      ],
+      [
+        "SDA",
+        "I2C datos",
+        "bus"
+      ]
+    ],
+    "conexion": "Librería Adafruit SSD1306 o U8g2. Comparte el bus I2C con otros sensores sin problema.",
+    "ojo": "Comprueba el orden de los pines: hay modelos con VCC y GND al revés. Una imagen fija durante meses se queda marcada."
+  },
+  "tm1637-4dig": {
+    "nombre": "Display de 4 dígitos TM1637",
+    "categoria": "pantalla",
+    "alias": [
+      "4 digit display",
+      "reloj"
+    ],
+    "resumen": "Cuatro dígitos de 7 segmentos con dos puntos y su controlador: solo necesita dos cables de datos.",
+    "voltaje": "3,3–5 V",
+    "interfaz": "2 pines (CLK, DIO), protocolo propio",
+    "pines": [
+      [
+        "VCC",
+        "3,3–5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "CLK",
+        "Reloj",
+        "dig"
+      ],
+      [
+        "DIO",
+        "Datos",
+        "dig"
+      ]
+    ],
+    "conexion": "Librería TM1637Display.",
+    "usos": "Relojes, temporizadores, contadores, mostrar una distancia o una temperatura."
+  },
+  "matriz-8x8": {
+    "nombre": "Matriz LED 8×8 (788BS)",
+    "categoria": "pantalla",
+    "alias": [
+      "788BS",
+      "matrix"
+    ],
+    "resumen": "64 LED rojos en cuadrícula, ánodo común por filas. Se encienden por barrido (multiplexado).",
+    "voltaje": "~2 V por LED, con resistencias",
+    "interfaz": "16 pines (8 filas + 8 columnas)",
+    "conexion": "Sin controlador necesitas 16 GPIO y 8 resistencias de 220 Ω. Lo cómodo es un MAX7219 (no lo tienes) o dos 74HC595.",
+    "ojo": "La numeración de pines no sigue filas/columnas en orden: busca el esquema del 788BS antes de cablear.",
+    "pines": [
+      [
+        "Filas (8)",
+        "Ánodos → GPIO",
+        "dig"
+      ],
+      [
+        "Columnas (8)",
+        "Cátodos, 220 Ω → GPIO",
+        "dig"
+      ]
+    ]
+  },
+  "display-7seg-4dig": {
+    "nombre": "7 segmentos · 4 dígitos (3461BS)",
+    "categoria": "pantalla",
+    "alias": [
+      "3461BS-1",
+      "4 dígitos sin controlador"
+    ],
+    "resumen": "Cuatro dígitos sin controlador, ánodo común. Se enciende un dígito cada vez muy rápido (multiplexado).",
+    "voltaje": "~2 V por segmento, con resistencias",
+    "interfaz": "12 pines (8 segmentos + 4 dígitos)",
+    "conexion": "8 resistencias de 220 Ω en los segmentos y los 4 comunes a GPIO (o a transistores). Librería SevSeg (tipo COMMON_ANODE).",
+    "ojo": "Ánodo común: un segmento se enciende con el pin a LOW, al revés de lo intuitivo.",
+    "pines": [
+      [
+        "D1–D4",
+        "Común de cada dígito (ánodo)",
+        "vcc"
+      ],
+      [
+        "a–g · dp",
+        "Segmentos, 220 Ω, LOW enciende",
+        "dig"
+      ]
+    ]
+  },
+  "display-7seg-1dig": {
+    "nombre": "7 segmentos · 1 dígito",
+    "categoria": "pantalla",
+    "alias": [
+      "SA51-1",
+      "5161BS",
+      "dígito"
+    ],
+    "resumen": "Un solo dígito de 7 segmentos más punto. Los «…BS» y «SA…» son de ánodo común.",
+    "voltaje": "~2 V por segmento, con resistencias",
+    "interfaz": "10 pines (8 segmentos + 2 comunes)",
+    "conexion": "Común a 3,3/5 V, cada segmento con su resistencia de 220 Ω a un GPIO (se enciende a LOW).",
+    "usos": "Dados electrónicos, contadores, aprender cómo funcionan los displays.",
+    "pines": [
+      [
+        "COM (3 y 8)",
+        "Ánodo común → 3,3 / 5 V",
+        "vcc"
+      ],
+      [
+        "a–g · dp",
+        "Segmentos, 220 Ω, LOW enciende",
+        "dig"
+      ]
+    ]
+  },
+  "barra-led-10": {
+    "nombre": "Barra de 10 LED",
+    "categoria": "pantalla",
+    "alias": [
+      "2510SR-1",
+      "bar graph"
+    ],
+    "resumen": "Diez LED en línea en un mismo encapsulado, cada uno con sus dos patas. Ideal como indicador de nivel.",
+    "voltaje": "~2 V por LED, con resistencias",
+    "interfaz": "20 pines (10 LED independientes)",
+    "conexion": "Cada LED con su resistencia de 220 Ω a un GPIO. Si no enciende, dale la vuelta: el lado de la serigrafía suele ser el ánodo.",
+    "usos": "Vúmetro, nivel de batería, barra de progreso.",
+    "pines": [
+      [
+        "Lado serigrafía (10)",
+        "Ánodos → GPIO con 220 Ω",
+        "dig"
+      ],
+      [
+        "Lado opuesto (10)",
+        "Cátodos → masa",
+        "gnd"
+      ]
+    ]
+  },
+  "led-ws2812-8": {
+    "nombre": "8 LED RGB direccionables (WS2812)",
+    "categoria": "pantalla",
+    "alias": [
+      "NeoPixel",
+      "WS2812B",
+      "Freenove 8 RGB LED Module"
+    ],
+    "resumen": "Ocho LED de color que se controlan uno a uno con un solo cable de datos.",
+    "voltaje": "5 V (datos de 3,3 V suelen funcionar)",
+    "interfaz": "1 pin digital (DIN)",
+    "pines": [
+      [
+        "VCC",
+        "5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "DIN",
+        "Datos (con 330 Ω)",
+        "dig"
+      ],
+      [
+        "DOUT",
+        "Encadenar más LED",
+        "otro"
+      ]
+    ],
+    "conexion": "Librería Adafruit NeoPixel o FastLED. Un condensador de 470 µF en la alimentación y una resistencia de 330 Ω en DIN ayudan.",
+    "ojo": "A brillo máximo en blanco, cada LED gasta ~60 mA: 8 LED ≈ 0,5 A. No los alimentes desde el pin 3,3 V."
+  },
+  "buzzer-activo": {
+    "nombre": "Zumbador activo",
+    "categoria": "actuador",
+    "alias": [
+      "buzzer",
+      "pitido"
+    ],
+    "resumen": "Pita solo con darle corriente (lleva su oscilador dentro). Un tono fijo.",
+    "voltaje": "3,3–5 V",
+    "interfaz": "1 pin digital (encender/apagar)",
+    "conexion": "Pata larga (+) al GPIO o mejor a un transistor; pata corta a GND.",
+    "ojo": "Cómo distinguirlo: el activo tiene la parte de abajo tapada (resina negra) y suele traer pegatina; si le das 5 V pita solo.",
+    "pines": [
+      [
+        "+ (pata larga)",
+        "GPIO o transistor",
+        "dig"
+      ],
+      [
+        "−",
+        "Masa",
+        "gnd"
+      ]
+    ]
+  },
+  "buzzer-pasivo": {
+    "nombre": "Zumbador pasivo",
+    "categoria": "actuador",
+    "alias": [
+      "buzzer pasivo",
+      "frecuencia variable"
+    ],
+    "resumen": "Necesita que le mandes la frecuencia (PWM): así puede tocar notas y melodías.",
+    "voltaje": "3,3–5 V",
+    "interfaz": "1 pin PWM",
+    "conexion": "En el ESP32: tone(pin, frecuencia) o ledcWriteTone(). Mejor con un transistor si quieres más volumen.",
+    "ojo": "Con corriente continua no suena (solo un clic). Por debajo se ve la placa verde.",
+    "pines": [
+      [
+        "+",
+        "PWM (tone)",
+        "dig"
+      ],
+      [
+        "−",
+        "Masa",
+        "gnd"
+      ]
+    ]
+  },
+  "altavoz": {
+    "nombre": "Altavoz",
+    "categoria": "actuador",
+    "alias": [
+      "speaker"
+    ],
+    "resumen": "Reproduce audio de verdad (voz, música), no solo pitidos.",
+    "voltaje": "Según el amplificador · fíjate en la impedancia (Ω) y la potencia (W)",
+    "interfaz": "Analógica, desde un amplificador",
+    "conexion": "Siempre a través de un amplificador (tu módulo ES7148 + PAM8403). Un GPIO no puede moverlo bien y se puede dañar.",
+    "ojo": "No superes la potencia del altavoz: el PAM8403 da hasta 3 W y tu altavoz de 0,5 W se rompe si subes mucho el volumen.",
+    "pines": [
+      [
+        "+ (rojo)",
+        "Salida + del amplificador",
+        "otro"
+      ],
+      [
+        "− (negro)",
+        "Salida − del amplificador",
+        "otro"
+      ]
+    ]
+  },
+  "motor-dc": {
+    "nombre": "Motor DC",
+    "categoria": "actuador",
+    "alias": [
+      "motor 130",
+      "motor de juguete"
+    ],
+    "resumen": "Gira rápido al darle corriente; invirtiendo la polaridad gira al revés.",
+    "voltaje": "3–6 V típico",
+    "interfaz": "Necesita un driver",
+    "conexion": "Con un transistor (y un diodo en paralelo con el motor) para un sentido, o con un puente H (L298N, DRV8833…) para los dos. Velocidad con PWM.",
+    "ojo": "NUNCA directo a un GPIO: pide cientos de mA y genera picos que reinician o rompen el microcontrolador.",
+    "pines": [
+      [
+        "Terminales A · B",
+        "Al driver, nunca a un GPIO",
+        "otro"
+      ]
+    ]
+  },
+  "servo-sg90": {
+    "nombre": "Micro servo SG90",
+    "categoria": "actuador",
+    "alias": [
+      "servo",
+      "SG90"
+    ],
+    "resumen": "Motor pequeño que va a un ángulo concreto (0–180°) y se queda ahí.",
+    "voltaje": "5 V (~4,8–6 V)",
+    "interfaz": "1 pin PWM (50 Hz)",
+    "pines": [
+      [
+        "Rojo",
+        "5 V",
+        "vcc"
+      ],
+      [
+        "Marrón",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "Naranja",
+        "Señal PWM",
+        "dig"
+      ]
+    ],
+    "conexion": "Librería ESP32Servo. Pulso de 0,5 ms ≈ 0° y 2,5 ms ≈ 180°.",
+    "ojo": "Al moverse da picos de corriente: aliméntalo con 5 V aparte (no del 3,3 V) y une las masas. Los engranajes son de plástico: no lo fuerces con la mano."
+  },
+  "stepper-28byj48": {
+    "nombre": "Motor paso a paso 28BYJ-48",
+    "categoria": "actuador",
+    "alias": [
+      "stepper",
+      "paso a paso"
+    ],
+    "resumen": "Gira por pasos muy pequeños y precisos: 2048 pasos por vuelta (con su reductora). Lento pero con fuerza.",
+    "voltaje": "5 V",
+    "interfaz": "4 bobinas → driver ULN2003",
+    "conexion": "Conector blanco de 5 hilos al driver ULN2003; IN1–IN4 del driver a 4 GPIO. Librería AccelStepper (modo HALF4WIRE, orden IN1-IN3-IN2-IN4).",
+    "ojo": "Se calienta parado si dejas las bobinas activas: desactívalas al terminar. Máx. ~15 rpm.",
+    "pines": [
+      [
+        "Rojo",
+        "+5 V común",
+        "vcc"
+      ],
+      [
+        "Conector de 5 hilos",
+        "Al driver ULN2003",
+        "otro"
+      ]
+    ]
+  },
+  "uln2003": {
+    "nombre": "Driver ULN2003 (paso a paso)",
+    "categoria": "actuador",
+    "alias": [
+      "ULN2003A",
+      "driver stepper"
+    ],
+    "resumen": "Placa con 7 transistores (Darlington) para mover el 28BYJ-48 u otras cargas pequeñas (relés, tiras LED de un color).",
+    "voltaje": "5–12 V para el motor · entradas de 3,3–5 V",
+    "interfaz": "4 entradas digitales (IN1–IN4)",
+    "pines": [
+      [
+        "+",
+        "5–12 V del motor",
+        "vcc"
+      ],
+      [
+        "−",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "IN1–IN4",
+        "Desde 4 GPIO",
+        "dig"
+      ],
+      [
+        "Conector blanco",
+        "Motor 28BYJ-48",
+        "otro"
+      ]
+    ],
+    "ojo": "Los 4 LED rojos muestran qué bobina está activa: útil para depurar. Cada salida, máximo 500 mA."
+  },
+  "es7148-pam8403": {
+    "nombre": "Audio Freenove ES7148 + PAM8403",
+    "categoria": "modulo",
+    "alias": [
+      "Audio Converter & Amplifier",
+      "DAC I2S",
+      "amplificador"
+    ],
+    "resumen": "Convierte el audio digital I2S del ESP32 en sonido (DAC ES7148) y lo amplifica para altavoces (PAM8403, 2 × 3 W). Tiene salida jack.",
+    "voltaje": "5 V",
+    "interfaz": "I2S",
+    "conexion": "BCK, WS (LRCK) y DIN a tres GPIO del ESP32; altavoces a las salidas L/R. Librería ESP32-audioI2S para radio por internet o MP3 desde la SD.",
+    "ojo": "Con altavoces pequeños (0,5 W) baja el volumen por software. Alimentación limpia: el ruido del USB se oye.",
+    "pines": [
+      [
+        "VCC",
+        "5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "BCK",
+        "I2S reloj",
+        "bus"
+      ],
+      [
+        "WS",
+        "I2S canal",
+        "bus"
+      ],
+      [
+        "DIN",
+        "I2S datos",
+        "bus"
+      ],
+      [
+        "MCK",
+        "Reloj maestro (opcional)",
+        "bus"
+      ],
+      [
+        "L± · R±",
+        "Altavoces",
+        "otro"
+      ]
+    ]
+  },
+  "microsd": {
+    "nombre": "Módulo lector microSD",
+    "categoria": "modulo",
+    "alias": [
+      "SD card adapter",
+      "tarjeta SD"
+    ],
+    "resumen": "Lee y escribe tarjetas microSD: guardar datos de sensores (registros), audio, imágenes…",
+    "voltaje": "Normalmente 5 V (lleva regulador y adaptador de niveles)",
+    "interfaz": "SPI",
+    "pines": [
+      [
+        "VCC",
+        "5 V",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "SCK",
+        "SPI reloj",
+        "bus"
+      ],
+      [
+        "MOSI",
+        "SPI datos →",
+        "bus"
+      ],
+      [
+        "MISO",
+        "SPI datos ←",
+        "bus"
+      ],
+      [
+        "CS",
+        "Selección",
+        "bus"
+      ]
+    ],
+    "conexion": "Librería SD del ESP32. Formatea la tarjeta en FAT32 (máx. 32 GB va mejor).",
+    "ojo": "Muchos de estos módulos solo funcionan bien a 5 V (por el regulador). Comparte el bus SPI con la pantalla usando otro CS."
+  },
+  "jq-v360": {
+    "nombre": "JQ-V360 F100 (por identificar)",
+    "categoria": "modulo",
+    "resumen": "Pendiente de identificar. Mándame una foto de cerca de las dos caras.",
+    "ojo": "No lo conectes a ciegas hasta saber qué es y a qué voltaje va."
+  },
+  "10m-486": {
+    "nombre": "«10M 486» (por identificar)",
+    "categoria": "modulo",
+    "resumen": "Pendiente de identificar. Mándame una foto de cerca de las dos caras.",
+    "ojo": "No lo conectes a ciegas hasta saber qué es y a qué voltaje va."
+  },
+  "led": {
+    "nombre": "LED de colores (5 mm)",
+    "categoria": "semi",
+    "alias": [
+      "diodo LED"
+    ],
+    "resumen": "El indicador más básico. Solo deja pasar la corriente en un sentido.",
+    "voltaje": "Rojo/amarillo ~2 V · verde/azul/blanco ~3 V · 10–20 mA",
+    "interfaz": "1 pin digital o PWM (brillo)",
+    "conexion": "Pata larga (+, ánodo) al GPIO a través de una resistencia de 220–330 Ω; pata corta (−, lado plano) a GND.",
+    "ojo": "Sin resistencia se funde (o daña el pin).",
+    "pines": [
+      [
+        "Pata larga (+)",
+        "GPIO con 220–330 Ω",
+        "dig"
+      ],
+      [
+        "Pata corta (−)",
+        "Masa (lado plano)",
+        "gnd"
+      ]
+    ]
+  },
+  "resistencia": {
+    "nombre": "Resistencias",
+    "categoria": "pasivo",
+    "alias": [
+      "resistor"
+    ],
+    "resumen": "Limitan la corriente: para LED, divisores de tensión, pull-up/pull-down.",
+    "conexion": "Las que más se usan: 220 Ω (LED), 1 kΩ (base de transistor), 10 kΩ (pull-up, pulsadores), 1 k + 2 k (bajar 5 V a 3,3 V).",
+    "ojo": "Código de colores (4 bandas): marrón 1, rojo 2, naranja 3, amarillo 4, verde 5, azul 6, violeta 7, gris 8, blanco 9, negro 0. Ej.: rojo-rojo-marrón = 220 Ω. Si dudas, mídela con el polímetro."
+  },
+  "cable-dupont": {
+    "nombre": "Cables dupont",
+    "categoria": "conector",
+    "alias": [
+      "jumpers",
+      "cables puente"
+    ],
+    "resumen": "Cables con conector para protoboard y pines: macho-macho, macho-hembra y hembra-hembra.",
+    "ojo": "Usa colores con criterio: rojo = alimentación, negro = GND. Un cable flojo es la causa nº 1 de «no funciona»."
+  },
+  "protoboard-830": {
+    "nombre": "Protoboard de 830 puntos",
+    "categoria": "conector",
+    "alias": [
+      "breadboard",
+      "placa de pruebas"
+    ],
+    "resumen": "Placa para montar circuitos sin soldar.",
+    "conexion": "Las columnas de 5 agujeros están unidas entre sí; las líneas largas roja (+) y azul (−) de los lados recorren toda la placa.",
+    "ojo": "En muchas protoboards de 830 las líneas laterales están cortadas a la mitad: une las dos mitades con un cable o compruébalo con el polímetro.",
+    "pines": [
+      [
+        "Línea roja (+)",
+        "Alimentación a lo largo",
+        "vcc"
+      ],
+      [
+        "Línea azul (−)",
+        "Masa a lo largo",
+        "gnd"
+      ],
+      [
+        "Columnas de 5",
+        "Unidas entre sí",
+        "otro"
+      ]
+    ]
+  },
+  "tornillo-allen": {
+    "nombre": "Tornillos Allen M2 / M3",
+    "categoria": "montaje",
+    "alias": [
+      "hex socket",
+      "DIN 912"
+    ],
+    "resumen": "Tornillos de cabeza cilíndrica con hexágono interior, de acero inoxidable (A2).",
+    "usos": "Cajas impresas en 3D (con insertos de latón), fijar placas: M2 para placas pequeñas, M3 para la mayoría de los agujeros de módulos y ESP32.",
+    "ojo": "Llave Allen: 1,5 mm para M2 y 2,5 mm para M3."
+  },
+  "tuerca": {
+    "nombre": "Tuercas M2 / M3",
+    "categoria": "montaje",
+    "resumen": "Tuercas hexagonales para los tornillos M2 y M3.",
+    "usos": "En piezas impresas, se meten en un hueco hexagonal para que no giren."
+  },
+  "inserto-laton": {
+    "nombre": "Insertos de latón (termofijados)",
+    "categoria": "montaje",
+    "alias": [
+      "heat insert",
+      "threaded insert"
+    ],
+    "resumen": "Casquillos roscados que se clavan en el plástico impreso con el soldador caliente: dan una rosca metálica duradera.",
+    "conexion": "Agujero en la pieza algo menor que el diámetro exterior del inserto; soldador a ~220–250 °C con punta cónica, empuja recto sin forzar.",
+    "ojo": "Fíjate en la métrica: M2 lleva tornillo M2, M3 lleva M3."
+  },
+  "pulsador-12x12": {
+    "nombre": "Pulsador 12×12 mm",
+    "categoria": "entrada",
+    "alias": [
+      "botón",
+      "tactile switch"
+    ],
+    "resumen": "Pulsador grande con capuchón de color intercambiable. Muy cómodo para paneles.",
+    "interfaz": "1 pin digital",
+    "conexion": "Una pata al GPIO y la diagonal opuesta a GND; en el código, pinMode(pin, INPUT_PULLUP): pulsado = LOW.",
+    "ojo": "Las 4 patas están unidas de dos en dos: si «siempre está pulsado», gíralo 90°. Rebotes: ignora cambios de menos de ~20 ms.",
+    "pines": [
+      [
+        "Una pata",
+        "GPIO (INPUT_PULLUP)",
+        "dig"
+      ],
+      [
+        "Pata en diagonal",
+        "Masa",
+        "gnd"
+      ]
+    ]
+  },
+  "pulsador-6x6": {
+    "nombre": "Pulsador 6×6 mm",
+    "categoria": "entrada",
+    "alias": [
+      "botón pequeño",
+      "tactile switch"
+    ],
+    "resumen": "El pulsador clásico pequeño de protoboard.",
+    "interfaz": "1 pin digital",
+    "conexion": "Igual que el de 12×12: en diagonal y con INPUT_PULLUP.",
+    "pines": [
+      [
+        "Una pata",
+        "GPIO (INPUT_PULLUP)",
+        "dig"
+      ],
+      [
+        "Pata en diagonal",
+        "Masa",
+        "gnd"
+      ]
+    ]
+  },
+  "interruptor-deslizante": {
+    "nombre": "Interruptor deslizante",
+    "categoria": "entrada",
+    "alias": [
+      "slide switch",
+      "SS12D00"
+    ],
+    "resumen": "Interruptor de 3 patas: la central se une con una de las de los lados según la posición.",
+    "usos": "Encendido/apagado de un proyecto con batería, elegir un modo.",
+    "conexion": "Como selector: central al GPIO (con INPUT_PULLUP) y un lado a GND. Como interruptor: central y un lado en serie con la alimentación.",
+    "ojo": "Aguanta poca corriente (~0,3 A): no para motores.",
+    "pines": [
+      [
+        "Central",
+        "Común → GPIO",
+        "dig"
+      ],
+      [
+        "Lateral",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "Otro lateral",
+        "Libre / 2.ª opción",
+        "otro"
+      ]
+    ]
+  },
+  "dip-switch": {
+    "nombre": "Interruptor DIP de 6 posiciones",
+    "categoria": "entrada",
+    "alias": [
+      "DIP switch"
+    ],
+    "resumen": "Seis interruptores diminutos en fila para configuraciones que casi no cambian.",
+    "usos": "Elegir la dirección o el modo de un aparato, un número del 0 al 63 en binario.",
+    "conexion": "Cada interruptor entre un GPIO (con INPUT_PULLUP) y GND: ON = LOW.",
+    "pines": [
+      [
+        "Lado 1–6",
+        "GPIO (INPUT_PULLUP)",
+        "dig"
+      ],
+      [
+        "Lado opuesto",
+        "Masa",
+        "gnd"
+      ]
+    ]
+  },
+  "joystick": {
+    "nombre": "Joystick analógico",
+    "categoria": "entrada",
+    "alias": [
+      "KY-023",
+      "palanca"
+    ],
+    "resumen": "Dos potenciómetros (eje X e Y) y un pulsador al apretar la palanca.",
+    "voltaje": "3,3–5 V (en ESP32, aliméntalo a 3,3 V)",
+    "interfaz": "2 analógicos + 1 digital",
+    "pines": [
+      [
+        "+5V",
+        "3,3 V con ESP32",
+        "vcc"
+      ],
+      [
+        "GND",
+        "Masa",
+        "gnd"
+      ],
+      [
+        "VRx",
+        "Eje X",
+        "ana"
+      ],
+      [
+        "VRy",
+        "Eje Y",
+        "ana"
+      ],
+      [
+        "SW",
+        "Pulsador (PULLUP)",
+        "dig"
+      ]
+    ],
+    "ojo": "En reposo no da exactamente la mitad: calibra el centro y deja una zona muerta. En ESP32 usa pines ADC1."
+  },
+  "potenciometro-b10k": {
+    "nombre": "Potenciómetro B10K",
+    "categoria": "entrada",
+    "alias": [
+      "pot",
+      "resistencia variable"
+    ],
+    "resumen": "Resistencia de 10 kΩ que varías girando. «B» = lineal.",
+    "interfaz": "1 pin analógico",
+    "conexion": "Patas de los extremos a 3,3 V y GND; la central (cursor) a un pin analógico.",
+    "usos": "Control de volumen, brillo, velocidad, ajustar un umbral.",
+    "pines": [
+      [
+        "Extremo 1",
+        "3,3 V",
+        "vcc"
+      ],
+      [
+        "Centro",
+        "Pin analógico",
+        "ana"
+      ],
+      [
+        "Extremo 2",
+        "Masa",
+        "gnd"
+      ]
+    ]
+  },
+  "camara-ov2640": {
+    "nombre": "Cámara OV2640",
+    "categoria": "sensor",
+    "alias": [
+      "cámara ESP32"
+    ],
+    "resumen": "Cámara de 2 Mpx con cable plano para el conector de las placas ESP32 con cámara.",
+    "voltaje": "La alimenta la placa",
+    "interfaz": "Conector de cámara (DVP)",
+    "ojo": "No está en tu inventario: la pide el proyecto de la cámara. Cuesta unos pocos euros.",
+    "pines": [
+      [
+        "Cable plano",
+        "Conector de la placa",
+        "otro"
+      ]
+    ]
+  }
+}
