@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#171716" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="AMS lab">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <title>[AMS] lab</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="#/">[AMS]<span> lab</span></a>
+    <nav id="nav">
+      <a href="#/" data-v="inventario">Inventario<span class="n" id="n-inv"></span></a>
+      <a href="#/proyectos" data-v="proyectos">Proyectos<span class="n" id="n-pro"></span></a>
+      <a href="#/glosario" data-v="glosario">Glosario<span class="n" id="n-glo"></span></a>
+    </nav>
+    <div class="top-der">
+      <input id="q" type="search" placeholder="Buscar" autocomplete="off" spellcheck="false" aria-label="Buscar (tecla /)">
+      <button id="tema" class="tema" type="button" title="Cambiar tema">Tema</button>
+    </div>
+  </header>
+  <main id="app"><p class="gris">Cargando…</p></main>
+  <a id="fab" class="fab" href="#/nuevo" aria-label="Añadir pieza">+</a>
+  <div id="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,142 @@
+[
+  {
+    "id": "monitor-aire", "nombre": "Monitor de calidad del aire", "dificultad": 1, "tiempo": "1–2 h",
+    "resumen": "Muestra en la OLED el CO₂ estimado, los compuestos volátiles, la temperatura y la humedad de la habitación. Opcional: mandarlo a Home Assistant con ESPHome.",
+    "material": [
+      {"tipo": "esp32-wroom-devkit", "cantidad": 1, "nota": "o cualquier ESP32"},
+      {"tipo": "ens160-aht21", "cantidad": 1},
+      {"tipo": "oled-ssd1306", "cantidad": 1},
+      {"tipo": "led-ws2812-8", "cantidad": 1, "opcional": true, "nota": "semáforo verde/ámbar/rojo"},
+      {"tipo": "protoboard-830", "cantidad": 1}, {"tipo": "cable-dupont", "cantidad": 8}
+    ],
+    "conexiones": [["ENS160 VIN", "ESP32 3V3"], ["ENS160 GND", "GND"], ["ENS160 SDA", "GPIO21", "bus I2C compartido"], ["ENS160 SCL", "GPIO22"], ["OLED SDA / SCL", "GPIO21 / GPIO22", "mismo bus"], ["OLED VCC / GND", "3V3 / GND"], ["WS2812 DIN", "GPIO4", "opcional"]],
+    "pasos": ["Monta los dos módulos I2C en paralelo (SDA con SDA, SCL con SCL).", "Escanea el bus I2C: deben salir 0x38 (AHT21), 0x53 (ENS160) y 0x3C (OLED).", "Lee el AHT21 y pásale la temperatura y humedad al ENS160 antes de cada lectura.", "Muestra los valores en la OLED; espera ~3 min tras encender antes de fiarte del CO₂.", "Extra: con ESPHome aparece solo en Home Assistant."]
+  },
+  {
+    "id": "alarma-pir", "nombre": "Alarma de movimiento con sirena", "dificultad": 1, "tiempo": "1 h",
+    "resumen": "Si el PIR detecta a alguien, los LED se ponen rojos y suena el zumbador. Con un pulsador la armas y desarmas.",
+    "material": [
+      {"tipo": ["esp32-wroom-devkit", "esp32-s3-devkit"], "cantidad": 1},
+      {"tipo": "hc-sr501", "cantidad": 1}, {"tipo": "buzzer-activo", "cantidad": 1},
+      {"tipo": "led-ws2812-8", "cantidad": 1}, {"tipo": "pulsador-12x12", "cantidad": 1},
+      {"tipo": "protoboard-830", "cantidad": 1}, {"tipo": "cable-dupont", "cantidad": 8}
+    ],
+    "conexiones": [["PIR VCC", "5V (VIN)"], ["PIR OUT", "GPIO27"], ["Zumbador +", "GPIO26", "mejor con un transistor"], ["WS2812 DIN", "GPIO4"], ["WS2812 VCC", "5V"], ["Pulsador", "GPIO25 ↔ GND", "INPUT_PULLUP"]],
+    "pasos": ["Ajusta el potenciómetro de tiempo del PIR al mínimo y el puente en H.", "Programa tres estados: desarmada (verde), armando 10 s (ámbar parpadeando), armada (apagado).", "Con la alarma armada, si OUT = HIGH: rojo + zumbador hasta pulsar el botón.", "Extra: aviso al móvil por Telegram o Home Assistant."]
+  },
+  {
+    "id": "sensor-aparcamiento", "nombre": "Sensor de aparcamiento", "dificultad": 1, "tiempo": "1 h",
+    "resumen": "Mide la distancia y la muestra en el display de 4 dígitos; el zumbador pita más rápido cuanto más cerca estás, como en los coches.",
+    "material": [
+      {"tipo": "esp32-wroom-devkit", "cantidad": 1}, {"tipo": ["hc-sr04", "vl53l0x"], "cantidad": 1, "nota": "HC-SR04 para >1 m, VL53L0X para precisión cerca"},
+      {"tipo": "tm1637-4dig", "cantidad": 1}, {"tipo": "buzzer-pasivo", "cantidad": 1},
+      {"tipo": "resistencia", "cantidad": 2, "nota": "1 kΩ + 2 kΩ para el Echo"}, {"tipo": "protoboard-830", "cantidad": 1}, {"tipo": "cable-dupont", "cantidad": 10}
+    ],
+    "conexiones": [["HC-SR04 Vcc", "5V"], ["HC-SR04 Trig", "GPIO5"], ["HC-SR04 Echo", "GPIO18", "a través del divisor 1 k / 2 k"], ["TM1637 CLK / DIO", "GPIO22 / GPIO21"], ["Zumbador pasivo", "GPIO26"]],
+    "pasos": ["Haz el divisor para que Echo llegue a 3,3 V.", "Mide 5 veces y quédate con la mediana para quitar lecturas raras.", "Muestra los cm en el display.", "Pitido: intervalo = distancia × 10 ms; continuo por debajo de 10 cm."]
+  },
+  {
+    "id": "radio-internet", "nombre": "Radio por internet y reproductor MP3", "dificultad": 2, "tiempo": "2–3 h",
+    "resumen": "El ESP32 reproduce emisoras de radio online o MP3 de la tarjeta SD por el altavoz. Pulsadores para cambiar de emisora y potenciómetro para el volumen.",
+    "material": [
+      {"tipo": ["esp32-s3-devkit", "esp32-wrover-freenove"], "cantidad": 1, "nota": "con PSRAM va más fluido"},
+      {"tipo": "es7148-pam8403", "cantidad": 1}, {"tipo": "altavoz", "cantidad": 1, "nota": "el de 8 Ω 1,5 W"},
+      {"tipo": "pulsador-12x12", "cantidad": 3}, {"tipo": "potenciometro-b10k", "cantidad": 1},
+      {"tipo": "oled-ssd1306", "cantidad": 1, "opcional": true, "nota": "nombre de la emisora"},
+      {"tipo": "microsd", "cantidad": 1, "opcional": true, "nota": "para MP3"}, {"tipo": "cable-dupont", "cantidad": 12}
+    ],
+    "conexiones": [["Audio BCK", "GPIO (I2S BCLK)"], ["Audio WS", "GPIO (I2S LRC)"], ["Audio DIN", "GPIO (I2S DOUT)"], ["Audio VCC", "5V"], ["Altavoz", "salida L o R del PAM8403"], ["Potenciómetro cursor", "pin ADC1"], ["Pulsadores", "3 GPIO ↔ GND"]],
+    "pasos": ["Instala la librería ESP32-audioI2S.", "Prueba primero una emisora fija (URL de streaming MP3).", "Lista de emisoras en el código; pulsadores ◀ ▶ y ⏯.", "Volumen con el potenciómetro (0–21 en la librería). No pases de la mitad con el altavoz de 0,5 W."]
+  },
+  {
+    "id": "detector-fugas", "nombre": "Detector de fugas de agua", "dificultad": 1, "tiempo": "1 h",
+    "resumen": "Sensores bajo la lavadora, el fregadero o el calentador: si se mojan, pita y avisa al móvil.",
+    "material": [
+      {"tipo": "esp32-wroom-devkit", "cantidad": 1}, {"tipo": "sensor-agua", "cantidad": 3},
+      {"tipo": "buzzer-activo", "cantidad": 1}, {"tipo": "esp32-expansion-board", "cantidad": 1, "opcional": true, "nota": "para dejarlo fijo sin protoboard"},
+      {"tipo": "cable-dupont", "cantidad": 10}
+    ],
+    "conexiones": [["Sensor + (cada uno)", "un GPIO de salida", "solo encendido al medir"], ["Sensor S (cada uno)", "GPIO32 / 33 / 34", "ADC1"], ["Sensor −", "GND"], ["Zumbador +", "GPIO26"]],
+    "pasos": ["Cada 10 s: enciende el sensor, espera 10 ms, lee, apágalo (evita la corrosión).", "Calibra: valor en seco y con una gota; umbral a medio camino.", "Si supera el umbral: zumbador + aviso (Telegram / Home Assistant).", "Pon los sensores en horizontal y en el punto más bajo."]
+  },
+  {
+    "id": "pan-joystick", "nombre": "Torreta con joystick y láser de distancia", "dificultad": 2, "tiempo": "2 h",
+    "resumen": "Mueves el servo con el joystick y el VL53L0X montado encima mide a lo que apuntas; la distancia sale en la OLED. Base para un radar.",
+    "material": [
+      {"tipo": "esp32-wroom-devkit", "cantidad": 1}, {"tipo": "joystick", "cantidad": 1}, {"tipo": "servo-sg90", "cantidad": 1},
+      {"tipo": "vl53l0x", "cantidad": 1}, {"tipo": "oled-ssd1306", "cantidad": 1}, {"tipo": "protoboard-830", "cantidad": 1}, {"tipo": "cable-dupont", "cantidad": 12}
+    ],
+    "conexiones": [["Joystick VRx", "GPIO34"], ["Joystick SW", "GPIO25", "INPUT_PULLUP"], ["Joystick +", "3V3"], ["Servo señal", "GPIO13"], ["Servo rojo", "5V"], ["VL53L0X + OLED", "I2C GPIO21 / 22"]],
+    "pasos": ["Lee el eje X y conviértelo en ángulo (0–180°) con zona muerta en el centro.", "Pega el VL53L0X al brazo del servo.", "Muestra ángulo y distancia en la OLED.", "Modo radar al pulsar: barrido automático dibujando los puntos en la OLED."]
+  },
+  {
+    "id": "reloj-gps", "nombre": "Reloj y velocímetro GPS", "dificultad": 2, "tiempo": "2 h",
+    "resumen": "Hora atómica de los satélites, posición, altitud y velocidad en la OLED. Con la microSD guarda tus rutas.",
+    "material": [
+      {"tipo": "esp32-wroom-devkit", "cantidad": 1}, {"tipo": "gps-neo6m", "cantidad": 1}, {"tipo": "oled-ssd1306", "cantidad": 1},
+      {"tipo": "microsd", "cantidad": 1, "opcional": true, "nota": "registro de ruta"}, {"tipo": "pulsador-6x6", "cantidad": 1, "nota": "cambiar de pantalla"}, {"tipo": "cable-dupont", "cantidad": 10}
+    ],
+    "conexiones": [["GPS TX", "GPIO16 (RX2)"], ["GPS RX", "GPIO17 (TX2)"], ["GPS VCC / GND", "3V3 / GND"], ["OLED", "I2C GPIO21 / 22"], ["Pulsador", "GPIO25 ↔ GND"]],
+    "pasos": ["Prueba al aire libre o junto a una ventana: espera a que el LED del GPS parpadee.", "Librería TinyGPS++ leyendo Serial2 a 9600.", "Pantallas: hora local, coordenadas, velocidad/altitud.", "Extra: guarda una línea por segundo en la SD (formato CSV o GPX)."]
+  },
+  {
+    "id": "nivel-brujula", "nombre": "Nivel de burbuja y brújula digital", "dificultad": 2, "tiempo": "1–2 h",
+    "resumen": "La OLED dibuja una burbuja que se mueve según inclinas la placa (MPU6050) y una aguja que apunta al norte (HMC5883L).",
+    "material": [
+      {"tipo": "esp32-wroom-devkit", "cantidad": 1}, {"tipo": "mpu6050", "cantidad": 1}, {"tipo": "hmc5883l", "cantidad": 1},
+      {"tipo": "oled-ssd1306", "cantidad": 1}, {"tipo": "protoboard-830", "cantidad": 1}, {"tipo": "cable-dupont", "cantidad": 10}
+    ],
+    "conexiones": [["MPU6050, HMC5883L y OLED", "I2C GPIO21 / 22", "tres en el mismo bus"], ["VCC de todos", "3V3"]],
+    "pasos": ["Escanea el I2C: 0x68 (MPU), 0x1E o 0x0D (brújula), 0x3C (OLED).", "Ángulos de inclinación con el acelerómetro + filtro complementario.", "Calibra la brújula girándola 360° y guardando mínimos y máximos.", "Corrige el rumbo con la inclinación para que no baile."]
+  },
+  {
+    "id": "llave-nfc", "nombre": "Cerradura con llavero NFC", "dificultad": 2, "tiempo": "2 h",
+    "resumen": "Acerca tu tarjeta o llavero NFC: si es uno autorizado, el servo «abre» el pestillo y los LED se ponen verdes.",
+    "material": [
+      {"tipo": "esp32-wroom-devkit", "cantidad": 1}, {"tipo": "pn532", "cantidad": 1}, {"tipo": "servo-sg90", "cantidad": 1},
+      {"tipo": "led-ws2812-8", "cantidad": 1}, {"tipo": "buzzer-pasivo", "cantidad": 1}, {"tipo": "cable-dupont", "cantidad": 10}
+    ],
+    "conexiones": [["PN532 (modo I2C)", "GPIO21 / 22"], ["Servo señal", "GPIO13"], ["WS2812 DIN", "GPIO4"], ["Zumbador", "GPIO26"]],
+    "pasos": ["Pon el PN532 en modo I2C con sus micro-interruptores.", "Lee el UID de tus llaveros y apúntalos en una lista.", "UID conocido → verde + pitido corto + servo a 90° durante 3 s. Desconocido → rojo + pitido largo.", "Extra: modo «alta de llavero» manteniendo un pulsador."]
+  },
+  {
+    "id": "enchufes-433", "nombre": "Mando universal de 433 MHz", "dificultad": 2, "tiempo": "2 h",
+    "resumen": "Aprende los códigos de tus mandos de 433 MHz (enchufes, timbre) con el receptor y los reenvía con el emisor desde el móvil o Home Assistant.",
+    "material": [
+      {"tipo": "esp32-wroom-devkit", "cantidad": 1}, {"tipo": "rf433-rx", "cantidad": 1}, {"tipo": "rf433-tx", "cantidad": 1},
+      {"tipo": "oled-ssd1306", "cantidad": 1, "opcional": true}, {"tipo": "cable-dupont", "cantidad": 8}
+    ],
+    "conexiones": [["SRX882S DATA", "GPIO27"], ["STX882 DATA", "GPIO26"], ["VCC de ambos", "5V (más alcance)", "el DATA del receptor a 5 V: usa 3V3 si dudas"], ["Antenas", "cable de 17,3 cm en cada uno"]],
+    "pasos": ["Librería rc-switch: modo recepción y pulsa tus mandos; apunta código, bits y protocolo.", "Reenvía el mismo código con el emisor y comprueba que el enchufe responde.", "Página web en el ESP32 con un botón por código, o ESPHome con remote_transmitter.", "Solo con tus propios dispositivos."]
+  },
+  {
+    "id": "persiana-paso-a-paso", "nombre": "Persiana o cortina motorizada", "dificultad": 2, "tiempo": "2–3 h",
+    "resumen": "El paso a paso enrolla el cordón de una persiana pequeña o cortina. Dos pulsadores (subir/bajar) y, de extra, por horario o por Wi-Fi.",
+    "material": [
+      {"tipo": "esp32-wroom-devkit", "cantidad": 1}, {"tipo": "stepper-28byj48", "cantidad": 1}, {"tipo": "uln2003", "cantidad": 1},
+      {"tipo": "pulsador-12x12", "cantidad": 2}, {"tipo": "cable-dupont", "cantidad": 10}
+    ],
+    "conexiones": [["ULN2003 IN1–IN4", "GPIO19 / 18 / 5 / 17"], ["ULN2003 + / −", "5V / GND"], ["Pulsadores", "GPIO25, GPIO26 ↔ GND"]],
+    "pasos": ["AccelStepper en HALF4WIRE con el orden IN1-IN3-IN2-IN4.", "Calibra cuántos pasos hay entre «abajo» y «arriba».", "Guarda la posición en la memoria (Preferences) para no perderla al apagar.", "Desactiva las bobinas al parar para que no se caliente."]
+  },
+  {
+    "id": "vumetro", "nombre": "Vúmetro de colores", "dificultad": 2, "tiempo": "1–2 h",
+    "resumen": "El micrófono I2S escucha la habitación y los 8 LED RGB suben y bajan con el volumen de la música.",
+    "material": [
+      {"tipo": ["esp32-s3-devkit", "esp32-wroom-devkit"], "cantidad": 1}, {"tipo": "inmp441", "cantidad": 1}, {"tipo": "led-ws2812-8", "cantidad": 1},
+      {"tipo": "barra-led-10", "cantidad": 1, "opcional": true, "nota": "segunda barra"}, {"tipo": "cable-dupont", "cantidad": 8}
+    ],
+    "conexiones": [["INMP441 VDD / GND", "3V3 / GND"], ["INMP441 SCK", "GPIO (I2S BCLK)"], ["INMP441 WS", "GPIO (I2S WS)"], ["INMP441 SD", "GPIO (I2S DIN)"], ["INMP441 L/R", "GND"], ["WS2812 DIN", "GPIO4"]],
+    "pasos": ["Lee bloques de 256 muestras por I2S.", "Calcula el volumen (RMS) y pásalo a decibelios.", "Enciende de 0 a 8 LED: verde → amarillo → rojo.", "Extra: con una FFT, cada LED una banda de frecuencia."]
+  },
+  {
+    "id": "camara-wifi", "nombre": "Cámara Wi-Fi de vigilancia", "dificultad": 2, "tiempo": "1–2 h",
+    "resumen": "Vídeo en directo desde el navegador con el ESP32-WROVER. Con el PIR solo graba fotos cuando detecta movimiento.",
+    "material": [
+      {"tipo": "esp32-wrover-freenove", "cantidad": 1}, {"tipo": "camara-ov2640", "cantidad": 1, "nota": "te falta"},
+      {"tipo": "hc-sr501", "cantidad": 1, "opcional": true}, {"tipo": "microsd", "cantidad": 1, "opcional": true}
+    ],
+    "conexiones": [["Cámara", "conector de la placa (contactos hacia abajo)"], ["PIR OUT", "un GPIO libre (no de la cámara)"]],
+    "pasos": ["Ejemplo «CameraWebServer» con el modelo CAMERA_MODEL_WROVER_KIT.", "Abre la IP en el navegador.", "Extra: foto a la SD cuando el PIR detecte movimiento."]
+  }
+]
