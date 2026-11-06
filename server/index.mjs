@@ -1,6 +1,5 @@
 // [AMS] lab — servidor: web estática + API + fotos. Sin dependencias (Node 24).
 //   npm start            → http://localhost:4321 (y http://<IP-del-PC>:4321 desde el móvil, misma Wi-Fi)
-//   AMS_LAB_PASS=xxxx    → pide contraseña (usuario cualquiera)
 //   AMS_LAB_DATA=/ruta   → carpeta de la base de datos y las fotos (por defecto ./data)
 //   AMS_LAB_COPIAS=/ruta → carpeta de las copias diarias (por defecto <datos>/copias) · ver server/copias.mjs
 import {createServer} from 'node:http';
@@ -16,7 +15,6 @@ const PUB = join(ROOT, 'public');
 const DATA = process.env.AMS_LAB_DATA || join(ROOT, 'data');
 const FOTOS = join(DATA, 'fotos');
 const PORT = Number(process.env.PORT) || 4321;
-const PASS = process.env.AMS_LAB_PASS || '';
 const MAX_FOTO = 10 * 1024 * 1024;
 
 const SEED = join(ROOT, 'seed');
@@ -220,16 +218,9 @@ async function estatico(res, base, path, cache) {
   }
 }
 
-function autorizado(req) {
-  if (!PASS) return true;
-  const [tipo, val] = (req.headers.authorization || '').split(' ');
-  return tipo === 'Basic' && Buffer.from(val || '', 'base64').toString().split(':').slice(1).join(':') === PASS;
-}
-
 const server = createServer(async (req, res) => {
   try {
     if (req.url === '/salud') return send(res, 200, 'ok', 'text/plain'); // para el HEALTHCHECK de Docker (no da datos)
-    if (!autorizado(req)) return send(res, 401, 'Contraseña', 'text/plain', {'www-authenticate': 'Basic realm="ams-lab"'});
     const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (path.startsWith('/api/')) return await api(req, res, path);
     if (path.startsWith('/fotos/')) return await estatico(res, FOTOS, path.slice(7), 'public, max-age=31536000, immutable');
@@ -244,7 +235,6 @@ const server = createServer(async (req, res) => {
   const ips = Object.values(networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address);
   console.log(`[AMS] lab → http://localhost:${PORT}`);
   ips.forEach((ip) => console.log(`         móvil → http://${ip}:${PORT}`));
-  if (!PASS) console.log('         (sin contraseña: pon AMS_LAB_PASS para pedirla)');
 });
 
 // cierre limpio (docker stop, Ctrl+C): deja de aceptar peticiones y cierra la base de datos (vuelca el WAL)

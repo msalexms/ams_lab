@@ -9,7 +9,7 @@ Prioridad: **utilidad, que funcione y comodidad (sobre todo en el móvil)** ante
 - **Claude** mantiene el glosario (fichas de cada tipo), propone proyectos con lo que hay en stock y mejora la aplicación.
 
 ## Estructura
-- `server/index.mjs` — servidor sin dependencias (Node 24): sirve `public/`, la API (`/api/...`), las fotos (`/fotos/...`) y `/salud` (sin contraseña, para Docker). Al arrancar aplica el catálogo de `seed/`. `server/db.mjs` — esquema SQLite (`node:sqlite`). `server/copias.mjs` — copia diaria (`VACUUM INTO` + fotos nuevas) en `data/copias/` o `AMS_LAB_COPIAS`; `npm run copia` hace una ya.
+- `server/index.mjs` — servidor sin dependencias (Node 24): sirve `public/`, la API (`/api/...`), las fotos (`/fotos/...`) y `/salud` (healthcheck de Docker). **Sin contraseña** (decisión del usuario, 06/11/2026): solo red local / Tailscale. Al arrancar aplica el catálogo de `seed/`. `server/db.mjs` — esquema SQLite (`node:sqlite`). `server/copias.mjs` — copia diaria (`VACUUM INTO` + fotos nuevas) en `data/copias/` o `AMS_LAB_COPIAS`; `npm run copia` hace una ya.
 - `data/lab.db` + `data/fotos/` — **los datos reales del usuario** (no van a git; copia de seguridad = copiar `data/`). Nunca borrar ni sobrescribir sin preguntar.
 - `seed/*.json` — referencia (`referencia.json`) y catálogo (`glosario.json`, `proyectos.json`); `componentes.json` solo se usa al crear una base de datos nueva.
 - `public/` — la web (`index.html`, `app.js`, `style.css`); la foto se reduce en el móvil a 1600 px JPEG antes de subirla. `public/sw.js` — modo sin conexión (solo con HTTPS/localhost): red primero para la web y `/api/datos`, fotos guardadas al verlas. Si cambias la lista de ficheros que precarga, sube `WEB` (`ams-web-vN`).

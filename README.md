@@ -3,7 +3,7 @@
 Almacén digital personal de componentes electrónicos: inventario con stock y fotos, glosario y proyectos.
 
 - `npm start` → http://localhost:4321 · desde el móvil, la dirección «móvil →» que sale en la consola (misma Wi-Fi)
-- Contraseña opcional: `AMS_LAB_PASS=lo-que-quieras npm start`
+- Sin contraseña: pensada solo para la red de casa (o Tailscale). No la publiques en internet tal cual.
 - Copia de seguridad: automática cada día (ver abajo), `npm run copia` para hacer una ya, o «exportar» en http://localhost:4321/api/exportar (solo datos, sin fotos)
 
 ## Docker (homelab)
