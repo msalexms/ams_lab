@@ -11,7 +11,6 @@ services:
     ports:
       - "4321:4321"
     environment:
-      - AMS_LAB_PASS=${AMS_LAB_PASS:-}
       - TZ=${TZ:-Europe/Madrid}           # fecha de las copias
       # - AMS_LAB_COPIAS=/copias          # copias en otro disco (descomenta también el volumen)
       # - AMS_LAB_COPIAS_MAX=14           # copias diarias que se guardan (0 = ninguna)
