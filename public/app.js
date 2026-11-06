@@ -65,7 +65,8 @@ async function api(method, url, body, headers = {}) {
   const opts = {method, headers};
   if (body instanceof Blob) opts.body = body;
   else if (body !== undefined) { opts.body = JSON.stringify(body); opts.headers = {'content-type': 'application/json', ...headers}; }
-  const r = await fetch(url, opts);
+  let r;
+  try { r = await fetch(url, opts); } catch { throw new Error('Sin conexión con el servidor: no se ha guardado'); }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || `Error ${r.status}`);
   return data;
@@ -427,12 +428,36 @@ document.addEventListener('keydown', (e) => {
 });
 window.addEventListener('hashchange', () => { route(); window.scrollTo(0, 0); });
 
+// ---------- datos y modo sin conexión ----------
+// sin red, el service worker (sw.js) entrega la última copia de /api/datos con la cabecera x-guardado
+async function cargar() {
+  let r;
+  try { r = await fetch('api/datos'); } catch { throw new Error('sin conexión y sin copia guardada en este dispositivo'); }
+  const datos = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(datos.error || `Error ${r.status}`);
+  Object.assign(D, datos);
+  CATS = Object.fromEntries(D.categorias.map((c) => [c.id, c.nombre]));
+  FUNC = Object.fromEntries(D.funciones.map((f) => [f.id, f]));
+  DIF = Object.fromEntries(D.dificultades.map((d) => [d.nivel, d.nombre]));
+  const guardado = r.headers.get('x-guardado');
+  const aviso = $('#sin-red');
+  aviso.hidden = !guardado;
+  if (guardado) {
+    const f = new Date(guardado).toLocaleString('es-ES', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
+    $('#sin-red-txt').textContent = `Sin conexión · datos del ${f} · los cambios no se guardan`;
+  }
+}
+async function recargar() {
+  try { await cargar(); contadores(); route(); } catch {}
+  if (!$('#sin-red').hidden) toast('Sigue sin conexión', true);
+}
+$('#sin-red-btn').addEventListener('click', recargar);
+window.addEventListener('online', () => { if (!$('#sin-red').hidden) recargar(); });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {}); // solo con HTTPS o localhost
+
 (async function init() {
   try {
-    Object.assign(D, await api('GET', 'api/datos'));
-    CATS = Object.fromEntries(D.categorias.map((c) => [c.id, c.nombre]));
-    FUNC = Object.fromEntries(D.funciones.map((f) => [f.id, f]));
-    DIF = Object.fromEntries(D.dificultades.map((d) => [d.nivel, d.nombre]));
+    await cargar();
   } catch (err) {
     app.innerHTML = vacio(`No puedo hablar con el servidor: ${esc(err.message)}`);
     return;

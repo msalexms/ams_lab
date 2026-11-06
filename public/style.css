@@ -63,6 +63,10 @@ nav a .n { font-size: .75rem; margin-left: 3px; font-variant-numeric: tabular-nu
 
 main { max-width: 1120px; margin: 0 auto; padding: 18px 20px 110px; }
 
+/* aviso de modo sin conexión: una línea de texto, como el resto de la hoja */
+.sin-red { margin: 0; padding: 6px 20px; border-bottom: 1px solid var(--linea); background: var(--cab); color: var(--aviso); font-size: .82rem; }
+.sin-red[hidden] { display: none; }
+
 /* ---------- botones y filtros ---------- */
 .btn, button.btn {
   display: inline-flex; align-items: center; gap: 6px; background: var(--hoja); color: var(--tinta);

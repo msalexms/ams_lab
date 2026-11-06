@@ -1,13 +1,20 @@
 # Homelab: copia la carpeta al servidor y `docker compose up -d --build` → http://<servidor>:4321
-# La base de datos y las fotos quedan en ./data (haz copia de esa carpeta). Solo red local / Tailscale.
+# La base de datos y las fotos quedan en ./data; cada día se hace una copia en ./data/copias (mejor en otro disco: ver abajo).
+# Solo red local / Tailscale. Para usarla sin conexión en el móvil hace falta HTTPS: `tailscale serve --bg 4321` (README).
 services:
   ams-lab:
     build: .
+    image: ams-lab:latest
     container_name: ams-lab
     restart: unless-stopped
+    init: true
     ports:
       - "4321:4321"
     environment:
       - AMS_LAB_PASS=${AMS_LAB_PASS:-}
+      - TZ=${TZ:-Europe/Madrid}           # fecha de las copias
+      # - AMS_LAB_COPIAS=/copias          # copias en otro disco (descomenta también el volumen)
+      # - AMS_LAB_COPIAS_MAX=14           # copias diarias que se guardan (0 = ninguna)
     volumes:
       - ./data:/data
+      # - /mnt/otro-disco/ams-lab-copias:/copias

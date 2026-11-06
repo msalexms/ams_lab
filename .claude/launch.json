@@ -1,1 +1,1 @@
-{"version":"0.0.1","configurations":[{"name":"ams-lab","runtimeExecutable":"node","runtimeArgs":["scripts/serve.mjs"],"port":4321}]}
+{"version":"0.0.1","configurations":[{"name":"ams-lab","runtimeExecutable":"node","runtimeArgs":["server/index.mjs"],"port":4321}]}
