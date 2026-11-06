@@ -2,12 +2,14 @@
 //   npm start            → http://localhost:4321 (y http://<IP-del-PC>:4321 desde el móvil, misma Wi-Fi)
 //   AMS_LAB_PASS=xxxx    → pide contraseña (usuario cualquiera)
 //   AMS_LAB_DATA=/ruta   → carpeta de la base de datos y las fotos (por defecto ./data)
+//   AMS_LAB_COPIAS=/ruta → carpeta de las copias diarias (por defecto <datos>/copias) · ver server/copias.mjs
 import {createServer} from 'node:http';
 import {readFile, writeFile, unlink} from 'node:fs/promises';
 import {extname, join, normalize, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {networkInterfaces} from 'node:os';
-import {abrir, ubicacionId} from './db.mjs';
+import {abrir, ubicacionId, sincronizarCatalogo} from './db.mjs';
+import {programarCopias} from './copias.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUB = join(ROOT, 'public');
@@ -17,7 +19,17 @@ const PORT = Number(process.env.PORT) || 4321;
 const PASS = process.env.AMS_LAB_PASS || '';
 const MAX_FOTO = 10 * 1024 * 1024;
 
-const db = abrir(DATA, join(ROOT, 'seed'));
+const SEED = join(ROOT, 'seed');
+const db = abrir(DATA, SEED);
+// el catálogo (glosario, proyectos, colores…) se aplica desde seed/ en cada arranque: así una imagen nueva de Docker
+// trae las fichas al día sin tener que entrar al contenedor. No toca el inventario.
+try {
+  const n = sincronizarCatalogo(db, SEED);
+  console.log(`Catálogo: ${n.tipos} tipos, ${n.proyectos} proyectos`);
+} catch (e) {
+  console.error('No se pudo aplicar el catálogo de seed/ (sigue el anterior):', e.message);
+}
+programarCopias(db, DATA);
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
@@ -214,8 +226,9 @@ function autorizado(req) {
   return tipo === 'Basic' && Buffer.from(val || '', 'base64').toString().split(':').slice(1).join(':') === PASS;
 }
 
-createServer(async (req, res) => {
+const server = createServer(async (req, res) => {
   try {
+    if (req.url === '/salud') return send(res, 200, 'ok', 'text/plain'); // para el HEALTHCHECK de Docker (no da datos)
     if (!autorizado(req)) return send(res, 401, 'Contraseña', 'text/plain', {'www-authenticate': 'Basic realm="ams-lab"'});
     const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (path.startsWith('/api/')) return await api(req, res, path);
@@ -232,4 +245,13 @@ createServer(async (req, res) => {
   console.log(`[AMS] lab → http://localhost:${PORT}`);
   ips.forEach((ip) => console.log(`         móvil → http://${ip}:${PORT}`));
   if (!PASS) console.log('         (sin contraseña: pon AMS_LAB_PASS para pedirla)');
+});
+
+// cierre limpio (docker stop, Ctrl+C): deja de aceptar peticiones y cierra la base de datos (vuelca el WAL)
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => {
+  console.log(`[AMS] lab: cerrando (${sig})`);
+  server.close();
+  server.closeAllConnections();
+  try { db.close(); } catch {}
+  process.exit(0);
 });

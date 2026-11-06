@@ -1,0 +1,4 @@
+# LF siempre: el contenedor es Linux (un docker-entrypoint.sh con CRLF no arranca)
+* text=auto eol=lf
+*.HEIC binary
+*.db binary
