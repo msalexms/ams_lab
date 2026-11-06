@@ -1,10 +1,11 @@
-# [AMS] lab — imagen para el homelab. Sin dependencias de npm: solo Node 24 (node:sqlite).
+# [AMS] lab — imagen para el homelab. Node 24 (node:sqlite) + dependencias de npm solo para la IA (AI SDK y zod).
 #   docker build -t ams-lab .        (o docker compose up -d --build)
 FROM node:24-alpine
 RUN apk add --no-cache su-exec
 ENV NODE_ENV=production AMS_LAB_DATA=/data PORT=4321
 WORKDIR /app
-COPY package.json ./
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 COPY server ./server
 COPY scripts ./scripts
 COPY seed ./seed

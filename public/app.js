@@ -174,6 +174,7 @@ function vInventario() {
         ${ubicaciones().map((u) => `<option ${ui.ubic === u ? 'selected' : ''}>${esc(u)}</option>`).join('')}
         <option value="∅" ${ui.ubic === '∅' ? 'selected' : ''}>Sin sitio</option></select>
       ${nRevisar ? `<button class="f ${ui.revisar ? 'on' : ''}" id="rev">Por revisar<span class="n">${nRevisar}</span></button>` : ''}
+      <a class="btn" href="#/ia">Añadir con IA</a>
       <a class="btn prim solo-escritorio" href="#/nuevo">Añadir pieza</a>
     </div></div>`;
 
@@ -192,11 +193,13 @@ function vComponente(id) {
   return `<a class="back" href="#/">← Inventario</a>
     <article class="hoja">
       ${cabecera(esc(c.nombre) + revisar(c), c.tipo ? CATS[f.categoria] : '', c.tipo ? f.resumen : '')}
+      ${c.tipo && f.revisado === 0 ? avisoIA(c.tipo) : ''}
       ${specs([
         ['Cantidad', stepper(c, true)],
         ['Sitio', esc(c.ubicacion || '—')],
         ['Tensión', esc(c.tipo ? voltajeDe(f) : '')],
         ['Tipo', c.tipo ? `<a href="#/g/${esc(c.tipo)}">${esc(f.nombre)}</a>` : 'Sin tipo'],
+        ...list(c.datos).map(([k, v]) => [esc(k), esc(v)]),
       ])}
       <div class="hoja-cuerpo">
         <div>${c.tipo ? tablaPines(f) || '<p class="gris">Este tipo no tiene pines.</p>' : '<p class="gris">Asígnale un tipo para ver sus pines.</p>'}</div>
@@ -215,11 +218,11 @@ function vComponente(id) {
     ${usadoEn(c.tipo)}`;
 }
 
-function opcionesTipo(sel) {
+function opcionesTipo(sel, nuevo = 'Nuevo tipo…') {
   return `<option value="">Sin tipo</option>` + Object.keys(CATS).map((cat) => {
     const ts = Object.entries(D.tipos).filter(([, t]) => t.categoria === cat).sort((a, b) => a[1].nombre.localeCompare(b[1].nombre, 'es'));
     return ts.length ? `<optgroup label="${CATS[cat]}">${ts.map(([k, t]) => `<option value="${esc(k)}" ${k === sel ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</optgroup>` : '';
-  }).join('') + `<option value="__nuevo">Nuevo tipo…</option>`;
+  }).join('') + `<option value="__nuevo" ${sel === '__nuevo' ? 'selected' : ''}>${esc(nuevo)}</option>`;
 }
 
 function vForm(id) {
@@ -228,6 +231,7 @@ function vForm(id) {
   return `<a class="back" href="${id ? `#/c/${id}` : '#/'}">← ${id ? 'Volver' : 'Inventario'}</a>
     <article class="hoja">
       ${cabecera(id ? 'Editar pieza' : 'Nueva pieza')}
+      ${!id ? '<p class="ia-atajo"><a href="#/ia">O que la IA la rellene a partir de una foto →</a></p>' : ''}
       <form id="form" class="form" autocomplete="off">
         <label>Nombre<input name="nombre" required maxlength="200" value="${esc(c.nombre)}" placeholder="ESP32-WROOM-32 DevKit"></label>
         <label>Tipo<select name="tipo" id="tipo">${opcionesTipo(c.tipo)}</select></label>
@@ -289,13 +293,16 @@ function vTipo(tipo) {
   const f = D.tipos[tipo];
   if (!f) return vacio('Ese tipo no está en el glosario.');
   const cs = D.componentes.filter((c) => c.tipo === tipo).sort(byName);
+  const datos = list(f.datos).length ? `<h3 style="margin-top:18px">Datos</h3><table class="t"><tbody>${f.datos.map(([k, v]) =>
+    `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>` : '';
   return `<a class="back" href="#/glosario">← Glosario</a>
     <article class="hoja">
       ${cabecera(esc(f.nombre), CATS[f.categoria], f.resumen)}
+      ${f.revisado === 0 ? avisoIA(tipo, true) : ''}
       ${specs([['Tienes', stockText(tipo)], ['Tensión', esc(voltajeDe(f))], ['También', esc(list(f.alias).join(', '))]])}
       <div class="hoja-cuerpo">
-        <div>${tablaPines(f) || '<p class="gris">Sin pines.</p>'}</div>
-        <aside class="lateral">${dibujo(tipo)}
+        <div>${tablaPines(f) || '<p class="gris">Sin pines.</p>'}${datos}</div>
+        <aside class="lateral">${f.origen === 'ia' ? '' : dibujo(tipo)}
           <div><h3>Los que tienes</h3>${cs.length ? cs.map(filaComp).join('') : '<p class="gris">Ninguno.</p>'}</div>
           <a class="btn" href="#/nuevo?tipo=${esc(tipo)}">Añadir uno de este tipo</a>
         </aside>
@@ -341,6 +348,178 @@ function vProyecto(id) {
     </article>`;
 }
 
+// ---------- IA: «Añadir con IA» (el modelo propone, el usuario confirma) ----------
+const avisoIA = (tipo, conBoton = false) => `<p class="ia-aviso">Ficha generada por IA, sin comprobar: revisa la tensión y los pines antes de conectar nada.
+  ${conBoton ? `<button class="btn" id="revisada" data-tipo="${esc(tipo)}">Marcar como revisada</button>` : ''}</p>`;
+const ESTADO_IA = {pendiente: 'Analizando…', propuesta: 'Propuesta por revisar', error: 'Error', aplicada: 'Guardada', descartada: 'Descartada'};
+const lineasPares = (pares) => list(pares).map(([k, v]) => `${k}: ${v}`).join('\n');
+const paresLineas = (s) => String(s || '').split('\n').map((l) => l.split(/:\s*/)).filter(([k, ...v]) => k.trim() && v.join(':').trim())
+  .map(([k, ...v]) => [k.trim(), v.join(':').trim()]);
+const comas = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
+
+function vIA(id) {
+  if (id === 'ajustes') return `<a class="back" href="#/ia">← Añadir con IA</a><article class="hoja" id="ia-ajustes"><p class="gris pad">Cargando…</p></article>`;
+  if (id) return `<a class="back" href="#/ia">← Añadir con IA</a><article class="hoja" id="ia-zona"><p class="gris pad">Cargando…</p></article>`;
+  if (!D.ia?.activa) return `<a class="back" href="#/">← Inventario</a>${vacio('Falta la clave de OpenCode Go. <a class="btn prim" href="#/ia/ajustes">Configurar</a>')}`;
+  return `<a class="back" href="#/">← Inventario</a>
+    <article class="hoja">
+      ${cabecera('Añadir con IA', '', 'Haz una foto de la pieza (mejor si se lee la serigrafía) y añade lo que sepas. La IA propone el nombre, el tipo y la ficha; tú lo revisas antes de guardar.')}
+      <p class="ia-atajo">Modelo: ${esc(D.ia.modelo)} · clave ${esc(D.ia.clave)} · <a href="#/ia/ajustes">Configuración</a></p>
+      <form id="form-ia" class="form" autocomplete="off">
+        <label>Foto<input type="file" name="foto" accept="image/*"></label>
+        <label>Lo que sepas (opcional)<textarea name="texto" rows="3" maxlength="1000" placeholder="Sensor de humedad del kit de Freenove, 3 pines"></textarea></label>
+        <div class="acciones"><button class="btn prim" type="submit">Analizar</button></div>
+      </form>
+    </article>
+    <div id="ia-abiertas"></div>`;
+}
+
+// configuración: clave (nunca se vuelve a mostrar) y modelo, elegido de los que el catálogo de Go marca con fotos
+// y salida estructurada. Al guardar, el servidor valida el formato y hace una llamada mínima de prueba.
+const dolares = (n) => (n == null ? '?' : `${String(n).replace('.', ',')} $`);
+async function iaAjustes() {
+  const zona = $('#ia-ajustes');
+  if (!zona) return;
+  let cfg, lista = [], fallo = '';
+  try { cfg = await api('GET', 'api/ia/config'); } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; return; }
+  try { lista = await api('GET', 'api/ia/modelos'); } catch (err) { fallo = err.message; }
+  const origen = {web: 'guardada en la app', entorno: 'de la variable IA_CLAVE del servidor'}[cfg.origen_clave];
+  const fuera = cfg.modelo && !lista.some((m) => m.id === cfg.modelo);
+  zona.innerHTML = `${cabecera('Configuración de la IA', '', 'Proveedor: OpenCode Go. Solo se ofrecen los modelos que, según el catálogo de Go, entienden fotos y devuelven datos con formato fijo.')}
+    ${specs([['Clave', cfg.clave ? `${esc(cfg.clave)} (${esc(origen)})` : '<span class="mal">sin clave</span>'], ['Modelo', esc(cfg.modelo || '—')]])}
+    <form id="form-ia-config" class="form" autocomplete="off">
+      <label>${cfg.clave ? 'Cambiar la clave (déjalo vacío para mantener la actual)' : 'Clave de OpenCode Go'}
+        <input name="clave" type="password" autocomplete="off" spellcheck="false" minlength="16" maxlength="300" pattern="[!-~]{16,300}"
+          placeholder="Pega aquí la clave de tu suscripción a Go" ${cfg.clave ? '' : 'required'}>
+        <span class="ayuda">Se saca en la consola de OpenCode (suscripción Go). La app la guarda en su base de datos y no la vuelve a mostrar;
+          ojo: viaja en las copias de seguridad de la base de datos.</span></label>
+      <label>Modelo
+        ${lista.length ? `<select name="modelo">${lista.map((m) => `<option value="${esc(m.id)}" ${m.id === cfg.modelo ? 'selected' : ''} title="${esc(m.descripcion)}">
+          ${esc(m.nombre)} · ${dolares(m.precio.entrada)} / ${dolares(m.precio.salida)} por millón de tokens</option>`).join('')}</select>`
+          : `<span class="mal">${esc(fallo || 'No hay modelos disponibles')}</span>`}
+        ${fuera ? `<span class="aviso">El modelo actual («${esc(cfg.modelo)}») ya no está en el catálogo con fotos: elige otro.</span>` : ''}
+        <span class="ayuda">Precio de entrada / salida. Para clasificar fotos sobra con uno barato y rápido.</span></label>
+      <div class="acciones">
+        <button class="btn prim" type="submit" ${lista.length ? '' : 'disabled'}>Probar y guardar</button>
+        ${cfg.origen_clave === 'web' ? '<button class="btn peligro" type="button" id="ia-quitar">Quitar la clave</button>' : ''}
+      </div>
+    </form>`;
+}
+
+async function guardarAjustesIA(form) {
+  const fd = new FormData(form);
+  const clave = String(fd.get('clave') || '').trim();
+  if (clave && !/^[!-~]{16,300}$/.test(clave)) throw new Error('La clave no tiene buen formato (16–300 caracteres, sin espacios)');
+  toast('Comprobando con OpenCode Go…');
+  D.ia = await api('PUT', 'api/ia/config', {clave: clave || undefined, modelo: fd.get('modelo') || undefined});
+  toast('Clave y modelo comprobados y guardados');
+  location.hash = '#/ia';
+}
+
+// lista de tareas abiertas (debajo del formulario): nada se pierde si cierras la pestaña mientras el modelo piensa
+async function iaAbiertas() {
+  const zona = $('#ia-abiertas');
+  if (!zona) return;
+  try {
+    const ts = await api('GET', 'api/ia/tareas');
+    zona.innerHTML = ts.length ? `<section class="grupo"><h3 class="grupo-t">Sin terminar<span class="n">${ts.length}</span></h3>${ts.map((t) => `
+      <div class="fila"><a class="fila-main" href="#/ia/${t.id}">${t.foto ? `<img class="thumb" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : ''}
+        <div><div class="nombre">${esc(t.propuesta?.nombre || t.texto || 'Pieza sin nombre')}</div><div class="sub">${esc(t.creada)}</div></div></a>
+        <div class="der">${t.estado === 'error' ? '<span class="mal">Error</span>' : esc(ESTADO_IA[t.estado])}</div></div>`).join('')}</section>` : '';
+  } catch {}
+}
+
+async function iaTarea(id) {
+  const zona = $('#ia-zona');
+  if (!zona) return;
+  let t;
+  try { t = await api('GET', `api/ia/tareas/${id}`); } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; return; }
+  const foto = t.foto ? `<img class="foto ia-foto" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : '';
+  if (t.estado === 'pendiente') {
+    zona.innerHTML = `${cabecera('Analizando…', '', 'El modelo está mirando la pieza. Puede tardar hasta un minuto; si sales, la propuesta te espera en «Añadir con IA».')}<div class="pad">${foto}</div>`;
+    const h = location.hash;
+    setTimeout(() => { if (location.hash === h) iaTarea(id); }, 3000);
+    return;
+  }
+  if (t.estado === 'error') {
+    zona.innerHTML = `${cabecera('No ha salido', '', t.error || 'Error desconocido')}
+      <div class="pad">${foto}<div class="acciones"><a class="btn prim" href="#/ia">Probar otra vez</a>
+      <button class="btn peligro" id="ia-descartar" data-id="${t.id}">Descartar</button></div></div>`;
+    return;
+  }
+  if (t.estado !== 'propuesta') {
+    zona.innerHTML = `${cabecera(ESTADO_IA[t.estado])}<div class="pad">${t.componente_id ? `<a class="btn" href="#/c/${t.componente_id}">Ver la pieza</a>` : ''}</div>`;
+    return;
+  }
+  const p = t.propuesta, n = p.tipo_nuevo || {}, sel = p.tipo_existente || (p.tipo_nuevo ? '__nuevo' : '');
+  const funciones = Object.entries(FUNC).map(([k, f]) => `${k} = ${f.nombre}`).join(' · ');
+  zona.innerHTML = `${cabecera('Revisa la propuesta', '', 'Corrige lo que haga falta y guarda. Nada se ha guardado todavía.')}
+    ${specs([['Confianza', esc(p.confianza)], ['Modelo', esc(t.modelo || '')]])}
+    ${p.dudas?.length ? `<div class="ia-dudas pad"><h3>Dudas del modelo</h3><ul>${p.dudas.map((d) => `<li>${esc(d)}</li>`).join('')}</ul></div>` : ''}
+    <form id="form-ia-ok" class="form" autocomplete="off" data-id="${t.id}">
+      ${foto}
+      <label>Nombre<input name="nombre" required maxlength="200" value="${esc(p.nombre)}"></label>
+      <label>Tipo<select name="tipo" id="tipo">${opcionesTipo(sel, p.tipo_nuevo ? `Nuevo: ${p.tipo_nuevo.nombre} (propuesto por la IA)` : 'Nuevo tipo…')}</select></label>
+      <div id="nuevo-tipo" class="nuevo-tipo" ${sel === '__nuevo' ? '' : 'hidden'}>
+        <p class="ia-aviso sin-pad">Ficha nueva escrita por la IA: quedará marcada como «sin comprobar».</p>
+        <label>Nombre del tipo<input name="tn_nombre" maxlength="120" value="${esc(n.nombre || '')}"></label>
+        <label>Categoría<select name="tn_categoria">${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${k === (n.categoria || 'otro') ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+        <label>Resumen<textarea name="tn_resumen" rows="2" maxlength="400">${esc(n.resumen || '')}</textarea></label>
+        <label>Tensión<input name="tn_voltaje" maxlength="120" value="${esc(n.voltaje || '')}"></label>
+        <label>Interfaces (separadas por comas)<input name="tn_interfaz" value="${esc(list(n.interfaz).join(', '))}"></label>
+        <label>También se llama (separado por comas)<input name="tn_alias" value="${esc(list(n.alias).join(', '))}"></label>
+        <label>Pines: una línea por pin, «pin | uso | función»<textarea name="tn_pines" rows="${Math.max(3, list(n.pines).length + 1)}" class="mono">${esc(list(n.pines).map((x) => x.join(' | ')).join('\n'))}</textarea>
+          <span class="ayuda">Funciones: ${esc(funciones)}</span></label>
+        <label>Datos del tipo: una línea por dato, «dato: valor»<textarea name="tn_datos" rows="3">${esc(lineasPares(n.datos))}</textarea></label>
+        <label>Ojo (advertencia)<textarea name="tn_ojo" rows="2" maxlength="400">${esc(n.ojo || '')}</textarea></label>
+      </div>
+      <label>Datos de esta pieza: «dato: valor»<textarea name="datos_pieza" rows="2">${esc(lineasPares(p.datos_pieza))}</textarea></label>
+      <div class="dos">
+        <label>Cantidad<input name="cantidad" type="number" min="0" inputmode="numeric" value="${esc(p.cantidad ?? 1)}"></label>
+        <label class="check"><input type="checkbox" name="varios"> Hay muchos (sin contar)</label>
+      </div>
+      <label>Sitio<input name="ubicacion" list="ubics" maxlength="120" placeholder="Cajita 3"></label>
+      <datalist id="ubics">${ubicaciones().map((u) => `<option value="${esc(u)}">`).join('')}</datalist>
+      <label>Notas<textarea name="notas" rows="2" maxlength="2000"></textarea></label>
+      <div class="acciones">
+        <button class="btn prim" type="submit">Guardar pieza</button>
+        <button class="btn peligro" type="button" id="ia-descartar" data-id="${t.id}">Descartar</button>
+      </div>
+    </form>`;
+}
+
+async function enviarIA(form) {
+  const fd = new FormData(form);
+  const file = fd.get('foto');
+  let foto = null;
+  if (file && file.size) {
+    const blob = await reducir(file);
+    foto = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.readAsDataURL(blob); });
+  }
+  toast('Enviando…');
+  const t = await api('POST', 'api/ia/alta', {texto: fd.get('texto'), foto});
+  location.hash = `#/ia/${t.id}`;
+}
+
+async function aplicarIA(form) {
+  const fd = new FormData(form);
+  const varios = !!fd.get('varios');
+  const body = {
+    nombre: fd.get('nombre'), tipo: fd.get('tipo') || null, varios, cantidad: varios ? null : fd.get('cantidad'),
+    ubicacion: fd.get('ubicacion'), notas: fd.get('notas'), datos_pieza: paresLineas(fd.get('datos_pieza')),
+  };
+  if (body.tipo === '__nuevo') body.tipo_nuevo = {
+    nombre: fd.get('tn_nombre'), categoria: fd.get('tn_categoria'), resumen: fd.get('tn_resumen'), voltaje: fd.get('tn_voltaje'),
+    interfaz: comas(fd.get('tn_interfaz')), alias: comas(fd.get('tn_alias')), ojo: fd.get('tn_ojo'), datos: paresLineas(fd.get('tn_datos')),
+    pines: String(fd.get('tn_pines') || '').split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((x) => x[0]),
+  };
+  const r = await api('POST', `api/ia/tareas/${form.dataset.id}/aplicar`, body);
+  await cargar(); // trae la pieza, la ficha nueva (si la hay) y los contadores
+  contadores();
+  toast('Guardada');
+  location.hash = `#/c/${r.componente.id}`;
+}
+
 // ---------- router ----------
 function route() {
   const [ruta, qs = ''] = location.hash.replace(/^#\/?/, '').split('?');
@@ -350,12 +529,14 @@ function route() {
     nuevo: ['inventario', () => vForm()], editar: ['inventario', () => vForm(arg)],
     proyectos: ['proyectos', vProyectos], p: ['proyectos', () => vProyecto(arg)],
     glosario: ['glosario', vGlosario], g: ['glosario', () => vTipo(arg)],
+    ia: ['inventario', () => vIA(arg)],
   };
   const [tab, fn] = map[v] || map[''];
   document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.v === tab));
-  $('#fab').hidden = v === 'nuevo' || v === 'editar';
+  $('#fab').hidden = v === 'nuevo' || v === 'editar' || v === 'ia';
   app.innerHTML = fn();
   document.title = `[AMS] lab · ${tab}`;
+  if (v === 'ia') { if (arg === 'ajustes') iaAjustes(); else if (arg) iaTarea(arg); else iaAbiertas(); }
   if (v === 'nuevo') {
     const t = new URLSearchParams(qs).get('tipo');
     if (t && D.tipos[t]) $('#tipo').value = t;
@@ -371,10 +552,28 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar');
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar,#ia-quitar');
   if (!t) return;
   try {
-    if (t.dataset.adj) {
+    if (t.id === 'ia-quitar') {
+      if (!confirm('¿Quitar la clave de OpenCode Go? La IA dejará de funcionar hasta que pongas otra.')) return;
+      D.ia = await api('PUT', 'api/ia/config', {quitarClave: true});
+      toast('Clave quitada');
+      location.hash = '#/ia';
+      return;
+    }
+    if (t.id === 'ia-descartar') {
+      if (!confirm('¿Descartar esta propuesta? No se guarda nada.')) return;
+      await api('POST', `api/ia/tareas/${t.dataset.id}/descartar`);
+      toast('Descartada');
+      location.hash = '#/ia';
+      return;
+    }
+    if (t.id === 'revisada') {
+      await api('PATCH', `api/tipos/${t.dataset.tipo}`, {revisado: true});
+      D.tipos[t.dataset.tipo].revisado = 1;
+      toast('Ficha marcada como revisada');
+    } else if (t.dataset.adj) {
       e.preventDefault();
       t.disabled = true;
       guardarLocal(await api('POST', `api/componentes/${t.dataset.id}/ajuste`, {delta: Number(t.dataset.adj)}));
@@ -401,7 +600,7 @@ app.addEventListener('change', async (e) => {
   const t = e.target;
   if (t.id === 'ubic') { ui.ubic = t.value; route(); }
   if (t.id === 'tipo') $('#nuevo-tipo').hidden = t.value !== '__nuevo';
-  if (t.name === 'varios') { const n = $('#form [name=cantidad]'); n.disabled = t.checked; if (!t.checked && !n.value) n.value = 1; }
+  if (t.name === 'varios') { const n = t.form.querySelector('[name=cantidad]'); n.disabled = t.checked; if (!t.checked && !n.value) n.value = 1; }
   if (t.id === 'foto' && t.files[0]) {
     try { await subirFoto(Number(location.hash.split('/')[2]), t.files[0]); route(); } catch (err) { toast(err.message, true); }
   }
@@ -410,15 +609,19 @@ app.addEventListener('submit', async (e) => {
   e.preventDefault();
   const b = e.target.querySelector('[type=submit]');
   b.disabled = true;
-  try { await guardarForm(e.target, location.hash.startsWith('#/editar/') ? location.hash.split('/')[2] : null); }
-  catch (err) { toast(err.message, true); b.disabled = false; }
+  try {
+    if (e.target.id === 'form-ia') await enviarIA(e.target);
+    else if (e.target.id === 'form-ia-config') await guardarAjustesIA(e.target);
+    else if (e.target.id === 'form-ia-ok') await aplicarIA(e.target);
+    else await guardarForm(e.target, location.hash.startsWith('#/editar/') ? location.hash.split('/')[2] : null);
+  } catch (err) { toast(err.message, true); b.disabled = false; }
 });
 $('#tema').addEventListener('click', cambiarTema);
 
 // buscar: desde una ficha salta a la lista de su pestaña
 q.addEventListener('input', () => {
   const v = location.hash.replace(/^#\/?/, '').split(/[/?]/)[0];
-  const lista = {c: '#/', g: '#/glosario', p: '#/proyectos', nuevo: '#/', editar: '#/'}[v];
+  const lista = {c: '#/', g: '#/glosario', p: '#/proyectos', nuevo: '#/', editar: '#/', ia: '#/'}[v];
   if (lista) location.hash = lista; else route();
 });
 document.addEventListener('keydown', (e) => {
