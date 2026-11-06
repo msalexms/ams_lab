@@ -10,8 +10,9 @@ Almacén digital personal de componentes electrónicos: inventario con stock y f
 
 Botón «Añadir con IA»: foto y/o texto de una pieza → el modelo propone nombre, tipo (o una ficha nueva con pines y datos) → **tú lo revisas y guardas**. Nada entra en el inventario sin confirmar; las fichas nuevas quedan «sin comprobar» hasta que las marques como revisadas.
 
-- Proveedor: OpenCode Go (API compatible con OpenAI). Variables: `IA_CLAVE` (sin ella no aparece el botón), `IA_MODELO` (por defecto `kimi-k3`; tiene que entender imágenes), `IA_URL` (opcional).
-- En local: copia `.env.example` a `.env` y pon la clave (`npm start` lo carga; no se sube a git ni entra en la imagen). En el servidor: variables del stack en Portainer.
+- Proveedor: OpenCode Go, con el AI SDK (el paquete que indica el catálogo de Go para cada modelo). **La clave y el modelo se ponen en la web**: «Añadir con IA» → Configuración. Solo salen los modelos que entienden fotos y devuelven datos con formato fijo, con su precio; al guardar se comprueba la clave con una llamada mínima.
+- La clave se guarda en la base de datos (la web solo enseña sus 4 últimos caracteres) y viaja en las copias de seguridad. `IA_CLAVE` / `IA_MODELO` (o un `.env` en local) solo se usan si en la web no hay nada.
+- Formato garantizado: el modelo responde con un esquema cerrado (categorías, funciones de pin y tipos existentes salen de la base de datos); si no lo cumple se reintenta una vez y si no, error.
 - Cada consulta se guarda en la tabla `ia_tareas`: si cierras la pestaña mientras piensa, la propuesta te espera en «Añadir con IA».
 
 ## Docker (homelab)

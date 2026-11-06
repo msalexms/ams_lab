@@ -2,7 +2,7 @@
 //   npm start            → http://localhost:4321 (y http://<IP-del-PC>:4321 desde el móvil, misma Wi-Fi)
 //   AMS_LAB_DATA=/ruta   → carpeta de la base de datos y las fotos (por defecto ./data)
 //   AMS_LAB_COPIAS=/ruta → carpeta de las copias diarias (por defecto <datos>/copias) · ver server/copias.mjs
-//   IA_CLAVE / IA_MODELO / IA_URL → «Añadir con IA» (OpenCode Go) · ver server/ia.mjs
+//   «Añadir con IA» (OpenCode Go): clave y modelo desde la web (o IA_CLAVE / IA_MODELO) · ver server/ia.mjs
 import {createServer} from 'node:http';
 import {readFile, writeFile, unlink, rename} from 'node:fs/promises';
 import {extname, join, normalize, dirname} from 'node:path';
@@ -10,7 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {networkInterfaces} from 'node:os';
 import {abrir, ubicacionId, sincronizarCatalogo, guardarTipo} from './db.mjs';
 import {programarCopias} from './copias.mjs';
-import {ia, ejecutarAlta, normalizar, cerrarInterrumpidas} from './ia.mjs';
+import {estado, ejecutarAlta, normalizar, cerrarInterrumpidas, modelos, guardarConfig} from './ia.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUB = join(ROOT, 'public');
@@ -31,7 +31,7 @@ try {
 }
 programarCopias(db, DATA);
 cerrarInterrumpidas(db);
-console.log(ia.activa ? `[ia] activa: ${ia.modelo}` : '[ia] desactivada (falta IA_CLAVE)');
+{ const e = estado(db); console.log(e.activa ? `[ia] activa: ${e.modelo} (clave de ${e.origen_clave})` : '[ia] sin clave: se configura desde la web'); }
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
@@ -105,7 +105,7 @@ function proyectos() {
 }
 
 const todo = () => ({
-  ia: {activa: ia.activa, modelo: ia.activa ? ia.modelo : null},
+  ia: estado(db), // nunca la clave entera
   categorias: db.prepare('SELECT id, nombre FROM categorias ORDER BY orden').all(),
   funciones: db.prepare('SELECT id, nombre, color_claro, color_oscuro, tachado FROM funciones_pin ORDER BY orden').all(),
   ajustes: Object.fromEntries(db.prepare('SELECT clave, valor FROM ajustes').all().map((a) => [a.clave, a.valor])),
@@ -158,7 +158,7 @@ const tarea = (id) => {
 };
 
 async function crearAlta(req) {
-  if (!ia.activa) throw new HttpError(503, 'La IA no está configurada (falta IA_CLAVE en el servidor)');
+  if (!estado(db).activa) throw new HttpError(503, 'Falta la clave de OpenCode Go: ponla en Añadir con IA → Configuración');
   let b;
   try { b = JSON.parse((await leerCuerpo(req, MAX_FOTO * 1.4)).toString('utf8') || '{}'); } catch (e) {
     if (e instanceof HttpError) throw e;
@@ -241,6 +241,17 @@ async function api(req, res, path) {
   }
 
   // ---- IA ----
+  // configuración desde la web: se ve el estado (la clave solo por sus 4 últimos caracteres), se cambia con PUT
+  if (m === 'GET' && path === '/api/ia/config') return send(res, 200, estado(db));
+  if (m === 'PUT' && path === '/api/ia/config') {
+    const b = await leerJson(req);
+    try { return send(res, 200, await guardarConfig(db, {clave: b.clave, modelo: b.modelo, quitarClave: b.quitarClave === true})); }
+    catch (e) { throw new HttpError(400, e.message); }
+  }
+  // modelos de OpenCode Go que entienden fotos y devuelven salida estructurada (del catálogo público de Go)
+  if (m === 'GET' && path === '/api/ia/modelos') {
+    try { return send(res, 200, await modelos()); } catch (e) { throw new HttpError(502, e.message); }
+  }
   if (m === 'POST' && path === '/api/ia/alta') return send(res, 202, await crearAlta(req));
   if (m === 'GET' && path === '/api/ia/tareas') // las que siguen abiertas (pensando, propuesta sin confirmar o con error)
     return send(res, 200, db.prepare("SELECT id FROM ia_tareas WHERE estado IN ('pendiente', 'propuesta', 'error') ORDER BY id DESC LIMIT 20")

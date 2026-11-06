@@ -174,7 +174,7 @@ function vInventario() {
         ${ubicaciones().map((u) => `<option ${ui.ubic === u ? 'selected' : ''}>${esc(u)}</option>`).join('')}
         <option value="∅" ${ui.ubic === '∅' ? 'selected' : ''}>Sin sitio</option></select>
       ${nRevisar ? `<button class="f ${ui.revisar ? 'on' : ''}" id="rev">Por revisar<span class="n">${nRevisar}</span></button>` : ''}
-      ${D.ia?.activa ? '<a class="btn" href="#/ia">Añadir con IA</a>' : ''}
+      <a class="btn" href="#/ia">Añadir con IA</a>
       <a class="btn prim solo-escritorio" href="#/nuevo">Añadir pieza</a>
     </div></div>`;
 
@@ -231,7 +231,7 @@ function vForm(id) {
   return `<a class="back" href="${id ? `#/c/${id}` : '#/'}">← ${id ? 'Volver' : 'Inventario'}</a>
     <article class="hoja">
       ${cabecera(id ? 'Editar pieza' : 'Nueva pieza')}
-      ${!id && D.ia?.activa ? '<p class="ia-atajo"><a href="#/ia">O que la IA la rellene a partir de una foto →</a></p>' : ''}
+      ${!id ? '<p class="ia-atajo"><a href="#/ia">O que la IA la rellene a partir de una foto →</a></p>' : ''}
       <form id="form" class="form" autocomplete="off">
         <label>Nombre<input name="nombre" required maxlength="200" value="${esc(c.nombre)}" placeholder="ESP32-WROOM-32 DevKit"></label>
         <label>Tipo<select name="tipo" id="tipo">${opcionesTipo(c.tipo)}</select></label>
@@ -358,11 +358,13 @@ const paresLineas = (s) => String(s || '').split('\n').map((l) => l.split(/:\s*/
 const comas = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
 function vIA(id) {
+  if (id === 'ajustes') return `<a class="back" href="#/ia">← Añadir con IA</a><article class="hoja" id="ia-ajustes"><p class="gris pad">Cargando…</p></article>`;
   if (id) return `<a class="back" href="#/ia">← Añadir con IA</a><article class="hoja" id="ia-zona"><p class="gris pad">Cargando…</p></article>`;
-  if (!D.ia?.activa) return vacio('La IA no está configurada en el servidor (falta IA_CLAVE).');
+  if (!D.ia?.activa) return `<a class="back" href="#/">← Inventario</a>${vacio('Falta la clave de OpenCode Go. <a class="btn prim" href="#/ia/ajustes">Configurar</a>')}`;
   return `<a class="back" href="#/">← Inventario</a>
     <article class="hoja">
       ${cabecera('Añadir con IA', '', 'Haz una foto de la pieza (mejor si se lee la serigrafía) y añade lo que sepas. La IA propone el nombre, el tipo y la ficha; tú lo revisas antes de guardar.')}
+      <p class="ia-atajo">Modelo: ${esc(D.ia.modelo)} · clave ${esc(D.ia.clave)} · <a href="#/ia/ajustes">Configuración</a></p>
       <form id="form-ia" class="form" autocomplete="off">
         <label>Foto<input type="file" name="foto" accept="image/*"></label>
         <label>Lo que sepas (opcional)<textarea name="texto" rows="3" maxlength="1000" placeholder="Sensor de humedad del kit de Freenove, 3 pines"></textarea></label>
@@ -370,6 +372,48 @@ function vIA(id) {
       </form>
     </article>
     <div id="ia-abiertas"></div>`;
+}
+
+// configuración: clave (nunca se vuelve a mostrar) y modelo, elegido de los que el catálogo de Go marca con fotos
+// y salida estructurada. Al guardar, el servidor valida el formato y hace una llamada mínima de prueba.
+const dolares = (n) => (n == null ? '?' : `${String(n).replace('.', ',')} $`);
+async function iaAjustes() {
+  const zona = $('#ia-ajustes');
+  if (!zona) return;
+  let cfg, lista = [], fallo = '';
+  try { cfg = await api('GET', 'api/ia/config'); } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; return; }
+  try { lista = await api('GET', 'api/ia/modelos'); } catch (err) { fallo = err.message; }
+  const origen = {web: 'guardada en la app', entorno: 'de la variable IA_CLAVE del servidor'}[cfg.origen_clave];
+  const fuera = cfg.modelo && !lista.some((m) => m.id === cfg.modelo);
+  zona.innerHTML = `${cabecera('Configuración de la IA', '', 'Proveedor: OpenCode Go. Solo se ofrecen los modelos que, según el catálogo de Go, entienden fotos y devuelven datos con formato fijo.')}
+    ${specs([['Clave', cfg.clave ? `${esc(cfg.clave)} (${esc(origen)})` : '<span class="mal">sin clave</span>'], ['Modelo', esc(cfg.modelo || '—')]])}
+    <form id="form-ia-config" class="form" autocomplete="off">
+      <label>${cfg.clave ? 'Cambiar la clave (déjalo vacío para mantener la actual)' : 'Clave de OpenCode Go'}
+        <input name="clave" type="password" autocomplete="off" spellcheck="false" minlength="16" maxlength="300" pattern="[!-~]{16,300}"
+          placeholder="Pega aquí la clave de tu suscripción a Go" ${cfg.clave ? '' : 'required'}>
+        <span class="ayuda">Se saca en la consola de OpenCode (suscripción Go). La app la guarda en su base de datos y no la vuelve a mostrar;
+          ojo: viaja en las copias de seguridad de la base de datos.</span></label>
+      <label>Modelo
+        ${lista.length ? `<select name="modelo">${lista.map((m) => `<option value="${esc(m.id)}" ${m.id === cfg.modelo ? 'selected' : ''} title="${esc(m.descripcion)}">
+          ${esc(m.nombre)} · ${dolares(m.precio.entrada)} / ${dolares(m.precio.salida)} por millón de tokens</option>`).join('')}</select>`
+          : `<span class="mal">${esc(fallo || 'No hay modelos disponibles')}</span>`}
+        ${fuera ? `<span class="aviso">El modelo actual («${esc(cfg.modelo)}») ya no está en el catálogo con fotos: elige otro.</span>` : ''}
+        <span class="ayuda">Precio de entrada / salida. Para clasificar fotos sobra con uno barato y rápido.</span></label>
+      <div class="acciones">
+        <button class="btn prim" type="submit" ${lista.length ? '' : 'disabled'}>Probar y guardar</button>
+        ${cfg.origen_clave === 'web' ? '<button class="btn peligro" type="button" id="ia-quitar">Quitar la clave</button>' : ''}
+      </div>
+    </form>`;
+}
+
+async function guardarAjustesIA(form) {
+  const fd = new FormData(form);
+  const clave = String(fd.get('clave') || '').trim();
+  if (clave && !/^[!-~]{16,300}$/.test(clave)) throw new Error('La clave no tiene buen formato (16–300 caracteres, sin espacios)');
+  toast('Comprobando con OpenCode Go…');
+  D.ia = await api('PUT', 'api/ia/config', {clave: clave || undefined, modelo: fd.get('modelo') || undefined});
+  toast('Clave y modelo comprobados y guardados');
+  location.hash = '#/ia';
 }
 
 // lista de tareas abiertas (debajo del formulario): nada se pierde si cierras la pestaña mientras el modelo piensa
@@ -492,7 +536,7 @@ function route() {
   $('#fab').hidden = v === 'nuevo' || v === 'editar' || v === 'ia';
   app.innerHTML = fn();
   document.title = `[AMS] lab · ${tab}`;
-  if (v === 'ia') { if (arg) iaTarea(arg); else iaAbiertas(); }
+  if (v === 'ia') { if (arg === 'ajustes') iaAjustes(); else if (arg) iaTarea(arg); else iaAbiertas(); }
   if (v === 'nuevo') {
     const t = new URLSearchParams(qs).get('tipo');
     if (t && D.tipos[t]) $('#tipo').value = t;
@@ -508,9 +552,16 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar');
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar,#ia-quitar');
   if (!t) return;
   try {
+    if (t.id === 'ia-quitar') {
+      if (!confirm('¿Quitar la clave de OpenCode Go? La IA dejará de funcionar hasta que pongas otra.')) return;
+      D.ia = await api('PUT', 'api/ia/config', {quitarClave: true});
+      toast('Clave quitada');
+      location.hash = '#/ia';
+      return;
+    }
     if (t.id === 'ia-descartar') {
       if (!confirm('¿Descartar esta propuesta? No se guarda nada.')) return;
       await api('POST', `api/ia/tareas/${t.dataset.id}/descartar`);
@@ -560,6 +611,7 @@ app.addEventListener('submit', async (e) => {
   b.disabled = true;
   try {
     if (e.target.id === 'form-ia') await enviarIA(e.target);
+    else if (e.target.id === 'form-ia-config') await guardarAjustesIA(e.target);
     else if (e.target.id === 'form-ia-ok') await aplicarIA(e.target);
     else await guardarForm(e.target, location.hash.startsWith('#/editar/') ? location.hash.split('/')[2] : null);
   } catch (err) { toast(err.message, true); b.disabled = false; }
