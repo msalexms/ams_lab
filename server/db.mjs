@@ -1,14 +1,18 @@
 // Base de datos SQLite (node:sqlite, sin dependencias). Fichero: data/lab.db · modelo: docs/modelo-datos.md
 //
 // Dos clases de datos:
-//   · REFERENCIA y CATÁLOGO (categorías, funciones de pin y sus colores, dificultades, tipos, pines, proyectos):
-//     vienen de seed/*.json y se actualizan con `npm run catalogo` (nunca tocan el inventario).
-//   · INVENTARIO del usuario (componentes, ubicaciones, historial): solo los cambia la aplicación.
+//   · REFERENCIA y CATÁLOGO (categorías, funciones de pin y sus colores, dificultades, tipos, pines, proyectos).
+//     La base de datos es la fuente de verdad. seed/*.json crea lo que falta y actualiza solo lo que sigue siendo
+//     «de seed» (origen = 'seed'): nunca pisa una categoría o un tipo creados o cambiados por la IA o por el usuario.
+//   · INVENTARIO del usuario (componentes, ubicaciones, historial, datos de cada pieza): solo los cambia la aplicación.
 import {DatabaseSync} from 'node:sqlite';
 import {mkdirSync, readFileSync, existsSync} from 'node:fs';
 import {join} from 'node:path';
+import {opcionesCopias} from './copias.mjs';
 
-export const VERSION = 2;
+export const VERSION = 3;
+export const ORIGENES = ['seed', 'ia', 'usuario'];
+const ORIGEN = `TEXT NOT NULL DEFAULT 'seed' CHECK (origen IN ('seed', 'ia', 'usuario'))`;
 const HEX = (col) => `CHECK (${col} GLOB '#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]')`;
 const AJUSTES = `
   CREATE TABLE ajustes (                    -- preferencias de la aplicación (no del navegador)
@@ -21,7 +25,8 @@ const ESQUEMA = `
   CREATE TABLE categorias (
     id      TEXT PRIMARY KEY,
     nombre  TEXT NOT NULL UNIQUE,
-    orden   INTEGER NOT NULL
+    orden   INTEGER NOT NULL,
+    origen  ${ORIGEN}           -- quién manda en la fila: seed/ solo actualiza las que siguen siendo 'seed'
   );
   CREATE TABLE funciones_pin (
     id      TEXT PRIMARY KEY,
@@ -45,7 +50,9 @@ const ESQUEMA = `
     voltaje       TEXT,
     usos          TEXT,          -- textos largos guardados pero no mostrados (decisión del usuario, 03/11/2026)
     conexion      TEXT,
-    advertencias  TEXT
+    advertencias  TEXT,
+    origen        ${ORIGEN},
+    revisado      INTEGER NOT NULL DEFAULT 1 CHECK (revisado IN (0, 1))   -- 0 = ficha de la IA aún sin comprobar
   );
   CREATE INDEX tipos_categoria ON tipos(categoria_id);
   CREATE TABLE tipo_alias (
@@ -139,6 +146,43 @@ const ESQUEMA = `
   CREATE INDEX historial_componente ON historial(componente_id);
 `;
 
+// v3: datos extra (clave → valor) de cada tipo y de cada pieza, y las tareas de la IA (propuestas pendientes de revisar)
+const TABLAS_V3 = `
+  CREATE TABLE tipo_datos (                 -- ficha técnica extendida: «Corriente máx.» → «20 mA», «Dirección I2C» → «0x3C»
+    tipo_id  TEXT NOT NULL REFERENCES tipos(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    orden    INTEGER NOT NULL,
+    clave    TEXT NOT NULL CHECK (length(trim(clave)) > 0),
+    valor    TEXT NOT NULL,
+    PRIMARY KEY (tipo_id, clave)
+  ) WITHOUT ROWID;
+  CREATE TABLE componente_datos (           -- lo que cambia de una pieza a otra del mismo tipo: «Valor» → «220 Ω»
+    componente_id  INTEGER NOT NULL REFERENCES componentes(id) ON DELETE CASCADE,
+    orden          INTEGER NOT NULL,
+    clave          TEXT NOT NULL CHECK (length(trim(clave)) > 0),
+    valor          TEXT NOT NULL,
+    PRIMARY KEY (componente_id, clave)
+  ) WITHOUT ROWID;
+  CREATE TABLE ia_tareas (                  -- cada llamada al modelo: lo que se le pidió, lo que propuso y qué se hizo
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    clase          TEXT NOT NULL CHECK (clase IN ('alta', 'reorganizar')),
+    estado         TEXT NOT NULL DEFAULT 'pendiente'
+                   CHECK (estado IN ('pendiente', 'propuesta', 'aplicada', 'descartada', 'error')),
+    entrada        TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(entrada)),
+    propuesta      TEXT CHECK (propuesta IS NULL OR json_valid(propuesta)),
+    componente_id  INTEGER REFERENCES componentes(id) ON DELETE SET NULL,   -- la pieza creada al aplicar un alta
+    modelo         TEXT,
+    error          TEXT,
+    creada         TEXT NOT NULL DEFAULT (datetime('now')),
+    actualizada    TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX ia_tareas_estado ON ia_tareas(estado);
+`;
+const TRIGGERS_V3 = `
+  CREATE TRIGGER ia_tareas_actualizada AFTER UPDATE ON ia_tareas
+    WHEN NEW.actualizada IS OLD.actualizada
+    BEGIN UPDATE ia_tareas SET actualizada = datetime('now') WHERE id = NEW.id; END;
+`;
+
 // el historial y la fecha de actualización los mantiene la propia base de datos
 const TRIGGERS = `
   CREATE TRIGGER componentes_actualizado AFTER UPDATE ON componentes
@@ -173,8 +217,9 @@ function deducirFuncion(pin) {
 
 // ---------- escritura del catálogo (formato de seed/glosario.json y seed/proyectos.json) ----------
 function guardarReferencia(db, ref) {
+  // las categorías que ya no son «de seed» (creadas o renombradas por la IA o el usuario) no se tocan
   ref.categorias.forEach((c, i) => db.prepare(`INSERT INTO categorias (id, nombre, orden) VALUES (?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET nombre = excluded.nombre, orden = excluded.orden`).run(c.id, c.nombre, i + 1));
+    ON CONFLICT(id) DO UPDATE SET nombre = excluded.nombre, orden = excluded.orden WHERE categorias.origen = 'seed'`).run(c.id, c.nombre, i + 1));
   ref.funciones_pin.forEach((f, i) => db.prepare(`INSERT INTO funciones_pin (id, nombre, color_claro, color_oscuro, tachado, orden) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET nombre = excluded.nombre, color_claro = excluded.color_claro, color_oscuro = excluded.color_oscuro,
       tachado = excluded.tachado, orden = excluded.orden`)
@@ -186,12 +231,22 @@ function guardarReferencia(db, ref) {
     db.prepare('INSERT INTO ajustes (clave, valor) VALUES (?, ?) ON CONFLICT(clave) DO NOTHING').run(clave, String(valor));
 }
 
-export function guardarTipo(db, id, t) {
-  db.prepare(`INSERT INTO tipos (id, nombre, categoria_id, resumen, voltaje, usos, conexion, advertencias) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+// pares [clave, valor] desde {clave: valor} o [[clave, valor], …]; descarta claves o valores vacíos
+const pares = (v) => (Array.isArray(v) ? v : Object.entries(v || {}))
+  .map(([k, val]) => [String(k ?? '').trim(), String(val ?? '').trim()]).filter(([k, val]) => k && val);
+
+// escribe una ficha completa (formato de seed/glosario.json). origen: 'seed' | 'ia' | 'usuario'; revisado: 0 si nadie la ha comprobado
+export function guardarTipo(db, id, t, {origen = 'seed', revisado = 1} = {}) {
+  db.prepare(`INSERT INTO tipos (id, nombre, categoria_id, resumen, voltaje, usos, conexion, advertencias, origen, revisado)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET nombre = excluded.nombre, categoria_id = excluded.categoria_id, resumen = excluded.resumen,
-      voltaje = excluded.voltaje, usos = excluded.usos, conexion = excluded.conexion, advertencias = excluded.advertencias`)
-    .run(id, t.nombre, t.categoria || 'otro', t.resumen ?? null, t.voltaje ?? null, t.usos ?? null, t.conexion ?? null, t.ojo ?? t.advertencias ?? null);
-  for (const tabla of ['tipo_alias', 'tipo_interfaces', 'tipo_pines']) db.prepare(`DELETE FROM ${tabla} WHERE tipo_id = ?`).run(id);
+      voltaje = excluded.voltaje, usos = excluded.usos, conexion = excluded.conexion, advertencias = excluded.advertencias,
+      origen = excluded.origen, revisado = excluded.revisado`)
+    .run(id, t.nombre, t.categoria || 'otro', t.resumen ?? null, t.voltaje ?? null, t.usos ?? null, t.conexion ?? null,
+      t.ojo ?? t.advertencias ?? null, origen, revisado ? 1 : 0);
+  for (const tabla of ['tipo_alias', 'tipo_interfaces', 'tipo_pines', 'tipo_datos']) db.prepare(`DELETE FROM ${tabla} WHERE tipo_id = ?`).run(id);
+  pares(t.datos).forEach(([clave, valor], n) =>
+    db.prepare('INSERT INTO tipo_datos (tipo_id, orden, clave, valor) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING').run(id, n + 1, clave, valor));
   for (const a of new Set(list(t.alias))) db.prepare('INSERT INTO tipo_alias (tipo_id, alias) VALUES (?, ?)').run(id, a);
   const interfaces = Array.isArray(t.interfaz) ? t.interfaz : String(t.interfaz || '').split(/,\s*(?![^(]*\))/);
   interfaces.filter((i) => i && i !== '—').forEach((i, n) => db.prepare('INSERT INTO tipo_interfaces (tipo_id, orden, interfaz) VALUES (?, ?, ?)').run(id, n + 1, i));
@@ -225,15 +280,22 @@ function enTransaccion(db, fn) {
   try { fn(); db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; }
 }
 
-// actualiza referencia + catálogo desde seed/ (npm run catalogo). No toca componentes, ubicaciones ni historial.
+// actualiza referencia + catálogo desde seed/ (npm run catalogo y en cada arranque). No toca el inventario.
+// Respeta los tipos que ya no son «de seed» (creados o cambiados por la IA o por el usuario): esos no se pisan.
 export function sincronizarCatalogo(db, seedDir) {
   const ref = leer(seedDir, 'referencia.json'), glosario = leer(seedDir, 'glosario.json') || {}, proyectos = leer(seedDir, 'proyectos.json') || [];
+  let tipos = 0, respetados = 0;
   enTransaccion(db, () => {
     if (ref) guardarReferencia(db, ref);
-    for (const [id, t] of Object.entries(glosario)) guardarTipo(db, id, t);
+    const ajenos = new Set(db.prepare("SELECT id FROM tipos WHERE origen <> 'seed'").all().map((r) => r.id));
+    for (const [id, t] of Object.entries(glosario)) {
+      if (ajenos.has(id)) { respetados++; continue; }
+      guardarTipo(db, id, t);
+      tipos++;
+    }
     for (const p of proyectos) guardarProyecto(db, p);
   });
-  return {tipos: Object.keys(glosario).length, proyectos: proyectos.length};
+  return {tipos, respetados, proyectos: proyectos.length};
 }
 
 // ---------- apertura, creación y migraciones ----------
@@ -243,20 +305,36 @@ export function abrir(dataDir, seedDir) {
   mkdirSync(join(dataDir, 'fotos'), {recursive: true});
   const db = new DatabaseSync(join(dataDir, 'lab.db'));
   db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 3000;');
-  const version = db.prepare('PRAGMA user_version').get().user_version;
+  let version = db.prepare('PRAGMA user_version').get().user_version;
+  const conTablas = tablas(db).has('componentes');
 
-  if (version === 0 && tablas(db).has('componentes')) migrarDesdeV0(db, seedDir);
-  else if (version === 0) crearNueva(db, seedDir);
-  else if (version === 1) migrarDesdeV1(db, seedDir);
-  else if (version > VERSION) throw new Error(`La base de datos es de una versión más nueva (${version}) que esta aplicación (${VERSION})`);
+  if (version > VERSION) throw new Error(`La base de datos es de una versión más nueva (${version}) que esta aplicación (${VERSION})`);
+  if (version === 0 && !conTablas) crearNueva(db, seedDir);
+  else if (version < VERSION) {
+    copiaAntesDeMigrar(db, dataDir, version);
+    if (version === 0) { migrarDesdeV0(db, seedDir); version = VERSION; } // crea directamente el esquema actual
+    if (version === 1) { migrarDesdeV1(db); version = 2; }
+    if (version === 2) { migrarDesdeV2(db, seedDir); version = 3; }
+  }
 
   db.exec('PRAGMA foreign_keys = ON;');
   return db;
 }
 
+// antes de cambiar el esquema, copia completa (VACUUM INTO) junto a las copias diarias. El nombre «lab-antes-…»
+// la deja fuera de la rotación: no se borra sola.
+function copiaAntesDeMigrar(db, dataDir, version) {
+  const {dir} = opcionesCopias(dataDir);
+  mkdirSync(dir, {recursive: true});
+  const sello = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-');
+  const destino = join(dir, `lab-antes-v${version}-a-v${VERSION}-${sello}.db`);
+  db.exec(`VACUUM INTO '${destino.replaceAll("'", "''")}'`);
+  console.log(`[migración] copia previa: ${destino}`);
+}
+
 function crearNueva(db, seedDir) {
   enTransaccion(db, () => {
-    db.exec(ESQUEMA);
+    db.exec(ESQUEMA + TABLAS_V3);
     const ref = leer(seedDir, 'referencia.json'), glosario = leer(seedDir, 'glosario.json') || {}, proyectos = leer(seedDir, 'proyectos.json') || [];
     guardarReferencia(db, ref);
     for (const [id, t] of Object.entries(glosario)) guardarTipo(db, id, t);
@@ -264,7 +342,7 @@ function crearNueva(db, seedDir) {
     for (const c of leer(seedDir, 'componentes.json') || [])
       db.prepare('INSERT INTO componentes (nombre, tipo_id, cantidad, varios, ubicacion_id, notas, revisar) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .run(c.nombre, glosario[c.tipo] ? c.tipo : null, c.varios ? null : c.cantidad ?? null, c.varios ? 1 : 0, ubicacionId(db, c.ubicacion), c.notas || '', c.seguro === false ? 1 : 0);
-    db.exec(TRIGGERS); // después de cargar: el inventario inicial no cuenta como «alta» en el historial
+    db.exec(TRIGGERS + TRIGGERS_V3); // después de cargar: el inventario inicial no cuenta como «alta» en el historial
     db.exec(`PRAGMA user_version = ${VERSION}`);
   });
   console.log(`Base de datos creada (modelo v${VERSION})`);
@@ -275,7 +353,7 @@ function migrarDesdeV0(db, seedDir) {
   db.exec('PRAGMA foreign_keys = OFF');
   enTransaccion(db, () => {
     for (const t of ['componentes', 'tipos', 'proyectos', 'historial']) db.exec(`ALTER TABLE ${t} RENAME TO v0_${t}`);
-    db.exec(ESQUEMA);
+    db.exec(ESQUEMA + TABLAS_V3);
     guardarReferencia(db, leer(seedDir, 'referencia.json'));
     for (const t of db.prepare('SELECT * FROM v0_tipos').all()) guardarTipo(db, t.id, {nombre: t.nombre, categoria: t.categoria, ...JSON.parse(t.ficha)});
     for (const p of db.prepare('SELECT * FROM v0_proyectos').all()) guardarProyecto(db, {id: p.id, ...JSON.parse(p.datos)});
@@ -287,7 +365,7 @@ function migrarDesdeV0(db, seedDir) {
       db.prepare("INSERT INTO historial (componente_id, componente_nombre, accion, despues, fecha) VALUES (?, ?, 'stock', ?, ?)")
         .run(null, h.nombre || '?', h.cambio, h.fecha);
     for (const t of ['componentes', 'tipos', 'proyectos', 'historial']) db.exec(`DROP TABLE v0_${t}`);
-    db.exec(TRIGGERS);
+    db.exec(TRIGGERS + TRIGGERS_V3);
     const rotas = db.prepare('PRAGMA foreign_key_check').all();
     if (rotas.length) throw new Error(`Migración con referencias rotas: ${JSON.stringify(rotas.slice(0, 5))}`);
     db.exec(`PRAGMA user_version = ${VERSION}`);
@@ -295,14 +373,31 @@ function migrarDesdeV0(db, seedDir) {
   console.log(`Base de datos migrada al modelo v${VERSION}`);
 }
 
-// v1 → v2: cada función de pin tiene color para modo claro y para modo noche; tabla de ajustes (tema)
-function migrarDesdeV1(db, seedDir) {
+// v1 → v2: cada función de pin tiene color para modo claro y para modo noche; tabla de ajustes (tema).
+// Los colores reales los pone sincronizarCatalogo() al arrancar (referencia.json), ya con el esquema final.
+function migrarDesdeV1(db) {
   enTransaccion(db, () => {
     db.exec(`ALTER TABLE funciones_pin RENAME COLUMN color TO color_oscuro;
       ALTER TABLE funciones_pin ADD COLUMN color_claro TEXT NOT NULL DEFAULT '#888888' ${HEX('color_claro')};
       ${AJUSTES}`);
-    guardarReferencia(db, leer(seedDir, 'referencia.json'));
-    db.exec(`PRAGMA user_version = ${VERSION}`);
+    db.exec('PRAGMA user_version = 2');
   });
-  console.log(`Base de datos migrada al modelo v${VERSION}`);
+  console.log('Base de datos migrada al modelo v2');
+}
+
+// v2 → v3: origen y revisado en categorías y tipos, datos extra de tipos y piezas, tareas de la IA.
+// Los tipos que no están en seed/glosario.json los creó el usuario desde la web: quedan como origen 'usuario'.
+function migrarDesdeV2(db, seedDir) {
+  const glosario = leer(seedDir, 'glosario.json') || {};
+  enTransaccion(db, () => {
+    db.exec(`ALTER TABLE categorias ADD COLUMN origen ${ORIGEN};
+      ALTER TABLE tipos ADD COLUMN origen ${ORIGEN};
+      ALTER TABLE tipos ADD COLUMN revisado INTEGER NOT NULL DEFAULT 1 CHECK (revisado IN (0, 1));
+      ${TABLAS_V3}
+      ${TRIGGERS_V3}`);
+    for (const {id} of db.prepare('SELECT id FROM tipos').all())
+      if (!glosario[id]) db.prepare("UPDATE tipos SET origen = 'usuario' WHERE id = ?").run(id);
+    db.exec('PRAGMA user_version = 3');
+  });
+  console.log('Base de datos migrada al modelo v3');
 }

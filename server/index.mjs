@@ -23,7 +23,7 @@ const db = abrir(DATA, SEED);
 // trae las fichas al día sin tener que entrar al contenedor. No toca el inventario.
 try {
   const n = sincronizarCatalogo(db, SEED);
-  console.log(`Catálogo: ${n.tipos} tipos, ${n.proyectos} proyectos`);
+  console.log(`Catálogo: ${n.tipos} tipos, ${n.proyectos} proyectos${n.respetados ? ` (${n.respetados} tipo(s) cambiado(s) por la IA o por ti: no se pisan)` : ''}`);
 } catch (e) {
   console.error('No se pudo aplicar el catálogo de seed/ (sigue el anterior):', e.message);
 }
@@ -60,19 +60,29 @@ const SQL_COMP = `SELECT c.id, c.nombre, c.tipo_id AS tipo, c.cantidad, c.varios
 const comp = (id) => {
   const c = db.prepare(`${SQL_COMP} WHERE c.id = ?`).get(Number(id));
   if (!c) throw new HttpError(404, 'No existe esa pieza');
-  return c;
+  const datos = db.prepare('SELECT clave, valor FROM componente_datos WHERE componente_id = ? ORDER BY orden').all(c.id);
+  return {...c, datos: datos.map((d) => [d.clave, d.valor])};
 };
 
 function tipos() {
   const alias = agrupar(db.prepare('SELECT * FROM tipo_alias').all(), 'tipo_id');
   const inter = agrupar(db.prepare('SELECT * FROM tipo_interfaces ORDER BY orden').all(), 'tipo_id');
   const pines = agrupar(db.prepare('SELECT * FROM tipo_pines ORDER BY orden').all(), 'tipo_id');
+  const datos = agrupar(db.prepare('SELECT * FROM tipo_datos ORDER BY orden').all(), 'tipo_id');
   return Object.fromEntries(db.prepare('SELECT * FROM tipos').all().map((t) => [t.id, {
     nombre: t.nombre, categoria: t.categoria_id, resumen: t.resumen, voltaje: t.voltaje,
     alias: (alias[t.id] || []).map((a) => a.alias), interfaz: (inter[t.id] || []).map((i) => i.interfaz),
     pines: (pines[t.id] || []).map((p) => [p.pin, p.uso, p.funcion_id]),
+    datos: (datos[t.id] || []).map((d) => [d.clave, d.valor]),
+    origen: t.origen, revisado: t.revisado,
   }]));
 }
+
+// datos extra de cada pieza ([clave, valor]), para añadirlos a los componentes que entrega la API
+const datosDe = (filas) => {
+  const d = agrupar(db.prepare('SELECT * FROM componente_datos ORDER BY orden').all(), 'componente_id');
+  return filas.map((c) => ({...c, datos: (d[c.id] || []).map((x) => [x.clave, x.valor])}));
+};
 
 function proyectos() {
   const opciones = agrupar(db.prepare('SELECT * FROM material_opciones').all(), 'material_id');
@@ -98,7 +108,7 @@ const todo = () => ({
   ubicaciones: db.prepare('SELECT nombre FROM ubicaciones ORDER BY nombre COLLATE NOCASE').all().map((u) => u.nombre),
   tipos: tipos(),
   proyectos: proyectos(),
-  componentes: db.prepare(`${SQL_COMP} ORDER BY c.nombre COLLATE NOCASE`).all(),
+  componentes: datosDe(db.prepare(`${SQL_COMP} ORDER BY c.nombre COLLATE NOCASE`).all()),
 });
 
 // ---------- escritura ----------
@@ -154,7 +164,7 @@ async function api(req, res, path) {
     if (!nombre) throw new HttpError(400, 'Falta el nombre del tipo');
     if (!db.prepare('SELECT 1 FROM categorias WHERE id = ?').get(b.categoria)) throw new HttpError(400, 'Esa categoría no existe');
     const id = slug(nombre);
-    db.prepare('INSERT INTO tipos (id, nombre, categoria_id) VALUES (?, ?, ?)').run(id, nombre, b.categoria);
+    db.prepare("INSERT INTO tipos (id, nombre, categoria_id, origen) VALUES (?, ?, ?, 'usuario')").run(id, nombre, b.categoria);
     return send(res, 201, {id, nombre, categoria: b.categoria});
   }
 
