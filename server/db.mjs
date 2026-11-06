@@ -10,7 +10,7 @@ import {mkdirSync, readFileSync, existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {opcionesCopias} from './copias.mjs';
 
-export const VERSION = 3;
+export const VERSION = 4;
 export const ORIGENES = ['seed', 'ia', 'usuario'];
 const ORIGEN = `TEXT NOT NULL DEFAULT 'seed' CHECK (origen IN ('seed', 'ia', 'usuario'))`;
 const HEX = (col) => `CHECK (${col} GLOB '#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]')`;
@@ -183,6 +183,18 @@ const TRIGGERS_V3 = `
     BEGIN UPDATE ia_tareas SET actualizada = datetime('now') WHERE id = NEW.id; END;
 `;
 
+// v4: configuración de la IA puesta desde la web. Una sola fila. La clave NUNCA sale por la API (ni en /api/datos ni en
+// /api/exportar): solo se puede poner, cambiar o quitar. Ojo: sí viaja en las copias de seguridad de la base de datos.
+const TABLAS_V4 = `
+  CREATE TABLE ia_config (
+    id           INTEGER PRIMARY KEY CHECK (id = 1),
+    clave        TEXT CHECK (clave IS NULL OR (length(clave) BETWEEN 16 AND 300 AND clave NOT GLOB '*[ 	]*')),
+    modelo       TEXT CHECK (modelo IS NULL OR (length(modelo) BETWEEN 1 AND 80 AND modelo GLOB '[a-z0-9]*' AND modelo NOT GLOB '*[^a-z0-9.-]*')),
+    actualizado  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  INSERT INTO ia_config (id) VALUES (1);
+`;
+
 // el historial y la fecha de actualización los mantiene la propia base de datos
 const TRIGGERS = `
   CREATE TRIGGER componentes_actualizado AFTER UPDATE ON componentes
@@ -315,6 +327,7 @@ export function abrir(dataDir, seedDir) {
     if (version === 0) { migrarDesdeV0(db, seedDir); version = VERSION; } // crea directamente el esquema actual
     if (version === 1) { migrarDesdeV1(db); version = 2; }
     if (version === 2) { migrarDesdeV2(db, seedDir); version = 3; }
+    if (version === 3) { migrarDesdeV3(db); version = 4; }
   }
 
   db.exec('PRAGMA foreign_keys = ON;');
@@ -334,7 +347,7 @@ function copiaAntesDeMigrar(db, dataDir, version) {
 
 function crearNueva(db, seedDir) {
   enTransaccion(db, () => {
-    db.exec(ESQUEMA + TABLAS_V3);
+    db.exec(ESQUEMA + TABLAS_V3 + TABLAS_V4);
     const ref = leer(seedDir, 'referencia.json'), glosario = leer(seedDir, 'glosario.json') || {}, proyectos = leer(seedDir, 'proyectos.json') || [];
     guardarReferencia(db, ref);
     for (const [id, t] of Object.entries(glosario)) guardarTipo(db, id, t);
@@ -353,7 +366,7 @@ function migrarDesdeV0(db, seedDir) {
   db.exec('PRAGMA foreign_keys = OFF');
   enTransaccion(db, () => {
     for (const t of ['componentes', 'tipos', 'proyectos', 'historial']) db.exec(`ALTER TABLE ${t} RENAME TO v0_${t}`);
-    db.exec(ESQUEMA + TABLAS_V3);
+    db.exec(ESQUEMA + TABLAS_V3 + TABLAS_V4);
     guardarReferencia(db, leer(seedDir, 'referencia.json'));
     for (const t of db.prepare('SELECT * FROM v0_tipos').all()) guardarTipo(db, t.id, {nombre: t.nombre, categoria: t.categoria, ...JSON.parse(t.ficha)});
     for (const p of db.prepare('SELECT * FROM v0_proyectos').all()) guardarProyecto(db, {id: p.id, ...JSON.parse(p.datos)});
@@ -383,6 +396,15 @@ function migrarDesdeV1(db) {
     db.exec('PRAGMA user_version = 2');
   });
   console.log('Base de datos migrada al modelo v2');
+}
+
+// v3 → v4: tabla ia_config (clave y modelo de la IA puestos desde la web)
+function migrarDesdeV3(db) {
+  enTransaccion(db, () => {
+    db.exec(TABLAS_V4);
+    db.exec('PRAGMA user_version = 4');
+  });
+  console.log('Base de datos migrada al modelo v4');
 }
 
 // v2 → v3: origen y revisado en categorías y tipos, datos extra de tipos y piezas, tareas de la IA.
