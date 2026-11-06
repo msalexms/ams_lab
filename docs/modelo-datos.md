@@ -1,4 +1,4 @@
-# Modelo de datos (v3) — `data/lab.db`
+# Modelo de datos (v4) — `data/lab.db`
 
 SQLite (`node:sqlite`). Esquema y migraciones en `server/db.mjs`; versión en `PRAGMA user_version`.
 
@@ -29,6 +29,7 @@ erDiagram
   tipos { text id PK; text nombre; text categoria_id FK; text resumen; text voltaje; text usos; text conexion; text advertencias; text origen "seed|ia|usuario"; int revisado }
   tipo_datos { text tipo_id PK,FK; text clave PK; int orden; text valor }
   componente_datos { int componente_id PK,FK; text clave PK; int orden; text valor }
+  ia_config { int id PK "siempre 1"; text clave "nunca sale por la API"; text modelo; text actualizado }
   ia_tareas { int id PK; text clase "alta|reorganizar"; text estado "pendiente|propuesta|aplicada|descartada|error"; text entrada "JSON"; text propuesta "JSON"; int componente_id FK; text modelo; text error; text creada; text actualizada }
   tipo_pines { text tipo_id PK,FK; int orden PK; text pin; text uso; text funcion_id FK }
   tipo_alias { text tipo_id PK,FK; text alias PK }
@@ -78,5 +79,6 @@ Cada llamada al modelo se guarda: qué se le pidió (`entrada`, JSON), qué prop
 ## Migraciones
 - v1 → v2 (03/11/2026): `funciones_pin.color` pasa a `color_oscuro` y se añade `color_claro`; nueva tabla `ajustes`.
 - v2 → v3 (06/11/2026): `origen` en `categorias` y `tipos`, `revisado` en `tipos`; tablas `tipo_datos`, `componente_datos` e `ia_tareas`. Los tipos que no están en `seed/glosario.json` (creados desde la web) quedan con origen `usuario`.
+- v3 → v4 (06/11/2026): tabla `ia_config` (una fila): clave y modelo de la IA puestos desde la web. La clave nunca sale por la API (ni en `/api/datos` ni en `/api/exportar`), pero sí está en las copias de seguridad de la base de datos.
 
-`abrir()` mira `PRAGMA user_version`: 0 sin tablas → crea y siembra desde `seed/`; si es más antigua que la actual, **primero hace una copia completa** (`VACUUM INTO`) en la carpeta de copias como `lab-antes-vX-a-vY-<fecha>.db` (fuera de la rotación: no se borra sola) y después migra paso a paso (v0 → v3 directo, v1 → v2 → v3, v2 → v3).
+`abrir()` mira `PRAGMA user_version`: 0 sin tablas → crea y siembra desde `seed/`; si es más antigua que la actual, **primero hace una copia completa** (`VACUUM INTO`) en la carpeta de copias como `lab-antes-vX-a-vY-<fecha>.db` (fuera de la rotación: no se borra sola) y después migra paso a paso (v0 → v4 directo, v1 → v2 → v3 → v4…).
