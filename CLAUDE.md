@@ -17,12 +17,14 @@ Prioridad: **utilidad, que funcione y comodidad (sobre todo en el móvil)** ante
 - `Dockerfile` + `docker-compose.yml` + `docker-entrypoint.sh` — despliegue en el homelab (`./data` como volumen; la app corre como `node`). Ficheros en LF (`.gitattributes`).
 - Git: rama `main`; `data/` y `entrada/` no van al repositorio.
 
-## Modelo de datos (leer docs/modelo-datos.md)
-- **Referencia** (categorías, funciones de pin con su **color**, dificultades) y **catálogo** (tipos, pines, alias, interfaces, proyectos): vienen de `seed/` y se aplican con `npm run catalogo`. Los pines se editan en `scripts/pines.mjs` (`npm run pines` = escribir seed + catalogo); uso de 2–4 palabras; función = id de `funciones_pin`.
-- **Inventario** (componentes, ubicaciones, historial): solo lo cambia la aplicación; el historial lo escriben *triggers*.
+## Modelo de datos v3 (leer docs/modelo-datos.md)
+- **La base de datos es la fuente de verdad** (decisión del usuario, 06/11/2026, para que la IA pueda clasificar y reorganizar). Categorías y tipos llevan `origen` (`seed` | `ia` | `usuario`); `seed/` crea lo que falta y solo actualiza lo que sigue siendo `seed`: **nunca pisa** lo creado o cambiado por la IA o por el usuario. Quien cambie un tipo o una categoría tiene que poner su `origen`.
+- **Referencia** (categorías, funciones de pin con su **color**, dificultades) y **catálogo** (tipos, pines, alias, interfaces, datos extra, proyectos): las fichas de origen `seed` se editan en `seed/` y se aplican con `npm run catalogo` (o al arrancar). Los pines se editan en `scripts/pines.mjs` (`npm run pines` = escribir seed + catalogo); uso de 2–4 palabras; función = id de `funciones_pin`. Una ficha con origen `ia` o `usuario` ya no la cambia `seed/`.
+- `tipos.revisado = 0`: ficha escrita por la IA sin comprobar. Datos extra clave → valor en `tipo_datos` (iguales para todo el tipo) y `componente_datos` (de cada pieza). Llamadas al modelo en `ia_tareas` (propuesta → el usuario confirma → aplicada).
+- **Inventario** (componentes, sus datos, ubicaciones, historial): solo lo cambia la aplicación; el historial lo escriben *triggers*.
 - **Nada de configuración permanente en la web** (decisión del usuario, 03/11/2026): colores, categorías, dificultades… siempre en tablas, y la web los lee de `/api/datos`.
 - Los mismos colores de función de pin para todos los dispositivos.
-- Cambios de esquema: subir `VERSION` en `server/db.mjs` con su migración, y copia con `VACUUM INTO` antes.
+- Cambios de esquema: subir `VERSION` en `server/db.mjs` con su migración paso a paso (`abrir()` ya hace la copia `VACUUM INTO` previa, `lab-antes-…`). Probar siempre la migración sobre una copia de `data/lab.db`, nunca sobre el original.
 
 ## Cómo trabajar
 - Arrancar: `npm start` (o `npm run dev`, que reinicia al cambiar el servidor). Desde el móvil, la URL «móvil →» que imprime (misma Wi-Fi).
