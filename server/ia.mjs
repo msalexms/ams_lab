@@ -200,13 +200,18 @@ export function normalizar(db, p) {
 }
 
 // ---------- llamadas ----------
-async function modeloElegido(db) {
+// el modelo de la tarea: el elegido para esa pieza en concreto (si lo hay) o el de la configuración
+async function modeloElegido(db, idTarea = null) {
   const c = config(db);
   if (!c.clave) throw new Error('Falta la clave de OpenCode Go: ponla en «Añadir con IA» → Configuración.');
-  const m = (await modelos()).find((x) => x.id === c.modelo);
-  if (!m) throw new Error(`El modelo «${c.modelo}» no está en el catálogo de OpenCode Go con fotos y salida estructurada: elige otro en la configuración.`);
+  const id = idTarea || c.modelo;
+  const m = (await modelos()).find((x) => x.id === id);
+  if (!m) throw new Error(`El modelo «${id}» no está en el catálogo de OpenCode Go con fotos y salida estructurada: elige otro en la configuración.`);
   return {m, clave: c.clave};
 }
+// para validar el modelo que pide la web para una pieza concreta
+export const modeloValido = async (id) => (await modelos()).some((x) => x.id === id);
+export const MODELO_RECOMENDADO = MODELO_DEF;
 
 // una propuesta interna ([pin, uso, función], [dato, valor]) con la forma del esquema, para dársela al modelo como
 // «su» respuesta anterior en una vuelta de revisión
@@ -230,7 +235,7 @@ function coste(m, uso) {
 }
 
 async function proponer(db, entrada, foto, sesion) {
-  const {m, clave} = await modeloElegido(db);
+  const {m, clave} = await modeloElegido(db, entrada.modelo);
   const ctx = contexto(db);
   const contenido = [{type: 'text', text: entrada.texto || 'Identifica la pieza de la foto.'}];
   if (foto) contenido.push({type: 'file', mediaType: 'image/jpeg', data: {type: 'data', data: foto}});
@@ -350,7 +355,7 @@ export async function ejecutarAlta(db, fotosDir, id) {
   } catch (e) {
     console.error(`[ia] tarea ${id}:`, e.message);
     db.prepare("UPDATE ia_tareas SET estado = 'error', error = ?, modelo = ? WHERE id = ? AND estado = 'pendiente'")
-      .run(txt(e.message, 500), config(db).modelo, id);
+      .run(txt(e.message, 500), entrada.modelo || config(db).modelo, id);
   }
 }
 

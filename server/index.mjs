@@ -10,7 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {networkInterfaces} from 'node:os';
 import {abrir, ubicacionId, sincronizarCatalogo, guardarTipo} from './db.mjs';
 import {programarCopias} from './copias.mjs';
-import {estado, ejecutarAlta, normalizar, cerrarInterrumpidas, modelos, guardarConfig} from './ia.mjs';
+import {estado, ejecutarAlta, normalizar, cerrarInterrumpidas, modelos, guardarConfig, modeloValido, MODELO_RECOMENDADO} from './ia.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUB = join(ROOT, 'public');
@@ -154,7 +154,9 @@ const tarea = (id) => {
   const entrada = JSON.parse(t.entrada);
   return {id: t.id, clase: t.clase, estado: t.estado, texto: entrada.texto || '', foto: entrada.foto || null,
     propuesta: t.propuesta ? JSON.parse(t.propuesta) : null, error: t.error, modelo: t.modelo,
-    componente_id: t.componente_id, creada: t.creada, rondas: (entrada.rondas || []).length};
+    componente_id: t.componente_id, creada: t.creada, rondas: (entrada.rondas || []).length,
+    actualizada: t.actualizada, ahora: db.prepare("SELECT datetime('now') AS t").get().t, // para el contador de segundos
+    modelo_pedido: entrada.modelo || null};
 };
 
 // el usuario contesta las dudas (y/o añade información) sobre la propuesta que tiene en pantalla, quizá ya corregida:
@@ -192,11 +194,18 @@ async function crearAlta(req) {
   const foto = b.foto ? Buffer.from(String(b.foto), 'base64') : null;
   if (!textoUsuario && !foto) throw new HttpError(400, 'Pon una foto o escribe algo de la pieza');
   if (foto && foto.length < 100) throw new HttpError(400, 'Foto vacía');
-  const {lastInsertRowid: id} = db.prepare("INSERT INTO ia_tareas (clase, entrada) VALUES ('alta', ?)").run(JSON.stringify({texto: textoUsuario}));
+  // modelo solo para esta pieza (opcional): tiene que estar en el catálogo de modelos con fotos
+  const entrada = {texto: textoUsuario};
+  if (b.modelo) {
+    const pedido = String(b.modelo);
+    if (!(await modeloValido(pedido))) throw new HttpError(400, 'Ese modelo no está disponible para fotos');
+    entrada.modelo = pedido;
+  }
+  const {lastInsertRowid: id} = db.prepare("INSERT INTO ia_tareas (clase, entrada) VALUES ('alta', ?)").run(JSON.stringify(entrada));
   if (foto) {
-    const nombre = `ia-${id}-${Date.now()}.jpg`; // provisional: al confirmar pasa a ser la foto de la pieza
-    await writeFile(join(FOTOS, nombre), foto);
-    db.prepare('UPDATE ia_tareas SET entrada = ? WHERE id = ?').run(JSON.stringify({texto: textoUsuario, foto: nombre}), id);
+    entrada.foto = `ia-${id}-${Date.now()}.jpg`; // provisional: al confirmar pasa a ser la foto de la pieza
+    await writeFile(join(FOTOS, entrada.foto), foto);
+    db.prepare('UPDATE ia_tareas SET entrada = ? WHERE id = ?').run(JSON.stringify(entrada), id);
   }
   ejecutarAlta(db, FOTOS, Number(id)); // en segundo plano: la web va preguntando el estado
   return tarea(id);
@@ -274,7 +283,13 @@ async function api(req, res, path) {
   }
   // modelos de OpenCode Go que entienden fotos y devuelven salida estructurada (del catálogo público de Go)
   if (m === 'GET' && path === '/api/ia/modelos') {
-    try { return send(res, 200, await modelos()); } catch (e) { throw new HttpError(502, e.message); }
+    let lista;
+    try { lista = await modelos(); } catch (e) { throw new HttpError(502, e.message); }
+    // coste real medio por pieza con cada modelo (de tus consultas anteriores), para elegir con datos y no a ojo
+    const medias = Object.fromEntries(db.prepare(`SELECT modelo, COUNT(*) AS n, AVG(json_extract(propuesta, '$.coste.dolares')) AS media
+      FROM ia_tareas WHERE propuesta IS NOT NULL AND json_extract(propuesta, '$.coste.dolares') IS NOT NULL GROUP BY modelo`).all()
+      .map((r) => [r.modelo, {consultas: r.n, dolares: r.media}]));
+    return send(res, 200, lista.map((x) => ({...x, recomendado: x.id === MODELO_RECOMENDADO, coste_medio: medias[x.id] || null})));
   }
   if (m === 'POST' && path === '/api/ia/alta') return send(res, 202, await crearAlta(req));
   if (m === 'GET' && path === '/api/ia/tareas') // las que siguen abiertas (pensando, propuesta sin confirmar o con error)

@@ -30,7 +30,14 @@
   </header>
   <p id="sin-red" class="sin-red" role="status" hidden><span id="sin-red-txt"></span> <button id="sin-red-btn" class="tema" type="button">Reintentar</button></p>
   <main id="app"><p class="gris">Cargando…</p></main>
-  <a id="fab" class="fab" href="#/nuevo" aria-label="Añadir pieza">+</a>
+  <a id="fab" class="fab" href="#/nuevo" aria-label="Añadir pieza" aria-haspopup="menu" aria-expanded="false" aria-controls="fab-menu">+</a>
+  <div id="fab-menu" class="fab-menu" role="menu" hidden>
+    <label class="fab-op" role="menuitem">Foto con IA<span class="sub">abre la cámara y la analiza</span>
+      <input type="file" accept="image/*" capture="environment" id="fab-camara" hidden></label>
+    <label class="fab-op" role="menuitem">Elegir foto con IA<span class="sub">de la galería</span>
+      <input type="file" accept="image/*" id="fab-galeria" hidden></label>
+    <a class="fab-op" role="menuitem" href="#/nuevo">A mano<span class="sub">rellenas tú la ficha</span></a>
+  </div>
   <div id="toast" role="status"></div>
   <script src="app.js"></script>
 </body>
