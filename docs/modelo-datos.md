@@ -68,7 +68,7 @@ La web no guarda configuración propia: categorías, funciones de pin con sus co
 - La API los entrega como listas `[clave, valor]` en `tipos.<id>.datos` y `componentes[].datos`.
 
 ## Tareas de la IA (`ia_tareas`)
-Cada llamada al modelo se guarda: qué se le pidió (`entrada`, JSON), qué propuso (`propuesta`, JSON) y en qué quedó (`estado`). Nada se aplica sin pasar por `propuesta` y la confirmación del usuario; así una respuesta lenta o una pestaña cerrada no se pierde ni se paga dos veces.
+Cada llamada al modelo se guarda: qué se le pidió (`entrada`, JSON), qué propuso (`propuesta`, JSON) y en qué quedó (`estado`). Si el usuario contesta las dudas, cada vuelta se añade a `entrada.rondas` (`{propuesta corregida, respuestas, extra}`, máx. 5) y el modelo rehace la propuesta. Nada se aplica sin pasar por `propuesta` y la confirmación del usuario; así una respuesta lenta o una pestaña cerrada no se pierde ni se paga dos veces.
 
 ## Reglas en la base de datos
 - `cantidad ≥ 0`; `varios = 1` (muchos) obliga a `cantidad = NULL`; nombres no vacíos; colores `#RRGGBB`; booleanos 0/1.
