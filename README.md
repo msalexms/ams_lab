@@ -19,7 +19,8 @@ Pestaña **Ajustes**: IA (modelo y clave), **categorías** (renombrar, ordenar, 
 - **Buscar** (arriba, tecla `/`): en una lista la filtra y avisa si hay coincidencias en otras secciones; desde cualquier otro sitio, o con Intro, busca en todo (piezas, tipos —también por pines, alias, interfaces y datos— y proyectos).
 - **Editar ficha** de un tipo a mano: nombre, categoría, resumen, tensión, interfaces, alias, «Ojo» y las **tablas de pines y datos** (añadir, ordenar con ↑ ↓, quitar). Al guardar pasa a ser tuya (`origen = 'usuario'`, comprobada) y `seed/` ya no la toca. Si la ficha cambió mientras la editabas (la IA u otra pestaña), no se pisa: hay que recargar.
 - **Datos de cada pieza** («Valor» → «220 Ω») en su formulario, también como tabla. El **tipo** se elige escribiendo (busca por nombre, alias, interfaz o categoría).
-- **Móvil**: barra de abajo (Inventario, Glosario, «+», Proyectos, Ajustes); el «+» abre el menú de añadir.
+- **Móvil**: barra de abajo (Inventario, Glosario, «+», Proyectos, Ajustes); el «+» abre el menú de añadir. Se esconde mientras escribes. En el iPhone queda mejor como app: Safari → Compartir → «Añadir a pantalla de inicio» (sin las barras de Safari).
+- **Fotos encuadradas**: al hacer o elegir una foto sale un recuadro 4:3 (el formato de las tarjetas); mueve, acerca o gira la foto para que la pieza quepa dentro. «Sin recortar» la sube entera.
 
 ## Añadir con IA
 
@@ -31,7 +32,7 @@ Botón «Añadir con IA»: foto y/o texto de una pieza → el modelo propone nom
 - Antes de guardar: **vista previa** de cómo quedará la ficha, y puedes **contestar las dudas** del modelo para que rehaga la propuesta (hasta 5 vueltas; cada una cuenta como una consulta). Se ve el coste aproximado de cada consulta.
 - **Modelo**: el de siempre se cambia con un toque en Configuración (sin volver a poner la clave), y al analizar se puede elegir otro solo para esa pieza. Cada modelo muestra lo que cuesta por pieza: la media real de tus consultas o una estimación.
 - **Móvil**: el botón «+» ofrece «Foto con IA» (abre la cámara y la analiza al momento), «Elegir foto con IA» o «A mano». Mientras el modelo piensa se ve qué pasa, cuántos segundos lleva y el esqueleto de la ficha.
-- **Corregir con IA**: en la ficha de cada pieza y de cada tipo. Dices qué corregir (opcional, también con foto) y el modelo propone cambios; ves **solo los cambios** (antes tachado, después en claro) y marcas cuáles aplicar. Si la ficha cambió mientras tanto, no se pisa nada.
+- **Corregir con IA**: en la ficha de cada pieza y de cada tipo. Dices qué corregir (opcional, también con foto; si no pones ninguna, la IA mira la que ya tiene la pieza) y el modelo propone cambios; ves **solo los cambios** (antes tachado, después en claro) y marcas cuáles aplicar. Si la ficha cambió mientras tanto, no se pisa nada.
 - Cada consulta se guarda en la tabla `ia_tareas`: si cierras la pestaña mientras piensa, la propuesta te espera en «Añadir con IA».
 
 ## Docker (homelab)
