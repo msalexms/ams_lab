@@ -453,10 +453,14 @@ async function iaTarea(id) {
   }
   const p = t.propuesta, n = p.tipo_nuevo || {}, sel = p.tipo_existente || (p.tipo_nuevo ? '__nuevo' : '');
   const funciones = Object.entries(FUNC).map(([k, f]) => `${k} = ${f.nombre}`).join(' · ');
-  zona.innerHTML = `${cabecera('Revisa la propuesta', '', 'Corrige lo que haga falta y guarda. Nada se ha guardado todavía.')}
-    ${specs([['Confianza', esc(p.confianza)], ['Modelo', esc(t.modelo || '')]])}
-    ${p.dudas?.length ? `<div class="ia-dudas pad"><h3>Dudas del modelo</h3><ul>${p.dudas.map((d) => `<li>${esc(d)}</li>`).join('')}</ul></div>` : ''}
-    <form id="form-ia-ok" class="form" autocomplete="off" data-id="${t.id}">
+  zona.innerHTML = `${cabecera('Revisa la propuesta', '', 'Corrige lo que haga falta, mira cómo quedará y guarda. Nada se ha guardado todavía.')}
+    ${specs([['Confianza', esc(p.confianza)], ['Modelo', esc(t.modelo || '')], ['Coste', esc(costeTexto(p.coste))], ['Vuelta', t.rondas ? String(t.rondas + 1) : '']])}
+    ${dudasIA(t, p)}
+    <div class="filtros ia-pestanas"><div class="cats">
+      <button class="f on" type="button" data-ia-vista="editar">Editar</button>
+      <button class="f" type="button" data-ia-vista="previa">Vista previa</button></div></div>
+    <div id="ia-previa" hidden></div>
+    <form id="form-ia-ok" class="form" autocomplete="off" data-id="${t.id}" data-foto="${t.foto ? `fotos/${encodeURIComponent(t.foto)}` : ''}">
       ${foto}
       <label>Nombre<input name="nombre" required maxlength="200" value="${esc(p.nombre)}"></label>
       <label>Tipo<select name="tipo" id="tipo">${opcionesTipo(sel, p.tipo_nuevo ? `Nuevo: ${p.tipo_nuevo.nombre} (propuesto por la IA)` : 'Nuevo tipo…')}</select></label>
@@ -501,7 +505,8 @@ async function enviarIA(form) {
   location.hash = `#/ia/${t.id}`;
 }
 
-async function aplicarIA(form) {
+// lo que hay ahora mismo en el formulario de la propuesta (sirve para guardar, para la vista previa y para repensar)
+function leerFormIA(form) {
   const fd = new FormData(form);
   const varios = !!fd.get('varios');
   const body = {
@@ -513,6 +518,82 @@ async function aplicarIA(form) {
     interfaz: comas(fd.get('tn_interfaz')), alias: comas(fd.get('tn_alias')), ojo: fd.get('tn_ojo'), datos: paresLineas(fd.get('tn_datos')),
     pines: String(fd.get('tn_pines') || '').split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((x) => x[0]),
   };
+  return body;
+}
+
+const costeTexto = (c) => (c && c.dolares != null ? `≈ ${c.dolares < 0.0001 ? '<0,0001' : c.dolares.toFixed(4).replace('.', ',')} $` : '');
+
+// dudas del modelo con un hueco para contestar cada una; «Responder y repensar» le manda las respuestas y lo que hayas
+// corregido en el formulario, y el modelo rehace la propuesta (como mucho 5 vueltas)
+function dudasIA(t, p) {
+  const quedan = (t.rondas || 0) < 5;
+  return `<section class="ia-dudas pad" id="ia-dudas">
+    <h3>${p.dudas?.length ? 'Dudas del modelo' : '¿Algo que aclarar?'}</h3>
+    ${p.dudas?.length ? `<ol class="ia-preguntas">${p.dudas.map((d) => `<li><p>${esc(d)}</p>
+      <input class="ia-resp" data-duda="${esc(d)}" maxlength="500" placeholder="Tu respuesta (opcional)" autocomplete="off"></li>`).join('')}</ol>` : ''}
+    <textarea id="ia-extra" rows="2" maxlength="1000" placeholder="Algo más que deba saber (opcional): «tiene 3 pines», «es la versión en placa»…"></textarea>
+    <div class="acciones">${quedan
+      ? `<button class="btn" type="button" id="ia-responder" data-id="${t.id}">Responder y repensar</button>
+         <span class="ayuda">Rehace la propuesta con tus respuestas y con lo que hayas corregido abajo. Gasta otra consulta.</span>`
+      : '<span class="ayuda">Ya van 5 vueltas: corrige a mano lo que falte y guarda.</span>'}</div>
+  </section>`;
+}
+
+// vista previa: la ficha tal como se verá en el inventario, con los mismos componentes que la ficha real
+function vistaPreviaIA(b, fotoUrl) {
+  const nuevo = b.tipo === '__nuevo';
+  const f = nuevo ? {...b.tipo_nuevo, revisado: 0} : b.tipo ? g(b.tipo) : null;
+  const datosTipo = f && list(f.datos).length ? `<h3 style="margin-top:18px">Datos del tipo</h3><table class="t"><tbody>${f.datos.map(([k, v]) =>
+    `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>` : '';
+  const ocultos = nuevo ? [f.ojo ? 'la advertencia («Ojo»)' : '', list(f.interfaz).length ? 'las interfaces (sirven para buscar)' : ''].filter(Boolean) : [];
+  return `<p class="ayuda pad">Así quedará${nuevo ? ` la pieza, y el tipo nuevo «${esc(f.nombre)}» en el glosario (sin la palabra «Nuevo»)` : ' la pieza'}. No se ha guardado nada.</p>
+    <article class="hoja ia-previa-hoja">
+      ${cabecera(esc(b.nombre || '(sin nombre)'), f ? CATS[f.categoria] || '' : '', f ? f.resumen : '')}
+      ${nuevo ? avisoIA('') : ''}
+      ${specs([
+        ['Cantidad', b.varios ? 'muchos' : esc(b.cantidad === '' || b.cantidad == null ? '?' : b.cantidad)],
+        ['Sitio', esc(b.ubicacion || '—')],
+        ['Tensión', esc(f ? voltajeDe(f) : '')],
+        ['Tipo', f ? esc(f.nombre) : 'Sin tipo'],
+        ...list(b.datos_pieza).map(([k, v]) => [esc(k), esc(v)]),
+      ])}
+      <div class="hoja-cuerpo">
+        <div>${f ? tablaPines(f) || '<p class="gris">Este tipo no tiene pines.</p>' : '<p class="gris">Sin tipo: no se verán pines.</p>'}${datosTipo}</div>
+        <aside class="lateral">
+          ${fotoUrl ? `<img class="foto" src="${fotoUrl}" alt="">` : ''}
+          ${b.notas ? `<div><h3>Notas</h3><p class="notas">${esc(b.notas)}</p></div>` : ''}
+          ${f && list(f.alias).length ? `<p class="meta">También: ${esc(list(f.alias).join(', '))}</p>` : ''}
+          ${ocultos.length ? `<p class="meta">Se guardan pero no se muestran en la ficha: ${ocultos.join(' y ')}.</p>` : ''}
+        </aside>
+      </div>
+    </article>
+    <div class="acciones pad"><button class="btn" type="button" data-ia-vista="editar">Volver a editar</button>
+      <button class="btn prim" type="button" id="ia-guardar-previa">Guardar pieza</button></div>`;
+}
+
+function verVistaIA(vista) {
+  const form = $('#form-ia-ok'), previa = $('#ia-previa');
+  if (!form || !previa) return;
+  const ver = vista === 'previa';
+  if (ver) previa.innerHTML = vistaPreviaIA(leerFormIA(form), form.dataset.foto);
+  previa.hidden = !ver;
+  form.hidden = ver;
+  $('#ia-dudas').hidden = ver;
+  document.querySelectorAll('.ia-pestanas [data-ia-vista]').forEach((b) => b.classList.toggle('on', b.dataset.iaVista === vista));
+}
+
+async function responderIA(boton) {
+  const respuestas = [...document.querySelectorAll('.ia-resp')].map((i) => ({duda: i.dataset.duda, respuesta: i.value.trim()})).filter((r) => r.respuesta);
+  const extra = ($('#ia-extra')?.value || '').trim();
+  if (!respuestas.length && !extra) throw new Error('Contesta alguna duda o escribe algo más antes de repensar');
+  boton.disabled = true;
+  toast('Repensando con tus respuestas…');
+  await api('POST', `api/ia/tareas/${boton.dataset.id}/responder`, {respuestas, extra, propuesta: leerFormIA($('#form-ia-ok'))});
+  iaTarea(boton.dataset.id); // vuelve a «Analizando…» y se actualiza sola
+}
+
+async function aplicarIA(form) {
+  const body = leerFormIA(form);
   const r = await api('POST', `api/ia/tareas/${form.dataset.id}/aplicar`, body);
   await cargar(); // trae la pieza, la ficha nueva (si la hay) y los contadores
   contadores();
@@ -552,9 +633,12 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar,#ia-quitar');
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa');
   if (!t) return;
   try {
+    if (t.dataset.iaVista) { verVistaIA(t.dataset.iaVista); return; }
+    if (t.id === 'ia-guardar-previa') { verVistaIA('editar'); $('#form-ia-ok').requestSubmit(); return; }
+    if (t.id === 'ia-responder') { try { await responderIA(t); } catch (err) { t.disabled = false; toast(err.message, true); } return; } // sin redibujar: no se pierde lo editado
     if (t.id === 'ia-quitar') {
       if (!confirm('¿Quitar la clave de OpenCode Go? La IA dejará de funcionar hasta que pongas otra.')) return;
       D.ia = await api('PUT', 'api/ia/config', {quitarClave: true});

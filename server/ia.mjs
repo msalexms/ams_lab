@@ -32,9 +32,11 @@ const CLAVE_OK = /^[\x21-\x7e]{16,300}$/; // imprimible, sin espacios (la tabla 
 const txt = (v, max = 500) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const arr = (v) => (Array.isArray(v) ? v : v ? [v] : []);
 // [clave, valor] desde {clave: valor}, [[clave, valor]], [{dato, valor}] o ["clave: valor"]
+// valores que no aportan nada («no aplica», «desconocido»…): se descartan
+const VACIO = /^(no aplica|n\/?a|no procede|desconocid[oa]s?|sin datos|ninguno|ninguna|-+|—|\?+)(?=$|[\s(.,;:])/i;
 export const paresDe = (v) => (Array.isArray(v) ? v : Object.entries(v || {}))
   .map((p) => (typeof p === 'string' ? p.split(/:\s*/, 2) : Array.isArray(p) ? p : [p?.dato ?? p?.clave, p?.valor]))
-  .map(([k, val]) => [txt(k, 60), txt(val, 200)]).filter(([k, val]) => k && val).slice(0, 30);
+  .map(([k, val]) => [txt(k, 60), txt(val, 200)]).filter(([k, val]) => k && val && !VACIO.test(val)).slice(0, 30);
 
 // ---------- configuración ----------
 export function config(db) {
@@ -125,10 +127,17 @@ Reglas:
 - "nombre": la pieza concreta como se ve (p. ej. «Módulo relé 1 canal 5 V (SRD-05VDC)»). El "nombre" del tipo nuevo es genérico («Relé de 5 V»).
 - "datos" del tipo: lo que es igual en todas las piezas de ese tipo (corriente máxima, dirección I2C, rango de medida…).
   "datos_pieza": lo que cambia de una pieza a otra del mismo tipo (valor de una resistencia, longitud de un cable, color…).
-- Pines en el orden del conector si se ve; "uso" en 2–4 palabras. Piezas sin pines (tornillos, cables, herramientas): pines vacíos.
+  Solo datos útiles y conocidos: nada de «no aplica», «desconocido» ni notas sobre cómo la has identificado.
+- Pines en el orden del conector si se ve; "pin" es el nombre serigrafiado (VCC, DATA, GND…); si solo hay números,
+  «1 (VCC)». "uso" en 2–4 palabras. Piezas sin pines (tornillos, cables, herramientas): pines vacíos.
 - "voltaje" corto («3,3–5 V», «5 V · señal a 3,3 V»). "cantidad": las unidades que se ven, o null.
-- NO INVENTES. Si no estás seguro de un pinout, una tensión o un dato, déjalo vacío y explícalo en "dudas":
-  un pinout o una tensión inventados pueden quemar una placa. Textos cortos y llanos, sin emojis.
+- NO INVENTES. Si no estás seguro de un pinout, una tensión o un dato, déjalo vacío y pregúntalo en "dudas":
+  un pinout o una tensión inventados pueden quemar una placa.
+- "dudas": como mucho 5, escritas como PREGUNTAS cortas que el usuario pueda contestar mirando la pieza
+  («¿Tiene 3 o 4 pines?», «¿Qué pone en la serigrafía?»). Nada de dudas que no cambien la ficha.
+- Si el usuario ya ha revisado tu propuesta y te contesta, rehaz la propuesta COMPLETA: respeta lo que él ha
+  corregido y lo que te ha respondido, y quita de "dudas" lo que ya esté resuelto.
+- Textos cortos y llanos, sin emojis.
 
 Funciones de pin: ${ctx.funciones.map((f) => `${f.id} = ${f.nombre}`).join(' · ')}
 Categorías: ${ctx.categorias.map((c) => `${c.id} = ${c.nombre}`).join(' · ')}
@@ -199,20 +208,47 @@ async function modeloElegido(db) {
   return {m, clave: c.clave};
 }
 
+// una propuesta interna ([pin, uso, función], [dato, valor]) con la forma del esquema, para dársela al modelo como
+// «su» respuesta anterior en una vuelta de revisión
+const aSalida = (p) => ({
+  nombre: p.nombre, tipo_existente: p.tipo_existente,
+  tipo_nuevo: p.tipo_nuevo ? {...p.tipo_nuevo, pines: arr(p.tipo_nuevo.pines).map(([pin, uso, funcion]) => ({pin, uso, funcion})),
+    datos: arr(p.tipo_nuevo.datos).map(([dato, valor]) => ({dato, valor}))} : null,
+  datos_pieza: arr(p.datos_pieza).map(([dato, valor]) => ({dato, valor})), cantidad: p.cantidad, dudas: p.dudas, confianza: p.confianza,
+});
+const textoRonda = (r) => ['He revisado tu propuesta (la de arriba ya lleva mis correcciones).',
+  ...(r.respuestas.length ? ['Respuestas a tus dudas:', ...r.respuestas.map((x) => `- «${x.duda}» → ${x.respuesta}`)] : []),
+  ...(r.extra ? [`Además: ${r.extra}`] : []),
+  'Rehaz la propuesta completa con esto en cuenta.'].join('\n');
+
+// coste aproximado de la consulta con los precios del catálogo (dólares por millón de tokens)
+function coste(m, uso) {
+  const e = Number(uso?.inputTokens) || 0, s = Number(uso?.outputTokens) || 0;
+  if (!e && !s) return null;
+  const dolares = (e * (m.precio.entrada ?? 0) + s * (m.precio.salida ?? 0)) / 1e6;
+  return {tokens_entrada: e, tokens_salida: s, dolares: Math.round(dolares * 1e6) / 1e6};
+}
+
 async function proponer(db, entrada, foto, sesion) {
   const {m, clave} = await modeloElegido(db);
   const ctx = contexto(db);
   const contenido = [{type: 'text', text: entrada.texto || 'Identifica la pieza de la foto.'}];
   if (foto) contenido.push({type: 'file', mediaType: 'image/jpeg', data: {type: 'data', data: foto}});
+  // vueltas de revisión: la propuesta (ya corregida por el usuario) como respuesta del modelo + las respuestas del usuario
+  const mensajes = [{role: 'user', content: contenido}];
+  for (const r of arr(entrada.rondas)) {
+    mensajes.push({role: 'assistant', content: JSON.stringify(aSalida(r.propuesta))});
+    mensajes.push({role: 'user', content: textoRonda(r)});
+  }
   let error;
   for (let intento = 1; intento <= 2; intento++) {
     try {
       const r = await generateText({
-        model: crearModelo(m, clave, sesion), system: instrucciones(ctx), messages: [{role: 'user', content: contenido}],
+        model: crearModelo(m, clave, sesion), system: instrucciones(ctx), messages: mensajes,
         output: Output.object({schema: esquema(ctx), name: 'pieza', description: 'Propuesta para dar de alta una pieza de electrónica'}),
         maxOutputTokens: 6000, maxRetries: 1, abortSignal: AbortSignal.timeout(ESPERA_MS),
       });
-      return {propuesta: normalizar(db, r.output), modelo: m.id};
+      return {propuesta: {...normalizar(db, r.output), coste: coste(m, r.totalUsage ?? r.usage)}, modelo: m.id};
     } catch (e) {
       error = e;
       if (!NoObjectGeneratedError.isInstance(e)) break; // solo se reintenta si el formato no era correcto
@@ -223,7 +259,7 @@ async function proponer(db, entrada, foto, sesion) {
       const rescatada = rescatar(db, ctx, e.text);
       if (rescatada) {
         console.warn(`[ia] ${m.id}: propuesta rescatada (${rescatada.dudas.length} dudas)`);
-        return {propuesta: rescatada, modelo: m.id};
+        return {propuesta: {...rescatada, coste: coste(m, e.usage)}, modelo: m.id};
       }
     }
   }
@@ -249,14 +285,22 @@ export function rescatar(db, ctx, texto) {
     if (hijos.length !== 1) break;
     p = hijos[0];
   }
+  // qué campos no cumplían, con nombres que entiende el usuario
+  const NOMBRES = {nombre: 'nombre', tipo_existente: 'tipo', tipo_nuevo: 'ficha del tipo', categoria: 'categoría', resumen: 'resumen',
+    voltaje: 'tensión', interfaz: 'interfaces', alias: 'otros nombres', pines: 'pines', funcion: 'función de un pin', datos: 'datos del tipo',
+    ojo: 'advertencia', datos_pieza: 'datos de la pieza', cantidad: 'cantidad', dudas: 'dudas', confianza: 'confianza'};
   const problemas = (() => {
     const r = esquema(ctx).safeParse(p);
-    return r.success ? [] : r.error.issues.map((i) => i.path.join('.') || '(raíz)');
+    if (r.success) return [];
+    return r.error.issues.map((i) => {
+      const claves = i.path.filter((x) => typeof x === 'string');
+      return NOMBRES[claves[claves.length - 1]] || NOMBRES[claves[0]] || 'formato general';
+    });
   })();
   let propuesta;
   try { propuesta = normalizar(db, p); } catch { return null; }
   if (!propuesta.nombre) return null;
-  if (problemas.length) propuesta.dudas.push(`El modelo no respetó del todo el formato; revisa: ${[...new Set(problemas)].slice(0, 6).join(', ')}.`);
+  if (problemas.length) propuesta.dudas.push(`El modelo no rellenó bien algunos campos y se han corregido solos; revisa: ${[...new Set(problemas)].slice(0, 6).join(', ')}.`);
   return propuesta;
 }
 
