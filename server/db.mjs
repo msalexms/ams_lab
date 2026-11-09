@@ -10,7 +10,7 @@ import {mkdirSync, readFileSync, existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {opcionesCopias} from './copias.mjs';
 
-export const VERSION = 5;
+export const VERSION = 6;
 export const ORIGENES = ['seed', 'ia', 'usuario'];
 const ORIGEN = `TEXT NOT NULL DEFAULT 'seed' CHECK (origen IN ('seed', 'ia', 'usuario'))`;
 const HEX = (col) => `CHECK (${col} GLOB '#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]')`;
@@ -148,6 +148,22 @@ const ESQUEMA = `
 `;
 
 // v3: datos extra (clave → valor) de cada tipo y de cada pieza, y las tareas de la IA (propuestas pendientes de revisar)
+// tareas de la IA: «alta» (pieza nueva), «revisar» (corregir una ficha o una pieza, v6) y «reorganizar» (reservada)
+const IA_TAREAS = (nombre) => `
+  CREATE TABLE ${nombre} (                  -- cada llamada al modelo: lo que se le pidió, lo que propuso y qué se hizo
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    clase          TEXT NOT NULL CHECK (clase IN ('alta', 'revisar', 'reorganizar')),
+    estado         TEXT NOT NULL DEFAULT 'pendiente'
+                   CHECK (estado IN ('pendiente', 'propuesta', 'aplicada', 'descartada', 'error')),
+    entrada        TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(entrada)),
+    propuesta      TEXT CHECK (propuesta IS NULL OR json_valid(propuesta)),
+    componente_id  INTEGER REFERENCES componentes(id) ON DELETE SET NULL,   -- la pieza creada (alta) o revisada
+    modelo         TEXT,
+    error          TEXT,
+    creada         TEXT NOT NULL DEFAULT (datetime('now')),
+    actualizada    TEXT NOT NULL DEFAULT (datetime('now'))
+  );`;
+
 const TABLAS_V3 = `
   CREATE TABLE tipo_datos (                 -- ficha técnica extendida: «Corriente máx.» → «20 mA», «Dirección I2C» → «0x3C»
     tipo_id  TEXT NOT NULL REFERENCES tipos(id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -163,19 +179,7 @@ const TABLAS_V3 = `
     valor          TEXT NOT NULL,
     PRIMARY KEY (componente_id, clave)
   ) WITHOUT ROWID;
-  CREATE TABLE ia_tareas (                  -- cada llamada al modelo: lo que se le pidió, lo que propuso y qué se hizo
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    clase          TEXT NOT NULL CHECK (clase IN ('alta', 'reorganizar')),
-    estado         TEXT NOT NULL DEFAULT 'pendiente'
-                   CHECK (estado IN ('pendiente', 'propuesta', 'aplicada', 'descartada', 'error')),
-    entrada        TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(entrada)),
-    propuesta      TEXT CHECK (propuesta IS NULL OR json_valid(propuesta)),
-    componente_id  INTEGER REFERENCES componentes(id) ON DELETE SET NULL,   -- la pieza creada al aplicar un alta
-    modelo         TEXT,
-    error          TEXT,
-    creada         TEXT NOT NULL DEFAULT (datetime('now')),
-    actualizada    TEXT NOT NULL DEFAULT (datetime('now'))
-  );
+  ${IA_TAREAS('ia_tareas')}
   CREATE INDEX ia_tareas_estado ON ia_tareas(estado);
 `;
 const TRIGGERS_V3 = `
@@ -363,6 +367,7 @@ export function abrir(dataDir, seedDir) {
     if (version === 2) { migrarDesdeV2(db, seedDir); version = 3; }
     if (version === 3) { migrarDesdeV3(db); version = 4; }
     if (version === 4) { migrarDesdeV4(db); version = 5; }
+    if (version === 5) { migrarDesdeV5(db); version = 6; }
   }
 
   db.exec('PRAGMA foreign_keys = ON;');
@@ -431,6 +436,36 @@ function migrarDesdeV1(db) {
     db.exec('PRAGMA user_version = 2');
   });
   console.log('Base de datos migrada al modelo v2');
+}
+
+// v5 → v6: las tareas de la IA admiten «revisar» (corregir una ficha o una pieza). SQLite no deja cambiar un CHECK:
+// se rehace la tabla con las mismas columnas y se copian las filas (y su índice y su trigger).
+function migrarDesdeV5(db) {
+  enTransaccion(db, () => {
+    db.exec(`${IA_TAREAS('ia_tareas_v6')}
+      INSERT INTO ia_tareas_v6 (id, clase, estado, entrada, propuesta, componente_id, modelo, error, creada, actualizada)
+        SELECT id, clase, estado, entrada, propuesta, componente_id, modelo, error, creada, actualizada FROM ia_tareas;
+      DROP TABLE ia_tareas;
+      ALTER TABLE ia_tareas_v6 RENAME TO ia_tareas;
+      CREATE INDEX ia_tareas_estado ON ia_tareas(estado);
+      ${TRIGGERS_V3}`);
+    db.exec('PRAGMA user_version = 6');
+  });
+  console.log('Base de datos migrada al modelo v6');
+}
+
+// una ficha tal como está en la base de datos, en el formato de guardarTipo() (para revisarla o reescribirla entera)
+export function leerFicha(db, id) {
+  const t = db.prepare('SELECT * FROM tipos WHERE id = ?').get(id);
+  if (!t) return null;
+  return {
+    nombre: t.nombre, categoria: t.categoria_id, resumen: t.resumen || '', voltaje: t.voltaje || '', usos: t.usos, conexion: t.conexion,
+    ojo: t.advertencias || '', origen: t.origen, revisado: t.revisado, archivado: t.archivado,
+    alias: db.prepare('SELECT alias FROM tipo_alias WHERE tipo_id = ? ORDER BY alias').all(id).map((r) => r.alias),
+    interfaz: db.prepare('SELECT interfaz FROM tipo_interfaces WHERE tipo_id = ? ORDER BY orden').all(id).map((r) => r.interfaz),
+    pines: db.prepare('SELECT pin, uso, funcion_id FROM tipo_pines WHERE tipo_id = ? ORDER BY orden').all(id).map((r) => [r.pin, r.uso, r.funcion_id]),
+    datos: db.prepare('SELECT clave, valor FROM tipo_datos WHERE tipo_id = ? ORDER BY orden').all(id).map((r) => [r.clave, r.valor]),
+  };
 }
 
 // v4 → v5: tipos archivados (ocultos sin borrar) y lo quitado del catálogo (para que seed/ no lo resucite)
