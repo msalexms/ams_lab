@@ -479,3 +479,33 @@ ol.pasos li { padding: var(--e1) 0; }
 .sec-datos { display: flex; flex-wrap: wrap; gap: var(--e1) var(--e5); font-size: .92rem; }
 .sec-datos .gris { font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-right: var(--e1); }
 .ficha-tipo h3.sep { margin-top: var(--e3); }
+
+/* móvil: con el teclado abierto no hay barra de abajo, y «Guardar» baja al borde */
+@media (max-width: 760px) {
+  body.teclado { --barra: 0px; }
+  body.teclado .barra, body.teclado .fab-menu { display: none; }
+  .barra { transform: translateZ(0); } /* su propia capa: no tiembla al plegarse la barra de Safari */
+}
+
+/* encuadre de fotos: pantalla completa, foto móvil bajo un recuadro 4:3 fijo; fuera del recuadro, oscurecido */
+body.con-encuadre { overflow: hidden; }
+.encuadre { position: fixed; inset: 0; z-index: 50; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; background: #111110; color: #ecebe5;
+  padding: max(var(--e3), env(safe-area-inset-top)) 0 max(var(--e3), env(safe-area-inset-bottom)); }
+.enc-cab { display: grid; gap: 2px; padding: 0 var(--e4) var(--e3); font-size: .92rem; }
+.enc-cab span { color: #b3b0a7; font-size: .84rem; }
+.enc-escena { position: relative; overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+.enc-escena:active { cursor: grabbing; }
+.enc-img { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; }
+.enc-marco { position: absolute; pointer-events: none; outline: 1px solid rgb(255 255 255 / .9); box-shadow: 0 0 0 200vmax rgb(0 0 0 / .62); }
+.enc-marco i { position: absolute; background: rgb(255 255 255 / .28); }
+.enc-marco i:nth-child(1), .enc-marco i:nth-child(2) { top: 0; bottom: 0; width: 1px; }
+.enc-marco i:nth-child(1) { left: 33.333%; } .enc-marco i:nth-child(2) { left: 66.666%; }
+.enc-marco i:nth-child(3), .enc-marco i:nth-child(4) { left: 0; right: 0; height: 1px; }
+.enc-marco i:nth-child(3) { top: 33.333%; } .enc-marco i:nth-child(4) { top: 66.666%; }
+.enc-controles { display: flex; align-items: center; gap: var(--e4); padding: var(--e3) var(--e4) 0; }
+.enc-zoom-et { flex: 1; display: flex; align-items: center; gap: var(--e3); font-size: .84rem; color: #b3b0a7; }
+.enc-zoom { flex: 1; accent-color: #ecebe5; height: 32px; }
+.enc-pie { display: flex; gap: var(--e2); padding: var(--e3) var(--e4) 0; }
+.enc-pie .btn { flex: 1; }
+.encuadre .btn { background: #1c1c1b; color: #ecebe5; border-color: #3a3935; }
+.encuadre .btn.prim { background: #ecebe5; color: #111110; border-color: #ecebe5; }
