@@ -10,7 +10,7 @@ import {mkdirSync, readFileSync, existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {opcionesCopias} from './copias.mjs';
 
-export const VERSION = 4;
+export const VERSION = 5;
 export const ORIGENES = ['seed', 'ia', 'usuario'];
 const ORIGEN = `TEXT NOT NULL DEFAULT 'seed' CHECK (origen IN ('seed', 'ia', 'usuario'))`;
 const HEX = (col) => `CHECK (${col} GLOB '#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]')`;
@@ -52,7 +52,8 @@ const ESQUEMA = `
     conexion      TEXT,
     advertencias  TEXT,
     origen        ${ORIGEN},
-    revisado      INTEGER NOT NULL DEFAULT 1 CHECK (revisado IN (0, 1))   -- 0 = ficha de la IA aún sin comprobar
+    revisado      INTEGER NOT NULL DEFAULT 1 CHECK (revisado IN (0, 1)),  -- 0 = ficha de la IA aún sin comprobar
+    archivado     INTEGER NOT NULL DEFAULT 0 CHECK (archivado IN (0, 1))  -- 1 = oculto (no sale en el glosario ni al elegir tipo)
   );
   CREATE INDEX tipos_categoria ON tipos(categoria_id);
   CREATE TABLE tipo_alias (
@@ -195,6 +196,30 @@ const TABLAS_V4 = `
   INSERT INTO ia_config (id) VALUES (1);
 `;
 
+// v5: lo que el usuario quitó del catálogo (borrado o fusionado). seed/ lo consulta para no volver a crearlo, y
+// «reemplazo» dice por qué se sustituyó (fusión de tipos, categoría a la que se movieron sus tipos): los proyectos y
+// las fichas de seed/ que apuntaban a lo quitado se redirigen solos.
+const TABLAS_V5 = `
+  CREATE TABLE catalogo_quitados (
+    clase      TEXT NOT NULL CHECK (clase IN ('tipo', 'categoria')),
+    id         TEXT NOT NULL,
+    reemplazo  TEXT,
+    fecha      TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (clase, id)
+  ) WITHOUT ROWID;
+`;
+
+// lo quitado: id → reemplazo (o null). resolver() sigue la cadena de reemplazos (A→B→C) hasta algo que exista.
+const quitados = (db, clase) => new Map(db.prepare('SELECT id, reemplazo FROM catalogo_quitados WHERE clase = ?').all(clase).map((r) => [r.id, r.reemplazo]));
+export function resolver(db, clase, id) {
+  const tabla = clase === 'tipo' ? 'tipos' : 'categorias', q = quitados(db, clase);
+  for (let i = 0, actual = id; i < 6 && actual; i++) {
+    if (!q.has(actual) && db.prepare(`SELECT 1 FROM ${tabla} WHERE id = ?`).get(actual)) return actual;
+    actual = q.get(actual) ?? null;
+  }
+  return null;
+}
+
 // el historial y la fecha de actualización los mantiene la propia base de datos
 const TRIGGERS = `
   CREATE TRIGGER componentes_actualizado AFTER UPDATE ON componentes
@@ -229,8 +254,10 @@ function deducirFuncion(pin) {
 
 // ---------- escritura del catálogo (formato de seed/glosario.json y seed/proyectos.json) ----------
 function guardarReferencia(db, ref) {
-  // las categorías que ya no son «de seed» (creadas o renombradas por la IA o el usuario) no se tocan
-  ref.categorias.forEach((c, i) => db.prepare(`INSERT INTO categorias (id, nombre, orden) VALUES (?, ?, ?)
+  // las categorías que ya no son «de seed» (creadas o renombradas por la IA o el usuario) no se tocan,
+  // y las que el usuario borró no se vuelven a crear
+  const fuera = quitados(db, 'categoria');
+  ref.categorias.forEach((c, i) => fuera.has(c.id) || db.prepare(`INSERT INTO categorias (id, nombre, orden) VALUES (?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET nombre = excluded.nombre, orden = excluded.orden WHERE categorias.origen = 'seed'`).run(c.id, c.nombre, i + 1));
   ref.funciones_pin.forEach((f, i) => db.prepare(`INSERT INTO funciones_pin (id, nombre, color_claro, color_oscuro, tachado, orden) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET nombre = excluded.nombre, color_claro = excluded.color_claro, color_oscuro = excluded.color_oscuro,
@@ -270,10 +297,14 @@ export function guardarProyecto(db, p) {
   db.prepare('DELETE FROM proyectos WHERE id = ?').run(p.id); // borra en cascada material, conexiones y pasos
   db.prepare('INSERT INTO proyectos (id, nombre, dificultad, tiempo, resumen) VALUES (?, ?, ?, ?, ?)')
     .run(p.id, p.nombre, p.dificultad || 1, p.tiempo ?? null, p.resumen ?? null);
-  list(p.material).forEach((m, n) => {
+  // cada tipo del material se resuelve: si se fusionó, va al que se quedó; si se borró sin reemplazo, se omite
+  let orden = 0;
+  list(p.material).forEach((m) => {
+    const tipos = [...new Set(list(m.tipo).map((t) => resolver(db, 'tipo', t)).filter(Boolean))];
+    if (!tipos.length) return;
     const {lastInsertRowid} = db.prepare('INSERT INTO proyecto_material (proyecto_id, orden, cantidad, opcional, nota) VALUES (?, ?, ?, ?, ?)')
-      .run(p.id, n + 1, m.cantidad || 1, m.opcional ? 1 : 0, m.nota ?? null);
-    for (const t of new Set(list(m.tipo))) db.prepare('INSERT INTO material_opciones (material_id, tipo_id) VALUES (?, ?)').run(lastInsertRowid, t);
+      .run(p.id, ++orden, m.cantidad || 1, m.opcional ? 1 : 0, m.nota ?? null);
+    for (const t of tipos) db.prepare('INSERT INTO material_opciones (material_id, tipo_id) VALUES (?, ?)').run(lastInsertRowid, t);
   });
   list(p.conexiones).forEach(([desde, hasta, nota], n) =>
     db.prepare('INSERT INTO proyecto_conexiones (proyecto_id, orden, desde, hasta, nota) VALUES (?, ?, ?, ?, ?)').run(p.id, n + 1, desde, hasta, nota ?? null));
@@ -300,9 +331,12 @@ export function sincronizarCatalogo(db, seedDir) {
   enTransaccion(db, () => {
     if (ref) guardarReferencia(db, ref);
     const ajenos = new Set(db.prepare("SELECT id FROM tipos WHERE origen <> 'seed'").all().map((r) => r.id));
+    const tiposFuera = quitados(db, 'tipo');
     for (const [id, t] of Object.entries(glosario)) {
+      if (tiposFuera.has(id)) continue; // borrado o fusionado por el usuario: no se resucita
       if (ajenos.has(id)) { respetados++; continue; }
-      guardarTipo(db, id, t);
+      // si su categoría se borró, va a la que recibió sus tipos (o a «otro»)
+      guardarTipo(db, id, {...t, categoria: resolver(db, 'categoria', t.categoria || 'otro') || 'otro'});
       tipos++;
     }
     for (const p of proyectos) guardarProyecto(db, p);
@@ -328,6 +362,7 @@ export function abrir(dataDir, seedDir) {
     if (version === 1) { migrarDesdeV1(db); version = 2; }
     if (version === 2) { migrarDesdeV2(db, seedDir); version = 3; }
     if (version === 3) { migrarDesdeV3(db); version = 4; }
+    if (version === 4) { migrarDesdeV4(db); version = 5; }
   }
 
   db.exec('PRAGMA foreign_keys = ON;');
@@ -347,7 +382,7 @@ function copiaAntesDeMigrar(db, dataDir, version) {
 
 function crearNueva(db, seedDir) {
   enTransaccion(db, () => {
-    db.exec(ESQUEMA + TABLAS_V3 + TABLAS_V4);
+    db.exec(ESQUEMA + TABLAS_V3 + TABLAS_V4 + TABLAS_V5);
     const ref = leer(seedDir, 'referencia.json'), glosario = leer(seedDir, 'glosario.json') || {}, proyectos = leer(seedDir, 'proyectos.json') || [];
     guardarReferencia(db, ref);
     for (const [id, t] of Object.entries(glosario)) guardarTipo(db, id, t);
@@ -366,7 +401,7 @@ function migrarDesdeV0(db, seedDir) {
   db.exec('PRAGMA foreign_keys = OFF');
   enTransaccion(db, () => {
     for (const t of ['componentes', 'tipos', 'proyectos', 'historial']) db.exec(`ALTER TABLE ${t} RENAME TO v0_${t}`);
-    db.exec(ESQUEMA + TABLAS_V3 + TABLAS_V4);
+    db.exec(ESQUEMA + TABLAS_V3 + TABLAS_V4 + TABLAS_V5);
     guardarReferencia(db, leer(seedDir, 'referencia.json'));
     for (const t of db.prepare('SELECT * FROM v0_tipos').all()) guardarTipo(db, t.id, {nombre: t.nombre, categoria: t.categoria, ...JSON.parse(t.ficha)});
     for (const p of db.prepare('SELECT * FROM v0_proyectos').all()) guardarProyecto(db, {id: p.id, ...JSON.parse(p.datos)});
@@ -396,6 +431,16 @@ function migrarDesdeV1(db) {
     db.exec('PRAGMA user_version = 2');
   });
   console.log('Base de datos migrada al modelo v2');
+}
+
+// v4 → v5: tipos archivados (ocultos sin borrar) y lo quitado del catálogo (para que seed/ no lo resucite)
+function migrarDesdeV4(db) {
+  enTransaccion(db, () => {
+    db.exec(`ALTER TABLE tipos ADD COLUMN archivado INTEGER NOT NULL DEFAULT 0 CHECK (archivado IN (0, 1));
+      ${TABLAS_V5}`);
+    db.exec('PRAGMA user_version = 5');
+  });
+  console.log('Base de datos migrada al modelo v5');
 }
 
 // v3 → v4: tabla ia_config (clave y modelo de la IA puestos desde la web)

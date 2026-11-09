@@ -8,8 +8,10 @@ import {readFile, writeFile, unlink, rename} from 'node:fs/promises';
 import {extname, join, normalize, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {networkInterfaces} from 'node:os';
-import {abrir, ubicacionId, sincronizarCatalogo, guardarTipo} from './db.mjs';
-import {programarCopias} from './copias.mjs';
+import {readdirSync, statSync} from 'node:fs';
+import {abrir, ubicacionId, sincronizarCatalogo, guardarTipo, VERSION} from './db.mjs';
+import {programarCopias, opcionesCopias, copiar} from './copias.mjs';
+import * as cat from './catalogo.mjs';
 import {estado, ejecutarAlta, normalizar, cerrarInterrumpidas, modelos, guardarConfig, modeloValido, MODELO_RECOMENDADO} from './ia.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -30,6 +32,7 @@ try {
   console.error('No se pudo aplicar el catálogo de seed/ (sigue el anterior):', e.message);
 }
 programarCopias(db, DATA);
+cat.limpiarPapelera(FOTOS);
 cerrarInterrumpidas(db);
 { const e = estado(db); console.log(e.activa ? `[ia] activa: ${e.modelo} (clave de ${e.origen_clave})` : '[ia] sin clave: se configura desde la web'); }
 const TYPES = {
@@ -78,7 +81,7 @@ function tipos() {
     alias: (alias[t.id] || []).map((a) => a.alias), interfaz: (inter[t.id] || []).map((i) => i.interfaz),
     pines: (pines[t.id] || []).map((p) => [p.pin, p.uso, p.funcion_id]),
     datos: (datos[t.id] || []).map((d) => [d.clave, d.valor]),
-    origen: t.origen, revisado: t.revisado,
+    origen: t.origen, revisado: t.revisado, archivado: t.archivado,
   }]));
 }
 
@@ -136,11 +139,26 @@ function limpiar(b, parcial) {
   return out;
 }
 
-function slug(s) {
-  const base = String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'tipo';
-  let id = base, n = 2;
-  while (db.prepare('SELECT 1 FROM tipos WHERE id = ?').get(id)) id = `${base}-${n++}`;
-  return id;
+// id para un tipo nuevo: libre y que no esté entre los quitados (si no, seed/ lo confundiría con el borrado)
+const slug = (s) => cat.idLibre(db, 'tipos', s, 'tipo');
+
+// Ajustes → Datos: versión, recuentos y copias de seguridad
+function resumen() {
+  const {dir, max} = opcionesCopias(DATA);
+  let copias = [];
+  try {
+    copias = readdirSync(dir).filter((f) => f.endsWith('.db')).map((f) => {
+      const st = statSync(join(dir, f));
+      return {nombre: f, bytes: st.size, fecha: st.mtime.toISOString()};
+    }).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  } catch {}
+  const n = (sql) => db.prepare(sql).get().n;
+  return {
+    version: VERSION, piezas: n('SELECT COUNT(*) AS n FROM componentes'), tipos: n('SELECT COUNT(*) AS n FROM tipos WHERE archivado = 0'),
+    archivados: n('SELECT COUNT(*) AS n FROM tipos WHERE archivado = 1'), categorias: n('SELECT COUNT(*) AS n FROM categorias'),
+    sitios: n('SELECT COUNT(*) AS n FROM ubicaciones'), proyectos: n('SELECT COUNT(*) AS n FROM proyectos'),
+    copias: {carpeta: dir, guardadas: copias.length, maximo: max, ultima: copias[0] || null},
+  };
 }
 
 async function borrarFoto(nombre) {
@@ -306,12 +324,31 @@ async function api(req, res, path) {
     return send(res, 200, {ok: true});
   }
   // marcar como revisada una ficha escrita por la IA (sigue siendo de origen 'ia': seed no la pisa)
-  if ((r = path.match(/^\/api\/tipos\/([a-z0-9-]+)$/)) && m === 'PATCH') {
-    const b = await leerJson(req);
-    if (!db.prepare('SELECT 1 FROM tipos WHERE id = ?').get(r[1])) throw new HttpError(404, 'Ese tipo no existe');
-    if ('revisado' in b) db.prepare('UPDATE tipos SET revisado = ? WHERE id = ?').run(b.revisado ? 1 : 0, r[1]);
-    return send(res, 200, {id: r[1], revisado: b.revisado ? 1 : 0});
+  if ((r = path.match(/^\/api\/tipos\/([a-z0-9-]+)$/)) && m === 'PATCH') return send(res, 200, cat.cambiarTipo(db, r[1], await leerJson(req)));
+
+  // ---- Ajustes: catálogo, sitios y datos (fase B) ----
+  if (m === 'GET' && path === '/api/ajustes/resumen') return send(res, 200, resumen());
+  if (m === 'POST' && path === '/api/copias') {
+    const op = opcionesCopias(DATA);
+    const ruta = copiar(db, DATA, {...op, max: op.max || 14}, true);
+    return send(res, 200, {ok: true, nombre: String(ruta).split(/[\\/]/).pop(), resumen: resumen()});
   }
+  if (m === 'GET' && path === '/api/categorias') return send(res, 200, cat.listarCategorias(db));
+  if (m === 'POST' && path === '/api/categorias') return send(res, 201, cat.crearCategoria(db, await leerJson(req)));
+  if (m === 'PUT' && path === '/api/categorias/orden') return send(res, 200, cat.ordenarCategorias(db, (await leerJson(req)).ids));
+  if ((r = path.match(/^\/api\/categorias\/([a-z0-9-]+)$/))) {
+    if (m === 'PATCH') return send(res, 200, cat.renombrarCategoria(db, r[1], await leerJson(req)));
+    if (m === 'DELETE') return send(res, 200, cat.borrarCategoria(db, r[1], new URL(req.url, 'http://x').searchParams.get('destino')));
+  }
+  if (m === 'GET' && path === '/api/tipos') return send(res, 200, cat.listarTipos(db));
+  if ((r = path.match(/^\/api\/tipos\/([a-z0-9-]+)\/fusionar$/)) && m === 'POST') return send(res, 200, cat.fusionarTipo(db, r[1], (await leerJson(req)).destino));
+  if ((r = path.match(/^\/api\/tipos\/([a-z0-9-]+)$/)) && m === 'DELETE') return send(res, 200, cat.borrarTipo(db, r[1]));
+  if (m === 'GET' && path === '/api/ubicaciones') return send(res, 200, cat.listarSitios(db));
+  if ((r = path.match(/^\/api\/ubicaciones\/(\d+)$/))) {
+    if (m === 'PATCH') return send(res, 200, cat.renombrarSitio(db, r[1], await leerJson(req)));
+    if (m === 'DELETE') return send(res, 200, cat.borrarSitio(db, r[1]));
+  }
+  if (m === 'POST' && path === '/api/componentes/restaurar') return send(res, 200, await cat.restaurarPieza(db, FOTOS, (await leerJson(req)).token));
 
   if ((r = path.match(/^\/api\/ajustes\/([a-z_]+)$/)) && m === 'PUT') {
     const valor = texto((await leerJson(req)).valor, 200);
@@ -327,11 +364,7 @@ async function api(req, res, path) {
         db.prepare(`UPDATE componentes SET ${Object.keys(cambios).map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(cambios), c.id);
       return send(res, 200, comp(c.id));
     }
-    if (m === 'DELETE') {
-      db.prepare('DELETE FROM componentes WHERE id = ?').run(c.id);
-      await borrarFoto(c.foto);
-      return send(res, 200, {ok: true});
-    }
+    if (m === 'DELETE') return send(res, 200, await cat.borrarPieza(db, FOTOS, c.id)); // se puede deshacer durante 2 minutos
   }
   if ((r = path.match(/^\/api\/componentes\/(\d+)\/ajuste$/)) && m === 'POST') {
     const c = comp(r[1]);
@@ -381,10 +414,10 @@ const server = createServer(async (req, res) => {
     if (path.startsWith('/fotos/')) return await estatico(res, FOTOS, path.slice(7), 'public, max-age=31536000, immutable');
     return await estatico(res, PUB, path === '/' ? 'index.html' : path, 'no-cache');
   } catch (e) {
-    let code = e instanceof HttpError ? e.code : 500;
+    let code = e instanceof HttpError || e instanceof cat.ErrorCatalogo ? e.code : 500;
     if (/constraint failed/i.test(e.message)) code = 400; // reglas de la base de datos (CHECK, FOREIGN KEY, UNIQUE)
     if (code === 500) console.error(e);
-    if (!res.headersSent) send(res, code, {error: e.message || 'Error'});
+    if (!res.headersSent) send(res, code, {error: e.message || 'Error', ...(e instanceof cat.ErrorCatalogo ? {tipos: e.tipos, piezas: e.piezas, proyectos: e.proyectos} : {})});
   }
 }).listen(PORT, '0.0.0.0', () => {
   const ips = Object.values(networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address);

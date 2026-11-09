@@ -6,6 +6,10 @@ Almacén digital personal de componentes electrónicos: inventario con stock y f
 - Sin contraseña: pensada solo para la red de casa (o Tailscale). No la publiques en internet tal cual.
 - Copia de seguridad: automática cada día (ver abajo), `npm run copia` para hacer una ya, o «exportar» en http://localhost:4321/api/exportar (solo datos, sin fotos)
 
+## Ajustes
+
+Pestaña **Ajustes**: IA (modelo y clave), **categorías** (renombrar, ordenar, añadir, borrar moviendo sus tipos), **tipos** (archivar, fusionar duplicados, borrar los que no usa nada; filtros «sin comprobar», «de la IA», «sin piezas», «archivados»), **sitios** (renombrar, juntar, borrar), **datos** (copias de seguridad, «hacer copia ahora», exportar) y tema. Lo que se borra del catálogo no vuelve al actualizar la imagen. Al borrar una pieza sale «Deshacer» unos segundos.
+
 ## Añadir con IA
 
 Botón «Añadir con IA»: foto y/o texto de una pieza → el modelo propone nombre, tipo (o una ficha nueva con pines y datos) → **tú lo revisas y guardas**. Nada entra en el inventario sin confirmar; las fichas nuevas quedan «sin comprobar» hasta que las marques como revisadas.
