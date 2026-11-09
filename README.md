@@ -12,6 +12,9 @@ Pestaña **Ajustes**: IA (modelo y clave), **categorías** (renombrar, ordenar, 
 
 ## Uso diario
 
+- **Pieza** = lo que tienes en el cajón: cantidad, sitio, foto, notas y sus datos propios («Valor» → «220 Ω»). **Ficha del tipo** = la hoja de datos común a todas las piezas iguales (pines, tensión, resumen, «Ojo», datos del tipo); está en el Glosario y, si la cambias, cambia para todas. La ficha de una pieza enseña arriba «Esta pieza» y debajo «Ficha del tipo».
+- Dos avisos distintos: **«pendiente»** es una marca tuya en una pieza («quiero mirar algo de esta pieza»; se quita con «Hecho: quitar la marca»). **«Sin comprobar»** sale en una ficha del tipo que escribió o cambió la IA; se quita con «Ya la he comprobado» (o al guardarla con «Editar ficha»).
+
 - **Inventario** en lista o en **cuadrícula con las fotos** (se recuerda en la tabla `ajustes`, `vista_inventario`).
 - **Buscar** (arriba, tecla `/`): en una lista la filtra y avisa si hay coincidencias en otras secciones; desde cualquier otro sitio, o con Intro, busca en todo (piezas, tipos —también por pines, alias, interfaces y datos— y proyectos).
 - **Editar ficha** de un tipo a mano: nombre, categoría, resumen, tensión, interfaces, alias, «Ojo» y las **tablas de pines y datos** (añadir, ordenar con ↑ ↓, quitar). Al guardar pasa a ser tuya (`origen = 'usuario'`, comprobada) y `seed/` ya no la toca. Si la ficha cambió mientras la editabas (la IA u otra pestaña), no se pisa: hay que recargar.
@@ -20,7 +23,7 @@ Pestaña **Ajustes**: IA (modelo y clave), **categorías** (renombrar, ordenar, 
 
 ## Añadir con IA
 
-Botón «Añadir con IA»: foto y/o texto de una pieza → el modelo propone nombre, tipo (o una ficha nueva con pines y datos) → **tú lo revisas y guardas**. Nada entra en el inventario sin confirmar; las fichas nuevas quedan «sin comprobar» hasta que las marques como revisadas.
+Botón «Añadir con IA»: foto y/o texto de una pieza → el modelo propone nombre, tipo (o una ficha nueva con pines y datos) → **tú lo revisas y guardas**. Nada entra en el inventario sin confirmar; las fichas nuevas quedan «sin comprobar» hasta que pulses «Ya la he comprobado».
 
 - Proveedor: OpenCode Go, con el AI SDK (el paquete que indica el catálogo de Go para cada modelo). **La clave y el modelo se ponen en la web**: «Añadir con IA» → Configuración. Solo salen los modelos que entienden fotos y devuelven datos con formato fijo, con su precio; al guardar se comprueba la clave con una llamada mínima.
 - La clave se guarda en la base de datos (la web solo enseña sus 4 últimos caracteres) y viaja en las copias de seguridad. `IA_CLAVE` / `IA_MODELO` (o un `.env` en local) solo se usan si en la web no hay nada.
@@ -28,7 +31,7 @@ Botón «Añadir con IA»: foto y/o texto de una pieza → el modelo propone nom
 - Antes de guardar: **vista previa** de cómo quedará la ficha, y puedes **contestar las dudas** del modelo para que rehaga la propuesta (hasta 5 vueltas; cada una cuenta como una consulta). Se ve el coste aproximado de cada consulta.
 - **Modelo**: el de siempre se cambia con un toque en Configuración (sin volver a poner la clave), y al analizar se puede elegir otro solo para esa pieza. Cada modelo muestra lo que cuesta por pieza: la media real de tus consultas o una estimación.
 - **Móvil**: el botón «+» ofrece «Foto con IA» (abre la cámara y la analiza al momento), «Elegir foto con IA» o «A mano». Mientras el modelo piensa se ve qué pasa, cuántos segundos lleva y el esqueleto de la ficha.
-- **Revisar con IA**: en la ficha de cada pieza y de cada tipo. Dices qué revisar (opcional, también con foto) y el modelo propone cambios; ves **solo los cambios** (antes tachado, después en claro) y marcas cuáles aplicar. Si la ficha cambió mientras tanto, no se pisa nada.
+- **Corregir con IA**: en la ficha de cada pieza y de cada tipo. Dices qué corregir (opcional, también con foto) y el modelo propone cambios; ves **solo los cambios** (antes tachado, después en claro) y marcas cuáles aplicar. Si la ficha cambió mientras tanto, no se pisa nada.
 - Cada consulta se guarda en la tabla `ia_tareas`: si cierras la pestaña mientras piensa, la propuesta te espera en «Añadir con IA».
 
 ## Docker (homelab)

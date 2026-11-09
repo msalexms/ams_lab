@@ -113,7 +113,7 @@ export function comprobarBase(ruta) {
   try { db = new DatabaseSync(ruta); } catch { fallo(400, 'No se puede abrir esa base de datos'); }
   try {
     const version = db.prepare('PRAGMA user_version').get().user_version;
-    if (version > VERSION) fallo(400, `Es de una versión más nueva de la app (modelo v${version}; esta es v${VERSION}): actualiza antes la app`);
+    if (version > VERSION) fallo(400, `Es de una versión más nueva de la app (datos v${version}; esta usa v${VERSION}): actualiza la app antes de restaurarla`);
     const hay = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name));
     if (!hay.has('componentes') || !hay.has('tipos')) fallo(400, 'Esa base de datos no es de ams_lab (faltan las tablas de piezas y tipos)');
     const integridad = db.prepare('PRAGMA integrity_check').get();
