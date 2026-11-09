@@ -114,7 +114,7 @@ function contexto(db) {
     categorias: db.prepare('SELECT id, nombre FROM categorias ORDER BY orden').all(),
     funciones: db.prepare('SELECT id, nombre FROM funciones_pin ORDER BY orden').all(),
     tipos: db.prepare(`SELECT t.id, t.nombre, t.categoria_id AS categoria, group_concat(a.alias, ' / ') AS alias
-      FROM tipos t LEFT JOIN tipo_alias a ON a.tipo_id = t.id GROUP BY t.id ORDER BY t.categoria_id, t.nombre`).all(),
+      FROM tipos t LEFT JOIN tipo_alias a ON a.tipo_id = t.id WHERE t.archivado = 0 GROUP BY t.id ORDER BY t.categoria_id, t.nombre`).all(),
   };
 }
 
@@ -172,7 +172,7 @@ export function normalizar(db, p) {
   const funcs = new Set(db.prepare('SELECT id FROM funciones_pin').all().map((r) => r.id));
   const dudas = arr(p.dudas).map((d) => txt(d, 300)).filter(Boolean).slice(0, 12);
   let existente = p.tipo_existente ? String(p.tipo_existente) : null;
-  if (existente && !db.prepare('SELECT 1 FROM tipos WHERE id = ?').get(existente)) {
+  if (existente && !db.prepare('SELECT 1 FROM tipos WHERE id = ? AND archivado = 0').get(existente)) { // archivados: ocultos
     dudas.push(`El tipo «${existente}» no existe.`);
     existente = null;
   }

@@ -1,4 +1,4 @@
-# Modelo de datos (v4) — `data/lab.db`
+# Modelo de datos (v5) — `data/lab.db`
 
 SQLite (`node:sqlite`). Esquema y migraciones en `server/db.mjs`; versión en `PRAGMA user_version`.
 
@@ -26,9 +26,10 @@ erDiagram
   funciones_pin { text id PK; text nombre UK; text color_claro "#RRGGBB"; text color_oscuro "#RRGGBB"; int tachado; int orden }
   ajustes { text clave PK; text valor }
   dificultades { int nivel PK; text nombre UK }
-  tipos { text id PK; text nombre; text categoria_id FK; text resumen; text voltaje; text usos; text conexion; text advertencias; text origen "seed|ia|usuario"; int revisado }
+  tipos { text id PK; text nombre; text categoria_id FK; text resumen; text voltaje; text usos; text conexion; text advertencias; text origen "seed|ia|usuario"; int revisado; int archivado }
   tipo_datos { text tipo_id PK,FK; text clave PK; int orden; text valor }
   componente_datos { int componente_id PK,FK; text clave PK; int orden; text valor }
+  catalogo_quitados { text clase PK "tipo|categoria"; text id PK; text reemplazo; text fecha }
   ia_config { int id PK "siempre 1"; text clave "nunca sale por la API"; text modelo; text actualizado }
   ia_tareas { int id PK; text clase "alta|reorganizar"; text estado "pendiente|propuesta|aplicada|descartada|error"; text entrada "JSON"; text propuesta "JSON"; int componente_id FK; text modelo; text error; text creada; text actualizada }
   tipo_pines { text tipo_id PK,FK; int orden PK; text pin; text uso; text funcion_id FK }
@@ -62,6 +63,15 @@ La web no guarda configuración propia: categorías, funciones de pin con sus co
 - `revisado = 0`: ficha escrita por la IA que nadie ha comprobado (la web lo dirá en texto). Las fichas de `seed` y las del usuario nacen revisadas.
 - `funciones_pin` y `dificultades` siguen siendo solo de `seed/` (colores iguales para todos los dispositivos).
 
+## Borrar, archivar y fusionar (v5, desde Ajustes)
+- **Archivar** un tipo (`archivado = 1`): no sale en el glosario, ni al elegir tipo, ni se lo ofrece la IA; sus piezas y proyectos siguen igual. Se recupera cuando quieras.
+- **Fusionar** A en B: las piezas y los proyectos de A pasan a B y A desaparece. Si B no es de `seed`, se lleva el nombre y los alias de A.
+- **Borrar** un tipo: solo si ninguna pieza ni ningún proyecto lo usa.
+- **Categorías**: renombrar, reordenar (pasan a origen `usuario`), añadir y borrar moviendo antes sus tipos a otra. `otro` no se borra: es la de reserva.
+- **`catalogo_quitados`** apunta lo borrado o fusionado y **por qué se sustituyó** (`reemplazo`): `seed/` no lo vuelve a crear, los proyectos de `seed/` que lo usaban se redirigen al reemplazo, y los tipos de `seed/` cuya categoría se borró van a la que recibió sus tipos. Los ids nuevos nunca reutilizan uno quitado.
+- **Sitios** (`ubicaciones`): renombrar; si el nombre ya existe (sin mirar mayúsculas), se juntan. Borrar deja sus piezas sin sitio.
+- **Piezas**: al borrar una, el servidor la guarda 2 minutos para «Deshacer» (la foto espera como `papelera-…` y se borra al vencer o al arrancar).
+
 ## Datos extra (clave → valor)
 - `tipo_datos`: lo que es igual en todas las piezas de un tipo (corriente máxima, dirección I2C, frecuencia…). En `seed/glosario.json`, campo `datos` (`{"Clave": "valor"}`).
 - `componente_datos`: lo que cambia de una pieza a otra del mismo tipo (el valor de una resistencia, el encapsulado…).
@@ -79,6 +89,7 @@ Cada llamada al modelo se guarda: qué se le pidió (`entrada`, JSON), qué prop
 ## Migraciones
 - v1 → v2 (03/11/2026): `funciones_pin.color` pasa a `color_oscuro` y se añade `color_claro`; nueva tabla `ajustes`.
 - v2 → v3 (06/11/2026): `origen` en `categorias` y `tipos`, `revisado` en `tipos`; tablas `tipo_datos`, `componente_datos` e `ia_tareas`. Los tipos que no están en `seed/glosario.json` (creados desde la web) quedan con origen `usuario`.
+- v4 → v5 (09/11/2026): `tipos.archivado` y tabla `catalogo_quitados` (lo borrado o fusionado desde Ajustes).
 - v3 → v4 (06/11/2026): tabla `ia_config` (una fila): clave y modelo de la IA puestos desde la web. La clave nunca sale por la API (ni en `/api/datos` ni en `/api/exportar`), pero sí está en las copias de seguridad de la base de datos.
 
-`abrir()` mira `PRAGMA user_version`: 0 sin tablas → crea y siembra desde `seed/`; si es más antigua que la actual, **primero hace una copia completa** (`VACUUM INTO`) en la carpeta de copias como `lab-antes-vX-a-vY-<fecha>.db` (fuera de la rotación: no se borra sola) y después migra paso a paso (v0 → v4 directo, v1 → v2 → v3 → v4…).
+`abrir()` mira `PRAGMA user_version`: 0 sin tablas → crea y siembra desde `seed/`; si es más antigua que la actual, **primero hace una copia completa** (`VACUUM INTO`) en la carpeta de copias como `lab-antes-vX-a-vY-<fecha>.db` (fuera de la rotación: no se borra sola) y después migra paso a paso (v0 → v5 directo, v1 → v2 → … → v5).

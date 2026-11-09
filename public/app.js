@@ -9,7 +9,7 @@ const MUCHOS = 99;
 const TEMAS = {auto: 'Tema: automático', claro: 'Tema: claro', noche: 'Tema: noche'};
 
 const D = {componentes: [], tipos: {}, proyectos: [], categorias: [], funciones: [], dificultades: [], ubicaciones: [], ajustes: {}};
-const ui = {cat: '', ubic: '', revisar: false, proFiltro: 'ya', sinComprobar: false};
+const ui = {cat: '', ubic: '', revisar: false, proFiltro: 'ya', sinComprobar: false, ajTipos: 'todos', ajBuscar: ''};
 const $ = (s) => document.querySelector(s);
 const app = $('#app');
 const q = $('#q');
@@ -53,12 +53,21 @@ const fotoUrl = (c) => `fotos/${encodeURIComponent(c.foto)}`;
 const dibujo = (tipo) => (tipo ? `<img class="ref" src="img/tipos/${esc(tipo)}.svg" alt="" loading="lazy" onerror="this.remove()">` : '');
 const vacio = (html) => `<div class="vacio">${html}</div>`;
 
-function toast(msg, mal = false) {
+// aviso abajo; con «accion» ({texto, fn}) lleva un botón (p. ej. «Deshacer») y dura más
+function toast(msg, mal = false, accion = null) {
   const t = $('#toast');
   t.textContent = msg;
-  t.className = `show ${mal ? 'mal' : ''}`;
+  if (accion) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'toast-accion';
+    b.textContent = accion.texto;
+    b.addEventListener('click', () => { t.className = ''; accion.fn(); }, {once: true});
+    t.append(' ', b);
+  }
+  t.className = `show ${mal ? 'mal' : ''} ${accion ? 'con-accion' : ''}`;
   clearTimeout(toast.t);
-  toast.t = setTimeout(() => (t.className = ''), 2600);
+  toast.t = setTimeout(() => (t.className = ''), accion ? 8000 : 2600);
 }
 
 async function api(method, url, body, headers = {}) {
@@ -198,7 +207,7 @@ function vComponente(id) {
         ['Cantidad', stepper(c, true)],
         ['Sitio', esc(c.ubicacion || '—')],
         ['Tensión', esc(c.tipo ? voltajeDe(f) : '')],
-        ['Tipo', c.tipo ? `<a href="#/g/${esc(c.tipo)}">${esc(f.nombre)}</a>` : 'Sin tipo'],
+        ['Tipo', c.tipo ? `<a href="#/g/${esc(c.tipo)}">${esc(f.nombre)}</a>${f.archivado ? ' <span class="gris">(archivado)</span>' : ''}` : 'Sin tipo'],
         ...list(c.datos).map(([k, v]) => [esc(k), esc(v)]),
       ])}
       <div class="hoja-cuerpo">
@@ -209,6 +218,7 @@ function vComponente(id) {
             <label class="btn">${c.foto ? 'Cambiar foto' : 'Añadir foto'}<input type="file" accept="image/*" id="foto" hidden></label>
             ${c.foto ? '<button class="btn" id="quitar-foto">Quitar foto</button>' : ''}
             <a class="btn" href="#/editar/${c.id}">Editar</a>
+            <button class="btn peligro" id="borrar" type="button">Borrar</button>
           </div>
           ${c.notas ? `<div><h3>Notas</h3><p class="notas">${esc(c.notas)}</p></div>` : ''}
           <p class="meta">Actualizado ${esc(c.actualizado)}</p>
@@ -220,7 +230,7 @@ function vComponente(id) {
 
 function opcionesTipo(sel, nuevo = 'Nuevo tipo…') {
   return `<option value="">Sin tipo</option>` + Object.keys(CATS).map((cat) => {
-    const ts = Object.entries(D.tipos).filter(([, t]) => t.categoria === cat).sort((a, b) => a[1].nombre.localeCompare(b[1].nombre, 'es'));
+    const ts = Object.entries(D.tipos).filter(([k, t]) => t.categoria === cat && (!t.archivado || k === sel)).sort((a, b) => a[1].nombre.localeCompare(b[1].nombre, 'es'));
     return ts.length ? `<optgroup label="${CATS[cat]}">${ts.map(([k, t]) => `<option value="${esc(k)}" ${k === sel ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</optgroup>` : '';
   }).join('') + `<option value="__nuevo" ${sel === '__nuevo' ? 'selected' : ''}>${esc(nuevo)}</option>`;
 }
@@ -277,7 +287,7 @@ async function guardarForm(form, id) {
 
 function vGlosario() {
   const query = q.value.trim();
-  let tipos = Object.entries(D.tipos).map(([k, f]) => ({k, ...f}));
+  let tipos = Object.entries(D.tipos).map(([k, f]) => ({k, ...f})).filter((t) => !t.archivado);
   if (query) tipos = tipos.filter((t) => matches([t.k, t.nombre, t.resumen, ...list(t.alias), list(t.interfaz).join(' ')].join(' '), query));
   // filtro «Sin comprobar»: las fichas que escribió la IA y nadie ha revisado (solo aparece si hay alguna)
   const sinComprobar = Object.values(D.tipos).filter((t) => t.revisado === 0).length;
@@ -306,12 +316,14 @@ function vTipo(tipo) {
     <article class="hoja">
       ${cabecera(esc(f.nombre), CATS[f.categoria], f.resumen)}
       ${f.revisado === 0 ? avisoIA(tipo, true) : ''}
+      ${f.archivado ? `<p class="ia-aviso">Archivado: no sale en el glosario ni al elegir tipo. <button class="btn" data-tipo-archivar="${esc(tipo)}" data-v="0">Recuperar</button></p>` : ''}
       ${specs([['Tienes', stockText(tipo)], ['Tensión', esc(voltajeDe(f))], ['También', esc(list(f.alias).join(', '))]])}
       <div class="hoja-cuerpo">
         <div>${tablaPines(f) || '<p class="gris">Sin pines.</p>'}${datos}</div>
         <aside class="lateral">${f.origen === 'ia' ? '' : dibujo(tipo)}
           <div><h3>Los que tienes</h3>${cs.length ? cs.map(filaComp).join('') : '<p class="gris">Ninguno.</p>'}</div>
           <a class="btn" href="#/nuevo?tipo=${esc(tipo)}">Añadir uno de este tipo</a>
+          <a class="ia-atajo sin-margen" href="#/ajustes/tipos?t=${esc(tipo)}">Archivar, fusionar o borrar este tipo →</a>
         </aside>
       </div>
     </article>
@@ -719,6 +731,216 @@ async function aplicarIA(form) {
   location.hash = `#/c/${r.componente.id}`;
 }
 
+// ---------- Ajustes (fase B): IA, categorías, tipos, sitios, datos y tema ----------
+const plural = (n, uno, varios = `${uno}s`) => `${n} ${n === 1 ? uno : varios}`;
+const SECCIONES = {ia: 'IA', categorias: 'Categorías', tipos: 'Tipos', sitios: 'Sitios', datos: 'Datos'};
+
+function vAjustes(sec) {
+  if (sec && SECCIONES[sec]) {
+    const id = sec === 'ia' ? 'ia-ajustes' : 'aj-zona';
+    return `<a class="back" href="#/ajustes">← Ajustes</a><article class="hoja" id="${id}" data-sec="${sec}"><p class="gris pad">Cargando…</p></article>`;
+  }
+  const tipos = Object.values(D.tipos), archivados = tipos.filter((t) => t.archivado).length;
+  const fila = (href, nombre, sub) => `<div class="fila"><a class="fila-main" href="${href}"><div><div class="nombre">${nombre}</div>
+    <div class="sub">${sub}</div></div></a><span class="gris">→</span></div>`;
+  return `<article class="hoja">${cabecera('Ajustes', '', 'Todo lo que se configura de la app. Lo que cambies aquí se ve al momento en el inventario y el glosario.')}
+    <div class="pad aj-menu">
+      ${fila('#/ajustes/ia', 'IA', D.ia?.activa ? `Conectada · ${esc(nombreModelo(D.ia.modelo))} · clave ${esc(D.ia.clave)}` : '<span class="mal">Sin clave</span>')}
+      ${fila('#/ajustes/categorias', 'Categorías', `${plural(D.categorias.length, 'categoría')} · renombrar, ordenar, añadir, borrar`)}
+      ${fila('#/ajustes/tipos', 'Tipos', `${plural(tipos.length - archivados, 'tipo')}${archivados ? ` · ${archivados} archivado${archivados === 1 ? '' : 's'}` : ''} · archivar, fusionar, borrar`)}
+      ${fila('#/ajustes/sitios', 'Sitios', `${plural(ubicaciones().length, 'sitio')} · renombrar, juntar, borrar`)}
+      ${fila('#/ajustes/datos', 'Datos', 'Copias de seguridad y exportar')}
+      <div class="fila"><div class="fila-main"><div><div class="nombre">Tema</div><div class="sub">Claro de día, grafito de noche o según el sistema</div></div></div>
+        <div class="cats">${Object.entries({auto: 'Automático', claro: 'Claro', noche: 'Noche'}).map(([k, v]) =>
+          `<button class="f ${(D.ajustes.tema || 'auto') === k ? 'on' : ''}" data-tema="${k}">${v}</button>`).join('')}</div></div>
+    </div></article>`;
+}
+
+// carga y pinta el apartado abierto (los datos vienen siempre del servidor: lo que se ve es lo que hay)
+async function ajCargar() {
+  const zona = $('#aj-zona');
+  if (!zona) return;
+  const sec = zona.dataset.sec;
+  try {
+    if (sec === 'categorias') zona.innerHTML = ajCategorias(await api('GET', 'api/categorias'));
+    if (sec === 'tipos') zona.innerHTML = ajTipos(await api('GET', 'api/tipos'));
+    if (sec === 'sitios') zona.innerHTML = ajSitios(await api('GET', 'api/ubicaciones'));
+    if (sec === 'datos') zona.innerHTML = ajDatos(await api('GET', 'api/ajustes/resumen'));
+  } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; }
+}
+// tras un cambio en el catálogo: recarga los datos de toda la app y el apartado
+async function ajRefrescar(msg) {
+  await cargar();
+  contadores();
+  await ajCargar();
+  if (msg) toast(msg);
+}
+
+function ajCategorias(cats) {
+  return `${cabecera('Categorías', '', 'Renombra escribiendo encima, ordénalas con las flechas o bórralas. «Otros» no se borra: es donde va lo que no tiene sitio.')}
+    <div class="pad aj-lista">${cats.map((c, i) => `
+      <div class="aj-fila" data-cat="${esc(c.id)}">
+        <input class="aj-nombre" data-cat-nombre="${esc(c.id)}" value="${esc(c.nombre)}" maxlength="60" aria-label="Nombre de la categoría">
+        <span class="sub">${plural(c.tipos, 'tipo')}</span>
+        <span class="aj-botones">
+          <button class="btn mini" data-cat-mover="${esc(c.id)}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Subir ${esc(c.nombre)}">↑</button>
+          <button class="btn mini" data-cat-mover="${esc(c.id)}" data-dir="1" ${i === cats.length - 1 ? 'disabled' : ''} aria-label="Bajar ${esc(c.nombre)}">↓</button>
+          <button class="btn mini peligro" data-cat-borrar="${esc(c.id)}" data-tipos="${c.tipos}" ${c.id === 'otro' ? 'disabled title="Es la categoría de reserva"' : ''}>Borrar</button>
+        </span>
+        <div class="aj-panel" hidden></div>
+      </div>`).join('')}</div>
+    <form id="aj-cat-nueva" class="form" autocomplete="off">
+      <label>Nueva categoría<input name="nombre" maxlength="60" required placeholder="Relés y potencia"></label>
+      <div class="acciones"><button class="btn prim" type="submit">Añadir</button></div>
+    </form>`;
+}
+
+const ORIGEN_TXT = {seed: 'catálogo base', ia: 'IA', usuario: 'tuyo'};
+function ajTipos(tipos) {
+  const f = ui.ajTipos || 'todos', query = norm(ui.ajBuscar || '');
+  const filtros = {
+    todos: ['Todos', (t) => !t.archivado], sin: ['Sin comprobar', (t) => !t.archivado && t.revisado === 0],
+    ia: ['De la IA', (t) => !t.archivado && t.origen === 'ia'], vacios: ['Sin piezas', (t) => !t.archivado && !t.piezas],
+    archivados: ['Archivados', (t) => t.archivado === 1],
+  };
+  const lista = tipos.filter(filtros[f][1]).filter((t) => !query || norm(`${t.nombre} ${t.id}`).includes(query));
+  const destinos = (sin) => Object.keys(CATS).map((cat) => {
+    const ts = tipos.filter((t) => !t.archivado && t.categoria === cat && t.id !== sin);
+    return ts.length ? `<optgroup label="${esc(CATS[cat])}">${ts.map((t) => `<option value="${esc(t.id)}">${esc(t.nombre)}</option>`).join('')}</optgroup>` : '';
+  }).join('');
+  return `${cabecera('Tipos', '', 'Archivar lo oculta sin borrar nada. Fusionar pasa las piezas y los proyectos a otro tipo. Borrar solo se puede si nada lo usa.')}
+    <div class="filtros pad"><div class="cats">${Object.entries(filtros).map(([k, [nombre, fn]]) =>
+      `<button class="f ${f === k ? 'on' : ''}" data-aj-tipos="${k}">${nombre}<span class="n">${tipos.filter(fn).length}</span></button>`).join('')}</div>
+      <input id="aj-buscar" class="aj-buscar" type="search" placeholder="Buscar tipo" value="${esc(ui.ajBuscar || '')}" autocomplete="off"></div>
+    <div class="pad aj-lista">${lista.length ? lista.map((t) => {
+      const usos = [t.piezas ? plural(t.piezas, 'pieza') : '', t.proyectos ? plural(t.proyectos, 'proyecto') : ''].filter(Boolean).join(' · ');
+      return `<div class="aj-fila aj-tipo" data-tipo="${esc(t.id)}">
+        <div><a class="nombre" href="#/g/${esc(t.id)}">${esc(t.nombre)}</a>${t.revisado === 0 ? ' <span class="aviso">· sin comprobar</span>' : ''}
+          <div class="sub">${esc(CATS[t.categoria] || t.categoria)} · ${usos || 'sin uso'} · ${esc(ORIGEN_TXT[t.origen] || t.origen)}</div></div>
+        <span class="aj-botones">
+          <button class="btn mini" data-tipo-archivar="${esc(t.id)}" data-v="${t.archivado ? 0 : 1}">${t.archivado ? 'Recuperar' : 'Archivar'}</button>
+          ${t.archivado ? '' : `<button class="btn mini" data-tipo-fusionar="${esc(t.id)}">Fusionar…</button>`}
+          <button class="btn mini peligro" data-tipo-borrar="${esc(t.id)}" ${usos ? `disabled title="No se puede borrar: lo usan ${esc(usos)}. Archívalo o fúndelo."` : ''}>Borrar</button>
+        </span>
+        <div class="aj-panel" hidden>${t.archivado ? '' : `<label>Sus piezas y proyectos pasan a
+          <select data-fusion-destino="${esc(t.id)}"><option value="">Elige el tipo que se queda…</option>${destinos(t.id)}</select></label>
+          <div class="acciones"><button class="btn prim mini" data-tipo-fusionar-ok="${esc(t.id)}">Fusionar</button>
+          <button class="btn mini" data-aj-cerrar>Cancelar</button></div>`}</div>
+      </div>`;
+    }).join('') : vacio('Nada en este filtro.')}</div>`;
+}
+
+function ajSitios(sitios) {
+  return `${cabecera('Sitios', '', 'Donde guardas las piezas. Si renombras uno con el nombre de otro, se juntan. Al borrar uno, sus piezas se quedan «sin sitio».')}
+    <div class="pad aj-lista">${sitios.length ? sitios.map((s) => `
+      <div class="aj-fila">
+        <input class="aj-nombre" data-sitio-nombre="${s.id}" value="${esc(s.nombre)}" maxlength="120" aria-label="Nombre del sitio">
+        <span class="sub">${plural(s.piezas, 'pieza')}</span>
+        <span class="aj-botones"><button class="btn mini peligro" data-sitio-borrar="${s.id}" data-piezas="${s.piezas}" data-nombre="${esc(s.nombre)}">Borrar</button></span>
+      </div>`).join('') : vacio('Aún no hay sitios: se crean al poner «Sitio» en una pieza.')}</div>`;
+}
+
+function ajDatos(r) {
+  const u = r.copias.ultima;
+  const fecha = (iso) => new Date(iso).toLocaleString('es-ES', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+  return `${cabecera('Datos', '', 'Copias de seguridad de la base de datos (con las fotos nuevas) y exportación.')}
+    ${specs([['Piezas', r.piezas], ['Tipos', `${r.tipos}${r.archivados ? ` (+${r.archivados} archivado${r.archivados === 1 ? '' : 's'})` : ''}`], ['Categorías', r.categorias],
+      ['Sitios', r.sitios], ['Proyectos', r.proyectos], ['Modelo de datos', `v${r.version}`]])}
+    <section class="pad ia-bloque">
+      <h3>Copias de seguridad</h3>
+      <p>${u ? `Última: ${esc(fecha(u.fecha))} · ${Math.round(u.bytes / 1024)} KB` : '<span class="mal">Aún no hay ninguna</span>'}</p>
+      <p class="ayuda">Se hace una al día sola y se guardan ${r.copias.maximo} (${r.copias.guardadas} ahora). Carpeta: ${esc(r.copias.carpeta)}</p>
+      <div class="acciones"><button class="btn prim" type="button" id="aj-copia">Hacer copia ahora</button>
+        <a class="btn" href="api/exportar" download>Exportar (JSON)</a></div>
+    </section>`;
+}
+
+async function clicAjustes(t) {
+  const d = t.dataset, fila = t.closest('.aj-fila'), panel = fila?.querySelector('.aj-panel');
+  if (d.tema) { await api('PUT', 'api/ajustes/tema', {valor: d.tema}); D.ajustes.tema = d.tema; aplicarTema(); route(); return true; }
+  if ('ajCerrar' in d) { t.closest('.aj-panel').hidden = true; return true; }
+  if (d.ajTipos) { ui.ajTipos = d.ajTipos; await ajCargar(); return true; }
+  if (t.id === 'aj-copia') { t.disabled = true; const r = await api('POST', 'api/copias'); await ajCargar(); toast(`Copia hecha: ${r.nombre}`); return true; }
+  if (d.catMover) {
+    const ids = [...document.querySelectorAll('[data-cat]')].map((e) => e.dataset.cat), i = ids.indexOf(d.catMover), j = i + Number(d.dir);
+    if (j < 0 || j >= ids.length) return true;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    await api('PUT', 'api/categorias/orden', {ids});
+    await ajRefrescar();
+    return true;
+  }
+  if (d.catBorrar) {
+    const n = Number(d.tipos), nombre = fila.querySelector('.aj-nombre').value;
+    if (!n) {
+      if (!confirm(`¿Borrar la categoría «${nombre}»?`)) return true;
+      await api('DELETE', `api/categorias/${d.catBorrar}`);
+      await ajRefrescar(`Categoría «${nombre}» borrada`);
+      return true;
+    }
+    panel.innerHTML = `<label>${n === 1 ? 'Su tipo pasa' : `Sus ${n} tipos pasan`} a
+        <select data-cat-destino>${D.categorias.filter((c) => c.id !== d.catBorrar).map((c) => `<option value="${esc(c.id)}" ${c.id === 'otro' ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</select></label>
+      <div class="acciones"><button class="btn prim mini peligro" data-cat-borrar-ok="${esc(d.catBorrar)}">Mover y borrar «${esc(nombre)}»</button>
+        <button class="btn mini" data-aj-cerrar>Cancelar</button></div>`;
+    panel.hidden = false;
+    return true;
+  }
+  if (d.catBorrarOk) {
+    const destino = panel.querySelector('[data-cat-destino]').value;
+    const r = await api('DELETE', `api/categorias/${d.catBorrarOk}?destino=${encodeURIComponent(destino)}`);
+    await ajRefrescar(`Borrada; ${plural(r.movidos, 'tipo')} a «${CATS[destino] || destino}»`);
+    return true;
+  }
+  if (d.tipoArchivar) {
+    const archivar = d.v === '1';
+    await api('PATCH', `api/tipos/${d.tipoArchivar}`, {archivado: archivar});
+    if ($('#aj-zona')) await ajRefrescar(archivar ? 'Archivado: ya no sale en el glosario' : 'Recuperado');
+    else { await cargar(); contadores(); route(); toast(archivar ? 'Archivado' : 'Recuperado'); }
+    return true;
+  }
+  if (d.tipoFusionar) { panel.hidden = !panel.hidden; return true; }
+  if (d.tipoFusionarOk) {
+    const destino = panel.querySelector('[data-fusion-destino]').value;
+    if (!destino) { toast('Elige el tipo que se queda', true); return true; }
+    const a = D.tipos[d.tipoFusionarOk]?.nombre, b = D.tipos[destino]?.nombre;
+    if (!confirm(`¿Fusionar «${a}» en «${b}»?\n\nSus piezas y proyectos pasan a «${b}» y «${a}» desaparece. No se puede deshacer.`)) return true;
+    const r = await api('POST', `api/tipos/${d.tipoFusionarOk}/fusionar`, {destino});
+    await ajRefrescar(`Fusionado: ${plural(r.piezas, 'pieza')} ${r.piezas === 1 ? 'pasa' : 'pasan'} a «${b}»`);
+    return true;
+  }
+  if (d.tipoBorrar) {
+    const nombre = D.tipos[d.tipoBorrar]?.nombre;
+    if (!confirm(`¿Borrar el tipo «${nombre}»? No se puede deshacer.`)) return true;
+    await api('DELETE', `api/tipos/${d.tipoBorrar}`);
+    await ajRefrescar(`Tipo «${nombre}» borrado`);
+    return true;
+  }
+  if (d.sitioBorrar) {
+    const n = Number(d.piezas);
+    if (!confirm(n ? `¿Borrar «${d.nombre}»? Sus ${plural(n, 'pieza')} se quedan sin sitio.` : `¿Borrar «${d.nombre}»?`)) return true;
+    await api('DELETE', `api/ubicaciones/${d.sitioBorrar}`);
+    await ajRefrescar('Sitio borrado');
+    return true;
+  }
+  return false;
+}
+
+// renombrar categoría o sitio al salir del campo; si el sitio ya existe, se juntan (preguntando antes)
+async function cambioAjustes(input) {
+  const nuevo = input.value.trim();
+  if (!nuevo || nuevo === input.defaultValue) { input.value = input.defaultValue; return; }
+  try {
+    if (input.dataset.catNombre) {
+      await api('PATCH', `api/categorias/${input.dataset.catNombre}`, {nombre: nuevo});
+      await ajRefrescar('Guardado');
+    } else {
+      const otro = [...document.querySelectorAll('[data-sitio-nombre]')].find((x) => x !== input && x.defaultValue.toLowerCase() === nuevo.toLowerCase());
+      if (otro && !confirm(`Ya hay un sitio «${otro.defaultValue}». ¿Juntar los dos? Sus piezas pasan a ese.`)) { input.value = input.defaultValue; return; }
+      const r = await api('PATCH', `api/ubicaciones/${input.dataset.sitioNombre}`, {nombre: nuevo});
+      await ajRefrescar(r.fusionado ? `Juntados: ${plural(r.piezas, 'pieza')} en «${r.nombre}»` : 'Guardado');
+    }
+  } catch (err) { input.value = input.defaultValue; toast(err.message, true); }
+}
+
 // ---------- router ----------
 function route() {
   const [ruta, qs = ''] = location.hash.replace(/^#\/?/, '').split('?');
@@ -729,14 +951,21 @@ function route() {
     proyectos: ['proyectos', vProyectos], p: ['proyectos', () => vProyecto(arg)],
     glosario: ['glosario', vGlosario], g: ['glosario', () => vTipo(arg)],
     ia: ['inventario', () => vIA(arg)],
+    ajustes: ['ajustes', () => vAjustes(arg)],
   };
   const [tab, fn] = map[v] || map[''];
   document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.v === tab));
-  $('#fab').hidden = v === 'nuevo' || v === 'editar' || v === 'ia';
+  $('#fab').hidden = v === 'nuevo' || v === 'editar' || v === 'ia' || v === 'ajustes';
   cerrarMenuFab();
   app.innerHTML = fn();
   document.title = `[AMS] lab · ${tab}`;
   if (v === 'ia') { if (arg === 'ajustes') iaAjustes(); else if (arg) iaTarea(arg); else { iaAbiertas(); llenarModelosAlta(); } }
+  if (v === 'ajustes') {
+    const t = new URLSearchParams(qs).get('t');
+    if (arg === 'tipos' && t) { ui.ajBuscar = D.tipos[t]?.nombre || t; ui.ajTipos = D.tipos[t]?.archivado ? 'archivados' : 'todos'; }
+    if (arg === 'ia') iaAjustes(); else if (arg) ajCargar();
+    else if (!MODELOS_IA && D.ia?.activa) modelosIA().then(() => { if (location.hash === '#/ajustes') route(); }).catch(() => {});
+  }
   if (v === 'nuevo') {
     const t = new URLSearchParams(qs).get('tipo');
     if (t && D.tipos[t]) $('#tipo').value = t;
@@ -747,16 +976,17 @@ function route() {
 function contadores() {
   $('#n-inv').textContent = D.componentes.length || '';
   $('#n-pro').textContent = D.proyectos.filter((p) => !faltas(p).length).length || '';
-  $('#n-glo').textContent = Object.keys(D.tipos).length || '';
+  $('#n-glo').textContent = Object.values(D.tipos).filter((t) => !t.archivado).length || '';
 }
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo]');
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia');
   if (!t) return;
   try {
     if (t.id === 'ia-cambiar-clave') { $('#form-ia-config').hidden = false; t.closest('.acciones').hidden = true; $('#form-ia-config [name=clave]').focus(); return; }
     if (t.dataset.glo) { ui.sinComprobar = t.dataset.glo === 'sin'; route(); return; }
+    if (await clicAjustes(t)) return;
     if (t.dataset.iaVista) { verVistaIA(t.dataset.iaVista); return; }
     if (t.id === 'ia-guardar-previa') { verVistaIA('editar'); $('#form-ia-ok').requestSubmit(); return; }
     if (t.id === 'ia-responder') { try { await responderIA(t); } catch (err) { t.disabled = false; toast(err.message, true); } return; } // sin redibujar: no se pierde lo editado
@@ -789,13 +1019,19 @@ app.addEventListener('click', async (e) => {
       if (!confirm('¿Quitar la foto?')) return;
       guardarLocal(await api('DELETE', `api/componentes/${location.hash.split('/')[2]}/foto`));
     } else if (t.id === 'borrar') {
-      const id = location.hash.split('/')[2];
-      if (!confirm(`¿Borrar «${comp(id)?.nombre}» del inventario?`)) return;
-      await api('DELETE', `api/componentes/${id}`);
+      const id = location.hash.split('/')[2], nombre = comp(id)?.nombre || 'la pieza';
+      const r = await api('DELETE', `api/componentes/${id}`);
       D.componentes = D.componentes.filter((c) => c.id !== Number(id));
       contadores();
-      toast('Borrada');
       location.hash = '#/';
+      toast(`Borrada «${nombre}»`, false, {texto: 'Deshacer', fn: async () => {
+        try {
+          const x = await api('POST', 'api/componentes/restaurar', {token: r.deshacer});
+          await cargar(); contadores();
+          location.hash = `#/c/${x.id}`;
+          toast('Recuperada');
+        } catch (err) { toast(err.message, true); }
+      }});
       return;
     }
     route();
@@ -805,6 +1041,7 @@ app.addEventListener('change', async (e) => {
   const t = e.target;
   if (t.id === 'ubic') { ui.ubic = t.value; route(); }
   if (t.name === 'ia-modelo') cambiarModeloIA(t);
+  if (t.dataset.catNombre || t.dataset.sitioNombre) cambioAjustes(t);
   if (t.id === 'tipo') $('#nuevo-tipo').hidden = t.value !== '__nuevo';
   if (t.name === 'varios') { const n = t.form.querySelector('[name=cantidad]'); n.disabled = t.checked; if (!t.checked && !n.value) n.value = 1; }
   if (t.id === 'foto' && t.files[0]) {
@@ -821,6 +1058,11 @@ app.addEventListener('submit', async (e) => {
   try {
     if (e.target.id === 'form-ia') await enviarIA(e.target);
     else if (e.target.id === 'form-ia-config') await guardarAjustesIA(e.target);
+    else if (e.target.id === 'aj-cat-nueva') {
+      const nombre = new FormData(e.target).get('nombre');
+      await api('POST', 'api/categorias', {nombre});
+      await ajRefrescar(`Categoría «${nombre}» añadida`);
+    }
     else if (e.target.id === 'form-ia-ok') await aplicarIA(e.target);
     else await guardarForm(e.target, location.hash.startsWith('#/editar/') ? location.hash.split('/')[2] : null);
   } catch (err) { toast(err.message, true); b.disabled = false; b.textContent = b.dataset.texto; }
@@ -854,6 +1096,13 @@ for (const id of ['fab-camara', 'fab-galeria']) $(`#${id}`).addEventListener('ch
 });
 
 // buscar: desde una ficha salta a la lista de su pestaña
+app.addEventListener('input', (e) => {
+  if (e.target.id !== 'aj-buscar') return;
+  ui.ajBuscar = e.target.value;
+  const qn = norm(ui.ajBuscar);
+  document.querySelectorAll('.aj-tipo').forEach((r) => (r.hidden = !!qn && !norm(r.querySelector('.nombre').textContent + ' ' + r.dataset.tipo).includes(qn)));
+});
+
 q.addEventListener('input', () => {
   const v = location.hash.replace(/^#\/?/, '').split(/[/?]/)[0];
   const lista = {c: '#/', g: '#/glosario', p: '#/proyectos', nuevo: '#/', editar: '#/', ia: '#/'}[v];
