@@ -9,7 +9,7 @@ const MUCHOS = 99;
 const TEMAS = {auto: 'Tema: automático', claro: 'Tema: claro', noche: 'Tema: noche'};
 
 const D = {componentes: [], tipos: {}, proyectos: [], categorias: [], funciones: [], dificultades: [], ubicaciones: [], ajustes: {}};
-const ui = {cat: '', ubic: '', revisar: false, proFiltro: 'ya'};
+const ui = {cat: '', ubic: '', revisar: false, proFiltro: 'ya', sinComprobar: false};
 const $ = (s) => document.querySelector(s);
 const app = $('#app');
 const q = $('#q');
@@ -279,11 +279,18 @@ function vGlosario() {
   const query = q.value.trim();
   let tipos = Object.entries(D.tipos).map(([k, f]) => ({k, ...f}));
   if (query) tipos = tipos.filter((t) => matches([t.k, t.nombre, t.resumen, ...list(t.alias), list(t.interfaz).join(' ')].join(' '), query));
-  if (!tipos.length) return vacio('Nada coincide.');
-  return Object.keys(CATS).map((cat) => {
+  // filtro «Sin comprobar»: las fichas que escribió la IA y nadie ha revisado (solo aparece si hay alguna)
+  const sinComprobar = Object.values(D.tipos).filter((t) => t.revisado === 0).length;
+  if (!sinComprobar) ui.sinComprobar = false;
+  if (ui.sinComprobar) tipos = tipos.filter((t) => t.revisado === 0);
+  const filtros = sinComprobar ? `<div class="filtros"><div class="cats">
+    <button class="f ${ui.sinComprobar ? '' : 'on'}" data-glo="todo">Todo<span class="n">${Object.keys(D.tipos).length}</span></button>
+    <button class="f ${ui.sinComprobar ? 'on' : ''}" data-glo="sin">Sin comprobar<span class="n">${sinComprobar}</span></button></div></div>` : '';
+  if (!tipos.length) return filtros + vacio('Nada coincide.');
+  return filtros + Object.keys(CATS).map((cat) => {
     const ts = tipos.filter((t) => (t.categoria || 'otro') === cat).sort(byName);
     return ts.length ? `<section class="grupo"><h3 class="grupo-t">${CATS[cat]}<span class="n">${ts.length}</span></h3>${ts.map((t) => `
-      <div class="fila"><a class="fila-main" href="#/g/${esc(t.k)}"><div><div class="nombre">${esc(t.nombre)}</div>
+      <div class="fila"><a class="fila-main" href="#/g/${esc(t.k)}"><div><div class="nombre">${esc(t.nombre)}${t.revisado === 0 ? ' <span class="aviso">· sin comprobar</span>' : ''}</div>
         <div class="sub">${esc(t.resumen || '')}</div></div></a>
         <div class="der"><div class="num ${stock(t.k) ? '' : 'gris'}">${stockText(t.k)}</div><div class="sub">${esc(voltajeDe(t))}</div></div></div>`).join('')}</section>` : '';
   }).join('');
@@ -349,6 +356,41 @@ function vProyecto(id) {
 }
 
 // ---------- IA: «Añadir con IA» (el modelo propone, el usuario confirma) ----------
+// fecha de SQLite («2026-11-09 17:20:02», en UTC) → milisegundos
+const fechaSql = (s) => Date.parse(String(s || '').replace(' ', 'T') + 'Z');
+
+// espera mientras el modelo piensa: línea de progreso, qué está pasando, segundos y el esqueleto de la ficha
+// (no hay progreso real que medir: los textos dicen lo que se sabe y dan una salida si tarda mucho)
+function vistaEspera(foto, modelo) {
+  return `${cabecera('Analizando…', '', '')}
+    <div class="ia-progreso" role="progressbar" aria-label="El modelo está pensando"><span></span></div>
+    <p class="ia-paso pad" role="status"><span id="ia-paso">Enviando al modelo…</span> · <span id="ia-seg" class="num">0 s</span>
+      ${modelo ? `<span class="gris"> · ${esc(nombreModelo(modelo))}</span>` : ''}</p>
+    <div class="ia-espera pad">
+      <div class="ia-esqueleto" aria-hidden="true">
+        <div class="esq esq-titulo"></div><div class="esq esq-linea"></div>
+        <div class="esq-specs"><div class="esq"></div><div class="esq"></div><div class="esq"></div><div class="esq"></div></div>
+        <div class="esq esq-fila"></div><div class="esq esq-fila"></div><div class="esq esq-fila"></div><div class="esq esq-fila corta"></div>
+      </div>
+      ${foto}
+    </div>`;
+}
+let ticContador = null;
+function arrancarContador(zona) {
+  clearInterval(ticContador);
+  const tic = () => {
+    const seg = $('#ia-seg'), paso = $('#ia-paso');
+    if (!seg || !zona.isConnected || !zona.dataset.espera) { clearInterval(ticContador); return; }
+    const s = Math.max(0, Math.floor((Date.now() - Number(zona.dataset.inicio)) / 1000));
+    seg.textContent = `${s} s`;
+    paso.textContent = s < 4 ? 'Enviando al modelo…'
+      : s < 30 ? 'El modelo está mirando la pieza…'
+      : s < 90 ? 'Sigue pensando: algunos modelos tardan hasta un minuto…'
+      : 'Está tardando mucho. Puedes salir: la propuesta te esperará en «Añadir con IA».';
+  };
+  tic();
+  ticContador = setInterval(tic, 1000);
+}
 const avisoIA = (tipo, conBoton = false) => `<p class="ia-aviso">Ficha generada por IA, sin comprobar: revisa la tensión y los pines antes de conectar nada.
   ${conBoton ? `<button class="btn" id="revisada" data-tipo="${esc(tipo)}">Marcar como revisada</button>` : ''}</p>`;
 const ESTADO_IA = {pendiente: 'Analizando…', propuesta: 'Propuesta por revisar', error: 'Error', aplicada: 'Guardada', descartada: 'Descartada'};
@@ -364,10 +406,12 @@ function vIA(id) {
   return `<a class="back" href="#/">← Inventario</a>
     <article class="hoja">
       ${cabecera('Añadir con IA', '', 'Haz una foto de la pieza (mejor si se lee la serigrafía) y añade lo que sepas. La IA propone el nombre, el tipo y la ficha; tú lo revisas antes de guardar.')}
-      <p class="ia-atajo">Modelo: ${esc(D.ia.modelo)} · clave ${esc(D.ia.clave)} · <a href="#/ia/ajustes">Configuración</a></p>
+      <p class="ia-atajo">Modelo de siempre: <span id="ia-modelo-siempre">${esc(nombreModelo(D.ia.modelo))}</span> · <a href="#/ia/ajustes">Cambiar modelo o clave</a></p>
       <form id="form-ia" class="form" autocomplete="off">
         <label>Foto<input type="file" name="foto" accept="image/*"></label>
         <label>Lo que sepas (opcional)<textarea name="texto" rows="3" maxlength="1000" placeholder="Sensor de humedad del kit de Freenove, 3 pines"></textarea></label>
+        <label>Modelo para esta pieza<select name="modelo" id="ia-modelo-alta"><option value="">El de siempre (${esc(nombreModelo(D.ia.modelo))})</option></select>
+          <span class="ayuda">Por si una pieza difícil merece otro modelo. No cambia el de siempre.</span></label>
         <div class="acciones"><button class="btn prim" type="submit">Analizar</button></div>
       </form>
     </article>
@@ -376,44 +420,102 @@ function vIA(id) {
 
 // configuración: clave (nunca se vuelve a mostrar) y modelo, elegido de los que el catálogo de Go marca con fotos
 // y salida estructurada. Al guardar, el servidor valida el formato y hace una llamada mínima de prueba.
-const dolares = (n) => (n == null ? '?' : `${String(n).replace('.', ',')} $`);
+// coste en dólares con pocos decimales y coma
+const dolares = (n) => (n == null ? '?' : n < 0.0001 ? '<0,0001 $' : `${n < 0.01 ? n.toFixed(4) : n.toFixed(3)} $`.replace('.', ','));
+// lo que cuesta de verdad una pieza con cada modelo: la media de tus consultas, o una estimación si aún no hay
+// (≈ 6000 tokens de entrada —instrucciones, lista de tipos y foto— y 900 de salida)
+const costePieza = (m) => (m.coste_medio
+  ? `≈ ${dolares(m.coste_medio.dolares)} por pieza · media de tus ${m.coste_medio.consultas} consulta${m.coste_medio.consultas === 1 ? '' : 's'}`
+  : `≈ ${dolares(((m.precio.entrada ?? 0) * 6000 + (m.precio.salida ?? 0) * 900) / 1e6)} por pieza (estimado)`);
+let MODELOS_IA = null;
+// nombre legible de un modelo («Claude Haiku 5.5») si ya tenemos el catálogo; si no, su identificador
+const nombreModelo = (id) => MODELOS_IA?.find((m) => m.id === id)?.nombre || id || '';
+async function modelosIA(forzar = false) {
+  if (!MODELOS_IA || forzar) MODELOS_IA = await api('GET', 'api/ia/modelos');
+  return MODELOS_IA;
+}
+
 async function iaAjustes() {
   const zona = $('#ia-ajustes');
   if (!zona) return;
   let cfg, lista = [], fallo = '';
   try { cfg = await api('GET', 'api/ia/config'); } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; return; }
-  try { lista = await api('GET', 'api/ia/modelos'); } catch (err) { fallo = err.message; }
+  try { lista = await modelosIA(true); } catch (err) { fallo = err.message; }
   const origen = {web: 'guardada en la app', entorno: 'de la variable IA_CLAVE del servidor'}[cfg.origen_clave];
-  const fuera = cfg.modelo && !lista.some((m) => m.id === cfg.modelo);
-  zona.innerHTML = `${cabecera('Configuración de la IA', '', 'Proveedor: OpenCode Go. Solo se ofrecen los modelos que, según el catálogo de Go, entienden fotos y devuelven datos con formato fijo.')}
-    ${specs([['Clave', cfg.clave ? `${esc(cfg.clave)} (${esc(origen)})` : '<span class="mal">sin clave</span>'], ['Modelo', esc(cfg.modelo || '—')]])}
-    <form id="form-ia-config" class="form" autocomplete="off">
-      <label>${cfg.clave ? 'Cambiar la clave (déjalo vacío para mantener la actual)' : 'Clave de OpenCode Go'}
-        <input name="clave" type="password" autocomplete="off" spellcheck="false" minlength="16" maxlength="300" pattern="[!-~]{16,300}"
-          placeholder="Pega aquí la clave de tu suscripción a Go" ${cfg.clave ? '' : 'required'}>
-        <span class="ayuda">Se saca en la consola de OpenCode (suscripción Go). La app la guarda en su base de datos y no la vuelve a mostrar;
-          ojo: viaja en las copias de seguridad de la base de datos.</span></label>
-      <label>Modelo
-        ${lista.length ? `<select name="modelo">${lista.map((m) => `<option value="${esc(m.id)}" ${m.id === cfg.modelo ? 'selected' : ''} title="${esc(m.descripcion)}">
-          ${esc(m.nombre)} · ${dolares(m.precio.entrada)} / ${dolares(m.precio.salida)} por millón de tokens</option>`).join('')}</select>`
-          : `<span class="mal">${esc(fallo || 'No hay modelos disponibles')}</span>`}
-        ${fuera ? `<span class="aviso">El modelo actual («${esc(cfg.modelo)}») ya no está en el catálogo con fotos: elige otro.</span>` : ''}
-        <span class="ayuda">Precio de entrada / salida. Para clasificar fotos sobra con uno barato y rápido.</span></label>
-      <div class="acciones">
-        <button class="btn prim" type="submit" ${lista.length ? '' : 'disabled'}>Probar y guardar</button>
-        ${cfg.origen_clave === 'web' ? '<button class="btn peligro" type="button" id="ia-quitar">Quitar la clave</button>' : ''}
-      </div>
-    </form>`;
+  const fuera = cfg.modelo && lista.length && !lista.some((m) => m.id === cfg.modelo);
+  zona.innerHTML = `${cabecera('Configuración de la IA', '', 'Proveedor: OpenCode Go. Solo salen los modelos que entienden fotos y devuelven datos con formato fijo.')}
+    <section class="pad ia-bloque">
+      <h3>Modelo de siempre</h3>
+      <p class="ayuda">Toca otro para cambiarlo. Se comprueba al momento con tu clave: no hace falta volver a ponerla.</p>
+      ${lista.length ? `<div class="ia-modelos" role="radiogroup" aria-label="Modelo de siempre">${lista.map((m) => `
+        <label class="ia-modelo"><input type="radio" name="ia-modelo" value="${esc(m.id)}" ${m.id === cfg.modelo ? 'checked' : ''}>
+          <span><span class="nombre">${esc(m.nombre)}${m.recomendado ? '<span class="gris"> · recomendado</span>' : ''}</span>
+          <span class="sub">${esc(costePieza(m))}</span>
+          <span class="sub">${esc(m.descripcion)}</span></span></label>`).join('')}</div>`
+        : `<p class="mal">${esc(fallo || 'No hay modelos disponibles')}</p>`}
+      ${fuera ? `<p class="aviso">El modelo actual («${esc(cfg.modelo)}») ya no está en el catálogo con fotos: elige otro.</p>` : ''}
+      <p class="ayuda" id="ia-modelo-estado" role="status"></p>
+    </section>
+    <section class="pad ia-bloque">
+      <h3>Clave de OpenCode Go</h3>
+      <p>${cfg.clave ? `${esc(cfg.clave)} · ${esc(origen)}` : '<span class="mal">Sin clave: la IA no funciona hasta que pongas una.</span>'}</p>
+      ${cfg.clave ? '<div class="acciones"><button class="btn" type="button" id="ia-cambiar-clave">Cambiar clave</button></div>' : ''}
+      <form id="form-ia-config" class="form sin-pad" autocomplete="off" ${cfg.clave ? 'hidden' : ''}>
+        <label>${cfg.clave ? 'Clave nueva' : 'Clave'}
+          <input name="clave" type="password" autocomplete="off" spellcheck="false" minlength="16" maxlength="300" pattern="[!-~]{16,300}"
+            placeholder="Pega aquí la clave de tu suscripción a Go" required>
+          <span class="ayuda">Se saca en la consola de OpenCode (suscripción Go). La app la guarda en su base de datos y no la vuelve a mostrar;
+            ojo: viaja en las copias de seguridad de la base de datos.</span></label>
+        <div class="acciones">
+          <button class="btn prim" type="submit">Probar y guardar</button>
+          ${cfg.origen_clave === 'web' ? '<button class="btn peligro" type="button" id="ia-quitar">Quitar la clave</button>' : ''}
+        </div>
+      </form>
+    </section>`;
+}
+
+// cambiar el modelo de siempre con un toque: se comprueba con la clave guardada; si falla, vuelve al anterior
+async function cambiarModeloIA(radio) {
+  const estado = $('#ia-modelo-estado'), radios = [...document.querySelectorAll('input[name=ia-modelo]')];
+  const anterior = D.ia?.modelo;
+  radios.forEach((r) => (r.disabled = true));
+  estado.className = 'ayuda';
+  estado.textContent = 'Comprobando con OpenCode Go…';
+  try {
+    D.ia = await api('PUT', 'api/ia/config', {modelo: radio.value});
+    estado.textContent = `Listo: ${radio.closest('label').querySelector('.nombre').firstChild.textContent} es ahora el modelo de siempre.`;
+  } catch (err) {
+    estado.className = 'mal';
+    estado.textContent = err.message;
+    const r = radios.find((x) => x.value === anterior);
+    if (r) r.checked = true;
+  } finally { radios.forEach((r) => (r.disabled = false)); }
 }
 
 async function guardarAjustesIA(form) {
-  const fd = new FormData(form);
-  const clave = String(fd.get('clave') || '').trim();
-  if (clave && !/^[!-~]{16,300}$/.test(clave)) throw new Error('La clave no tiene buen formato (16–300 caracteres, sin espacios)');
+  const clave = String(new FormData(form).get('clave') || '').trim();
+  if (!/^[!-~]{16,300}$/.test(clave)) throw new Error('La clave no tiene buen formato (16–300 caracteres, sin espacios)');
   toast('Comprobando con OpenCode Go…');
-  D.ia = await api('PUT', 'api/ia/config', {clave: clave || undefined, modelo: fd.get('modelo') || undefined});
-  toast('Clave y modelo comprobados y guardados');
+  D.ia = await api('PUT', 'api/ia/config', {clave});
+  toast('Clave comprobada y guardada');
   location.hash = '#/ia';
+}
+
+// rellena el desplegable «Modelo para esta pieza» de la pantalla de alta
+async function llenarModelosAlta() {
+  const sel = $('#ia-modelo-alta');
+  if (!sel) return;
+  try {
+    const lista = await modelosIA();
+    const actual = lista.find((m) => m.id === D.ia?.modelo);
+    if (actual) {
+      sel.options[0].textContent = `El de siempre (${actual.nombre} · ${costePieza(actual)})`;
+      const a = $('#ia-modelo-siempre');
+      if (a) a.textContent = actual.nombre;
+    }
+    sel.insertAdjacentHTML('beforeend', lista.filter((m) => m.id !== D.ia?.modelo)
+      .map((m) => `<option value="${esc(m.id)}">${esc(m.nombre)} · ${esc(costePieza(m))}</option>`).join(''));
+  } catch {}
 }
 
 // lista de tareas abiertas (debajo del formulario): nada se pierde si cierras la pestaña mientras el modelo piensa
@@ -436,25 +538,41 @@ async function iaTarea(id) {
   try { t = await api('GET', `api/ia/tareas/${id}`); } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; return; }
   const foto = t.foto ? `<img class="foto ia-foto" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : '';
   if (t.estado === 'pendiente') {
-    zona.innerHTML = `${cabecera('Analizando…', '', 'El modelo está mirando la pieza. Puede tardar hasta un minuto; si sales, la propuesta te espera en «Añadir con IA».')}<div class="pad">${foto}</div>`;
+    // la pantalla de espera se pinta UNA vez (si no, la animación y el contador se reiniciarían en cada consulta)
+    const clave = `${t.id}-${t.rondas}`;
+    if (zona.dataset.espera !== clave) {
+      zona.dataset.espera = clave;
+      const lleva = Math.max(0, (fechaSql(t.ahora) - fechaSql(t.actualizada)) / 1000) || 0; // segundos que lleva, según el servidor
+      zona.dataset.inicio = String(Date.now() - lleva * 1000);
+      zona.innerHTML = vistaEspera(foto, t.modelo_pedido || D.ia?.modelo);
+      arrancarContador(zona);
+    }
     const h = location.hash;
-    setTimeout(() => { if (location.hash === h) iaTarea(id); }, 3000);
+    setTimeout(() => { if (location.hash === h) iaTarea(id); }, 2500);
     return;
   }
+  // pinta el resultado con un fundido corto (sin animación si el sistema pide reducir movimiento)
+  const pintar = (html) => {
+    delete zona.dataset.espera;
+    zona.innerHTML = html;
+    zona.classList.remove('aparece');
+    void zona.offsetWidth;
+    zona.classList.add('aparece');
+  };
   if (t.estado === 'error') {
-    zona.innerHTML = `${cabecera('No ha salido', '', t.error || 'Error desconocido')}
+    pintar(`${cabecera('No ha salido', '', t.error || 'Error desconocido')}
       <div class="pad">${foto}<div class="acciones"><a class="btn prim" href="#/ia">Probar otra vez</a>
-      <button class="btn peligro" id="ia-descartar" data-id="${t.id}">Descartar</button></div></div>`;
+      <button class="btn peligro" id="ia-descartar" data-id="${t.id}">Descartar</button></div></div>`);
     return;
   }
   if (t.estado !== 'propuesta') {
-    zona.innerHTML = `${cabecera(ESTADO_IA[t.estado])}<div class="pad">${t.componente_id ? `<a class="btn" href="#/c/${t.componente_id}">Ver la pieza</a>` : ''}</div>`;
+    pintar(`${cabecera(ESTADO_IA[t.estado])}<div class="pad">${t.componente_id ? `<a class="btn" href="#/c/${t.componente_id}">Ver la pieza</a>` : ''}</div>`);
     return;
   }
   const p = t.propuesta, n = p.tipo_nuevo || {}, sel = p.tipo_existente || (p.tipo_nuevo ? '__nuevo' : '');
   const funciones = Object.entries(FUNC).map(([k, f]) => `${k} = ${f.nombre}`).join(' · ');
-  zona.innerHTML = `${cabecera('Revisa la propuesta', '', 'Corrige lo que haga falta, mira cómo quedará y guarda. Nada se ha guardado todavía.')}
-    ${specs([['Confianza', esc(p.confianza)], ['Modelo', esc(t.modelo || '')], ['Coste', esc(costeTexto(p.coste))], ['Vuelta', t.rondas ? String(t.rondas + 1) : '']])}
+  pintar(`${cabecera('Revisa la propuesta', '', 'Corrige lo que haga falta, mira cómo quedará y guarda. Nada se ha guardado todavía.')}
+    ${specs([['Confianza', esc(p.confianza)], ['Modelo', esc(nombreModelo(t.modelo))], ['Coste', esc(costeTexto(p.coste))], ['Vuelta', t.rondas ? String(t.rondas + 1) : '']])}
     ${dudasIA(t, p)}
     <div class="filtros ia-pestanas"><div class="cats">
       <button class="f on" type="button" data-ia-vista="editar">Editar</button>
@@ -489,7 +607,7 @@ async function iaTarea(id) {
         <button class="btn prim" type="submit">Guardar pieza</button>
         <button class="btn peligro" type="button" id="ia-descartar" data-id="${t.id}">Descartar</button>
       </div>
-    </form>`;
+    </form>`);
 }
 
 async function enviarIA(form) {
@@ -501,7 +619,7 @@ async function enviarIA(form) {
     foto = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.readAsDataURL(blob); });
   }
   toast('Enviando…');
-  const t = await api('POST', 'api/ia/alta', {texto: fd.get('texto'), foto});
+  const t = await api('POST', 'api/ia/alta', {texto: fd.get('texto'), foto, modelo: fd.get('modelo') || undefined});
   location.hash = `#/ia/${t.id}`;
 }
 
@@ -615,9 +733,10 @@ function route() {
   const [tab, fn] = map[v] || map[''];
   document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.v === tab));
   $('#fab').hidden = v === 'nuevo' || v === 'editar' || v === 'ia';
+  cerrarMenuFab();
   app.innerHTML = fn();
   document.title = `[AMS] lab · ${tab}`;
-  if (v === 'ia') { if (arg === 'ajustes') iaAjustes(); else if (arg) iaTarea(arg); else iaAbiertas(); }
+  if (v === 'ia') { if (arg === 'ajustes') iaAjustes(); else if (arg) iaTarea(arg); else { iaAbiertas(); llenarModelosAlta(); } }
   if (v === 'nuevo') {
     const t = new URLSearchParams(qs).get('tipo');
     if (t && D.tipos[t]) $('#tipo').value = t;
@@ -633,9 +752,11 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa');
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo]');
   if (!t) return;
   try {
+    if (t.id === 'ia-cambiar-clave') { $('#form-ia-config').hidden = false; t.closest('.acciones').hidden = true; $('#form-ia-config [name=clave]').focus(); return; }
+    if (t.dataset.glo) { ui.sinComprobar = t.dataset.glo === 'sin'; route(); return; }
     if (t.dataset.iaVista) { verVistaIA(t.dataset.iaVista); return; }
     if (t.id === 'ia-guardar-previa') { verVistaIA('editar'); $('#form-ia-ok').requestSubmit(); return; }
     if (t.id === 'ia-responder') { try { await responderIA(t); } catch (err) { t.disabled = false; toast(err.message, true); } return; } // sin redibujar: no se pierde lo editado
@@ -683,6 +804,7 @@ app.addEventListener('click', async (e) => {
 app.addEventListener('change', async (e) => {
   const t = e.target;
   if (t.id === 'ubic') { ui.ubic = t.value; route(); }
+  if (t.name === 'ia-modelo') cambiarModeloIA(t);
   if (t.id === 'tipo') $('#nuevo-tipo').hidden = t.value !== '__nuevo';
   if (t.name === 'varios') { const n = t.form.querySelector('[name=cantidad]'); n.disabled = t.checked; if (!t.checked && !n.value) n.value = 1; }
   if (t.id === 'foto' && t.files[0]) {
@@ -693,14 +815,43 @@ app.addEventListener('submit', async (e) => {
   e.preventDefault();
   const b = e.target.querySelector('[type=submit]');
   b.disabled = true;
+  b.dataset.texto ||= b.textContent;
+  if (e.target.id === 'form-ia') b.textContent = 'Enviando…';
+  if (e.target.id === 'form-ia-config') b.textContent = 'Comprobando…';
   try {
     if (e.target.id === 'form-ia') await enviarIA(e.target);
     else if (e.target.id === 'form-ia-config') await guardarAjustesIA(e.target);
     else if (e.target.id === 'form-ia-ok') await aplicarIA(e.target);
     else await guardarForm(e.target, location.hash.startsWith('#/editar/') ? location.hash.split('/')[2] : null);
-  } catch (err) { toast(err.message, true); b.disabled = false; }
+  } catch (err) { toast(err.message, true); b.disabled = false; b.textContent = b.dataset.texto; }
 });
 $('#tema').addEventListener('click', cambiarTema);
+
+// ---------- botón «+» (móvil): foto con IA directa, elegir foto o a mano ----------
+// con la foto se lanza el análisis al momento (2 toques); lo que quieras añadir, luego con «Responder y repensar»
+function cerrarMenuFab() { const m = $('#fab-menu'); if (m) m.hidden = true; $('#fab')?.setAttribute('aria-expanded', 'false'); }
+$('#fab').addEventListener('click', (e) => {
+  e.preventDefault();
+  const m = $('#fab-menu'), abrir = m.hidden;
+  m.hidden = !abrir;
+  e.currentTarget.setAttribute('aria-expanded', String(abrir));
+});
+document.addEventListener('click', (e) => { if (!e.target.closest('#fab, #fab-menu')) cerrarMenuFab(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarMenuFab(); });
+async function fotoDirectaIA(file) {
+  cerrarMenuFab();
+  if (!D.ia?.activa) { toast('Primero pon la clave de OpenCode Go'); location.hash = '#/ia/ajustes'; return; }
+  toast('Enviando foto…');
+  const blob = await reducir(file);
+  const foto = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.readAsDataURL(blob); });
+  const t = await api('POST', 'api/ia/alta', {foto});
+  location.hash = `#/ia/${t.id}`;
+}
+for (const id of ['fab-camara', 'fab-galeria']) $(`#${id}`).addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (f) try { await fotoDirectaIA(f); } catch (err) { toast(err.message, true); }
+});
 
 // buscar: desde una ficha salta a la lista de su pestaña
 q.addEventListener('input', () => {

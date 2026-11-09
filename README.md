@@ -14,6 +14,8 @@ Botón «Añadir con IA»: foto y/o texto de una pieza → el modelo propone nom
 - La clave se guarda en la base de datos (la web solo enseña sus 4 últimos caracteres) y viaja en las copias de seguridad. `IA_CLAVE` / `IA_MODELO` (o un `.env` en local) solo se usan si en la web no hay nada.
 - Formato garantizado: el modelo responde con un esquema cerrado (categorías, funciones de pin y tipos existentes salen de la base de datos); si no lo cumple se reintenta una vez y si no, error.
 - Antes de guardar: **vista previa** de cómo quedará la ficha, y puedes **contestar las dudas** del modelo para que rehaga la propuesta (hasta 5 vueltas; cada una cuenta como una consulta). Se ve el coste aproximado de cada consulta.
+- **Modelo**: el de siempre se cambia con un toque en Configuración (sin volver a poner la clave), y al analizar se puede elegir otro solo para esa pieza. Cada modelo muestra lo que cuesta por pieza: la media real de tus consultas o una estimación.
+- **Móvil**: el botón «+» ofrece «Foto con IA» (abre la cámara y la analiza al momento), «Elegir foto con IA» o «A mano». Mientras el modelo piensa se ve qué pasa, cuántos segundos lleva y el esqueleto de la ficha.
 - Cada consulta se guarda en la tabla `ia_tareas`: si cierras la pestaña mientras piensa, la propuesta te espera en «Añadir con IA».
 
 ## Docker (homelab)
