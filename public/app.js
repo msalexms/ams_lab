@@ -220,6 +220,9 @@ function vComponente(id) {
             <a class="btn" href="#/editar/${c.id}">Editar</a>
             <button class="btn peligro" id="borrar" type="button">Borrar</button>
           </div>
+          ${panelRevisar('pieza', c.id, c.tipo ? 'Revisa esta pieza y la ficha de su tipo.' : 'Revisa esta pieza.')}
+          <div>
+          </div>
           ${c.notas ? `<div><h3>Notas</h3><p class="notas">${esc(c.notas)}</p></div>` : ''}
           <p class="meta">Actualizado ${esc(c.actualizado)}</p>
         </aside>
@@ -323,6 +326,7 @@ function vTipo(tipo) {
         <aside class="lateral">${f.origen === 'ia' ? '' : dibujo(tipo)}
           <div><h3>Los que tienes</h3>${cs.length ? cs.map(filaComp).join('') : '<p class="gris">Ninguno.</p>'}</div>
           <a class="btn" href="#/nuevo?tipo=${esc(tipo)}">Añadir uno de este tipo</a>
+          ${panelRevisar('tipo', tipo, 'Revisa la ficha del tipo: vale para todas sus piezas.')}
           <a class="ia-atajo sin-margen" href="#/ajustes/tipos?t=${esc(tipo)}">Archivar, fusionar o borrar este tipo →</a>
         </aside>
       </div>
@@ -373,8 +377,8 @@ const fechaSql = (s) => Date.parse(String(s || '').replace(' ', 'T') + 'Z');
 
 // espera mientras el modelo piensa: línea de progreso, qué está pasando, segundos y el esqueleto de la ficha
 // (no hay progreso real que medir: los textos dicen lo que se sabe y dan una salida si tarda mucho)
-function vistaEspera(foto, modelo) {
-  return `${cabecera('Analizando…', '', '')}
+function vistaEspera(foto, modelo, titulo = 'Analizando…') {
+  return `${cabecera(titulo, '', '')}
     <div class="ia-progreso" role="progressbar" aria-label="El modelo está pensando"><span></span></div>
     <p class="ia-paso pad" role="status"><span id="ia-paso">Enviando al modelo…</span> · <span id="ia-seg" class="num">0 s</span>
       ${modelo ? `<span class="gris"> · ${esc(nombreModelo(modelo))}</span>` : ''}</p>
@@ -538,7 +542,7 @@ async function iaAbiertas() {
     const ts = await api('GET', 'api/ia/tareas');
     zona.innerHTML = ts.length ? `<section class="grupo"><h3 class="grupo-t">Sin terminar<span class="n">${ts.length}</span></h3>${ts.map((t) => `
       <div class="fila"><a class="fila-main" href="#/ia/${t.id}">${t.foto ? `<img class="thumb" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : ''}
-        <div><div class="nombre">${esc(t.propuesta?.nombre || t.texto || 'Pieza sin nombre')}</div><div class="sub">${esc(t.creada)}</div></div></a>
+        <div><div class="nombre">${esc(t.clase === 'revisar' ? `Revisión de «${t.objetivo_nombre || '?'}»` : t.propuesta?.nombre || t.texto || 'Pieza sin nombre')}</div><div class="sub">${esc(t.creada)}</div></div></a>
         <div class="der">${t.estado === 'error' ? '<span class="mal">Error</span>' : esc(ESTADO_IA[t.estado])}</div></div>`).join('')}</section>` : '';
   } catch {}
 }
@@ -549,6 +553,10 @@ async function iaTarea(id) {
   let t;
   try { t = await api('GET', `api/ia/tareas/${id}`); } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; return; }
   const foto = t.foto ? `<img class="foto ia-foto" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : '';
+  if (t.clase === 'revisar') { // en una revisión, «volver» lleva a la ficha revisada
+    const atras = document.querySelector('a.back');
+    if (atras) { atras.href = volverRevision(t); atras.textContent = '← Volver a la ficha'; }
+  }
   if (t.estado === 'pendiente') {
     // la pantalla de espera se pinta UNA vez (si no, la animación y el contador se reiniciarían en cada consulta)
     const clave = `${t.id}-${t.rondas}`;
@@ -556,7 +564,7 @@ async function iaTarea(id) {
       zona.dataset.espera = clave;
       const lleva = Math.max(0, (fechaSql(t.ahora) - fechaSql(t.actualizada)) / 1000) || 0; // segundos que lleva, según el servidor
       zona.dataset.inicio = String(Date.now() - lleva * 1000);
-      zona.innerHTML = vistaEspera(foto, t.modelo_pedido || D.ia?.modelo);
+      zona.innerHTML = vistaEspera(foto, t.modelo_pedido || D.ia?.modelo, t.clase === 'revisar' ? 'Revisando…' : 'Analizando…');
       arrancarContador(zona);
     }
     const h = location.hash;
@@ -573,14 +581,17 @@ async function iaTarea(id) {
   };
   if (t.estado === 'error') {
     pintar(`${cabecera('No ha salido', '', t.error || 'Error desconocido')}
-      <div class="pad">${foto}<div class="acciones"><a class="btn prim" href="#/ia">Probar otra vez</a>
+      <div class="pad">${foto}<div class="acciones"><a class="btn prim" href="${t.clase === 'revisar' ? volverRevision(t) : '#/ia'}">Probar otra vez</a>
       <button class="btn peligro" id="ia-descartar" data-id="${t.id}">Descartar</button></div></div>`);
     return;
   }
   if (t.estado !== 'propuesta') {
-    pintar(`${cabecera(ESTADO_IA[t.estado])}<div class="pad">${t.componente_id ? `<a class="btn" href="#/c/${t.componente_id}">Ver la pieza</a>` : ''}</div>`);
+    const enlace = t.clase === 'revisar' ? `<a class="btn" href="${volverRevision(t)}">Volver a la ficha</a>`
+      : t.componente_id ? `<a class="btn" href="#/c/${t.componente_id}">Ver la pieza</a>` : '';
+    pintar(`${cabecera(ESTADO_IA[t.estado])}<div class="pad">${enlace}</div>`);
     return;
   }
+  if (t.clase === 'revisar') { pintar(vistaCambios(t)); return; }
   const p = t.propuesta, n = p.tipo_nuevo || {}, sel = p.tipo_existente || (p.tipo_nuevo ? '__nuevo' : '');
   const funciones = Object.entries(FUNC).map(([k, f]) => `${k} = ${f.nombre}`).join(' · ');
   pintar(`${cabecera('Revisa la propuesta', '', 'Corrige lo que haga falta, mira cómo quedará y guarda. Nada se ha guardado todavía.')}
@@ -941,6 +952,82 @@ async function cambioAjustes(input) {
   } catch (err) { input.value = input.defaultValue; toast(err.message, true); }
 }
 
+// ---------- «Revisar con IA» (fase C): el modelo corrige la ficha y aquí se eligen los cambios ----------
+const volverRevision = (t) => (t.objetivo?.componente_id ? `#/c/${t.objetivo.componente_id}` : t.objetivo?.tipo_id ? `#/g/${encodeURIComponent(t.objetivo.tipo_id)}` : '#/ia');
+
+// desplegable en la ficha (pieza o tipo): qué revisar y una foto, ambos opcionales
+function panelRevisar(objetivo, id, ayuda) {
+  if (!D.ia?.activa) return '';
+  return `<details class="ia-revisar"><summary class="btn">Revisar con IA</summary>
+    <form id="form-revisar" class="form sin-pad" autocomplete="off" data-objetivo="${objetivo}" data-id="${esc(id)}">
+      <p class="ayuda">${esc(ayuda)} Te enseñará solo los cambios y tú eliges cuáles aplicar.</p>
+      <label>Qué revisar (opcional)<textarea name="texto" rows="2" maxlength="1000" placeholder="Los pines están al revés · Añade el consumo"></textarea></label>
+      <label>Foto (opcional)<input type="file" name="foto" accept="image/*"></label>
+      <div class="acciones"><button class="btn prim" type="submit">Revisar</button></div>
+    </form></details>`;
+}
+
+async function enviarRevision(form) {
+  const fd = new FormData(form), file = fd.get('foto');
+  let foto = null;
+  if (file && file.size) {
+    const blob = await reducir(file);
+    foto = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.readAsDataURL(blob); });
+  }
+  const t = await api('POST', 'api/ia/revisar', {objetivo: form.dataset.objetivo, id: form.dataset.id, texto: fd.get('texto'), foto});
+  location.hash = `#/ia/${t.id}`;
+}
+
+// los cambios propuestos: cada uno con su casilla (marcados al empezar), antes tachado y ahora en claro
+function vistaCambios(t) {
+  const p = t.propuesta, volver = volverRevision(t), tipoId = p.objetivo?.tipo_id;
+  const piezasTipo = tipoId ? D.componentes.filter((c) => c.tipo === tipoId).length : 0;
+  const fila = (c) => `<label class="ia-cambio-fila"><input type="checkbox" class="ia-cambio" value="${esc(c.id)}" checked>
+    <span><span class="nombre">${esc(c.etiqueta)}${c.tipoCambio === 'nuevo' ? ' <span class="gris">· nuevo</span>' : c.tipoCambio === 'quitado' ? ' <span class="gris">· se quita</span>' : ''}</span>
+      ${c.antes ? `<span class="ia-antes">${esc(c.antes)}</span>` : ''}
+      ${c.despues ? `<span class="ia-ahora">${esc(c.despues)}</span>` : ''}</span></label>`;
+  const grupo = (ambito, titulo, ayuda) => {
+    const cs = p.cambios.filter((c) => c.ambito === ambito);
+    return cs.length ? `<section class="pad ia-grupo"><h3>${titulo}</h3>${ayuda ? `<p class="ayuda">${ayuda}</p>` : ''}${cs.map(fila).join('')}</section>` : '';
+  };
+  const nombreTipo = tipoId ? D.tipos[tipoId]?.nombre || tipoId : '';
+  return `${cabecera(`Revisión de «${esc(t.objetivo_nombre || '')}»`, '', p.cambios.length
+      ? 'Marca los cambios que quieras aplicar. Lo que no marques se queda como está.'
+      : 'El modelo no ve nada que cambiar.')}
+    ${specs([['Cambios', String(p.cambios.length)], ['Confianza', esc(p.confianza)], ['Modelo', esc(nombreModelo(t.modelo))], ['Coste', esc(costeTexto(p.coste))]])}
+    ${p.dudas?.length ? `<div class="pad ia-dudas"><h3>Dudas del modelo</h3><ul>${p.dudas.map((d) => `<li>${esc(d)}</li>`).join('')}</ul>
+      <p class="ayuda">Si sabes la respuesta, pide otra revisión desde la ficha y escríbela en «Qué revisar».</p></div>` : ''}
+    ${grupo('tipo', `Ficha del tipo «${esc(nombreTipo)}»`, piezasTipo > 1 ? `La usan ${piezasTipo} piezas: los cambios se verán en todas. La ficha quedará como «sin comprobar».` : 'La ficha quedará como «sin comprobar».')}
+    ${grupo('pieza', 'Esta pieza', '')}
+    ${p.motivos?.length ? `<details class="pad ia-motivos"><summary>Por qué (${p.motivos.length})</summary><ul>${p.motivos.map((m) => `<li><strong>${esc(m.campo)}</strong>: ${esc(m.motivo)}</li>`).join('')}</ul></details>` : ''}
+    <div class="acciones pad">
+      ${p.cambios.length ? `<button class="btn prim" type="button" id="ia-aplicar-cambios" data-id="${t.id}" data-volver="${volver}">Aplicar ${p.cambios.length} cambio${p.cambios.length === 1 ? '' : 's'}</button>
+        <button class="btn" type="button" data-ia-marcar="todo">Marcar todo</button>
+        <button class="btn" type="button" data-ia-marcar="nada">Ninguno</button>` : `<a class="btn prim" href="${volver}">Volver a la ficha</a>`}
+      <button class="btn peligro" type="button" id="ia-descartar" data-id="${t.id}" data-volver="${volver}">Descartar</button>
+    </div>`;
+}
+
+function contarCambios() {
+  const b = $('#ia-aplicar-cambios');
+  if (!b) return;
+  const n = document.querySelectorAll('.ia-cambio:checked').length;
+  b.textContent = n ? `Aplicar ${n} cambio${n === 1 ? '' : 's'}` : 'Marca algún cambio';
+  b.disabled = !n;
+}
+
+async function aplicarRevisionIA(boton) {
+  const ids = [...document.querySelectorAll('.ia-cambio:checked')].map((x) => x.value);
+  if (!ids.length) throw new Error('Marca algún cambio');
+  boton.disabled = true;
+  boton.textContent = 'Aplicando…';
+  const r = await api('POST', `api/ia/tareas/${boton.dataset.id}/aplicar-cambios`, {ids});
+  await cargar();
+  contadores();
+  location.hash = boton.dataset.volver;
+  toast(`${r.aplicados} cambio${r.aplicados === 1 ? '' : 's'} aplicado${r.aplicados === 1 ? '' : 's'}`);
+}
+
 // ---------- router ----------
 function route() {
   const [ruta, qs = ''] = location.hash.replace(/^#\/?/, '').split('?');
@@ -981,12 +1068,14 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia');
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios');
   if (!t) return;
   try {
     if (t.id === 'ia-cambiar-clave') { $('#form-ia-config').hidden = false; t.closest('.acciones').hidden = true; $('#form-ia-config [name=clave]').focus(); return; }
     if (t.dataset.glo) { ui.sinComprobar = t.dataset.glo === 'sin'; route(); return; }
     if (await clicAjustes(t)) return;
+    if (t.dataset.iaMarcar) { document.querySelectorAll('.ia-cambio').forEach((x) => (x.checked = t.dataset.iaMarcar === 'todo')); contarCambios(); return; }
+    if (t.id === 'ia-aplicar-cambios') { try { await aplicarRevisionIA(t); } catch (err) { t.disabled = false; toast(err.message, true); } return; }
     if (t.dataset.iaVista) { verVistaIA(t.dataset.iaVista); return; }
     if (t.id === 'ia-guardar-previa') { verVistaIA('editar'); $('#form-ia-ok').requestSubmit(); return; }
     if (t.id === 'ia-responder') { try { await responderIA(t); } catch (err) { t.disabled = false; toast(err.message, true); } return; } // sin redibujar: no se pierde lo editado
@@ -1001,7 +1090,7 @@ app.addEventListener('click', async (e) => {
       if (!confirm('¿Descartar esta propuesta? No se guarda nada.')) return;
       await api('POST', `api/ia/tareas/${t.dataset.id}/descartar`);
       toast('Descartada');
-      location.hash = '#/ia';
+      location.hash = t.dataset.volver || '#/ia';
       return;
     }
     if (t.id === 'revisada') {
@@ -1042,6 +1131,7 @@ app.addEventListener('change', async (e) => {
   if (t.id === 'ubic') { ui.ubic = t.value; route(); }
   if (t.name === 'ia-modelo') cambiarModeloIA(t);
   if (t.dataset.catNombre || t.dataset.sitioNombre) cambioAjustes(t);
+  if (t.classList.contains('ia-cambio')) contarCambios();
   if (t.id === 'tipo') $('#nuevo-tipo').hidden = t.value !== '__nuevo';
   if (t.name === 'varios') { const n = t.form.querySelector('[name=cantidad]'); n.disabled = t.checked; if (!t.checked && !n.value) n.value = 1; }
   if (t.id === 'foto' && t.files[0]) {
@@ -1058,6 +1148,7 @@ app.addEventListener('submit', async (e) => {
   try {
     if (e.target.id === 'form-ia') await enviarIA(e.target);
     else if (e.target.id === 'form-ia-config') await guardarAjustesIA(e.target);
+    else if (e.target.id === 'form-revisar') await enviarRevision(e.target);
     else if (e.target.id === 'aj-cat-nueva') {
       const nombre = new FormData(e.target).get('nombre');
       await api('POST', 'api/categorias', {nombre});

@@ -306,3 +306,21 @@ ol.pasos li { padding: 3px 0; }
   .aj-buscar { max-width: none; width: 100%; }
   .aj-menu .fila { flex-wrap: wrap; }
 }
+
+/* ---------- fase C: «Revisar con IA» ---------- */
+.ia-revisar > summary { list-style: none; cursor: pointer; width: fit-content; }
+.ia-revisar > summary::-webkit-details-marker { display: none; }
+.ia-revisar[open] > summary { border-color: var(--tinta); }
+.ia-revisar .form { margin-top: 10px; gap: 10px; }
+.ia-grupo { display: grid; gap: 0; border-bottom: 1px solid var(--linea2); }
+.ia-grupo h3 { margin: 0 0 4px; }
+.ia-grupo .ayuda { margin-bottom: 6px; }
+.ia-cambio-fila { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 9px 0; border-top: 1px solid var(--linea2); cursor: pointer; }
+.ia-cambio-fila input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--tinta); }
+.ia-cambio-fila > span { display: grid; gap: 3px; min-width: 0; }
+.ia-cambio-fila .nombre { font-size: .9rem; }
+.ia-antes { color: var(--gris); text-decoration: line-through; font-size: .88rem; overflow-wrap: anywhere; }
+.ia-ahora { font-size: .92rem; overflow-wrap: anywhere; }
+.ia-cambio-fila:has(input:not(:checked)) .ia-ahora { color: var(--gris); }
+.ia-motivos summary { cursor: pointer; font-size: .9rem; }
+.ia-motivos ul { margin: 8px 0 0; padding-left: 18px; font-size: .88rem; display: grid; gap: 4px; }

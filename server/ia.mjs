@@ -343,13 +343,104 @@ export async function guardarConfig(db, {clave, modelo, quitarClave} = {}) {
   return estado(db);
 }
 
-// ejecuta una tarea de alta ya creada (estado 'pendiente'); deja 'propuesta' o 'error'. No lanza excepciones.
+// ---------- «Revisar con IA»: el modelo corrige una ficha existente (y la pieza, si se revisa desde una pieza) ----------
+function instruccionesRevision(ctx, conPieza) {
+  return `Eres el asistente de un almacén personal de componentes de electrónica. Te paso la FICHA de un tipo de componente
+${conPieza ? 'y los datos de UNA pieza concreta de ese tipo ' : ''}tal como están guardados, y quizá una foto y lo que el usuario quiere que revises.
+Devuelve la ficha${conPieza ? ' y la pieza' : ''} COMPLETA y corregida. Todo en español de España.
+
+Reglas:
+- Corrige errores y completa lo que falte, pero NO cambies lo que ya está bien ni reescribas por estilo: cada cambio
+  tiene que tener un motivo y aparecer en "motivos" (campo y motivo en una frase).
+- Si el usuario pide algo concreto, céntrate en eso.
+- Pines: "pin" es el nombre serigrafiado; "uso" en 2–4 palabras; la función tiene que ser uno de estos ids:
+  ${ctx.funciones.map((f) => `${f.id} = ${f.nombre}`).join(' · ')}.
+- "datos" del tipo: lo que es igual en todas las piezas del tipo. ${conPieza ? '"datos_pieza": lo propio de esta pieza.' : ''}
+  Nada de «no aplica» ni «desconocido».
+- NO INVENTES: si no estás seguro de un pinout, una tensión o un dato, déjalo como está y pregúntalo en "dudas"
+  (preguntas cortas que el usuario pueda contestar). Un pinout o una tensión inventados pueden quemar una placa.
+- Categorías: ${ctx.categorias.map((c) => `${c.id} = ${c.nombre}`).join(' · ')}
+- Textos cortos y llanos, sin emojis.`;
+}
+
+function esquemaRevision(ctx, conPieza) {
+  const dato = z.object({dato: z.string(), valor: z.string()});
+  const forma = {
+    tipo: z.object({
+      nombre: z.string(), categoria: z.enum(ctx.categorias.map((c) => c.id)), resumen: z.string(), voltaje: z.string(),
+      interfaz: z.array(z.string()), alias: z.array(z.string()),
+      pines: z.array(z.object({pin: z.string(), uso: z.string(), funcion: z.enum(ctx.funciones.map((f) => f.id))})),
+      datos: z.array(dato), ojo: z.string(),
+    }),
+    motivos: z.array(z.object({campo: z.string(), motivo: z.string()})),
+    dudas: z.array(z.string()),
+    confianza: z.enum(['alta', 'media', 'baja']),
+  };
+  if (conPieza) forma.pieza = z.object({nombre: z.string(), notas: z.string(), datos_pieza: z.array(dato)});
+  return z.object(forma);
+}
+
+// la ficha y la pieza en la forma del esquema (pines y datos como objetos), para dárselas al modelo
+const fichaSalida = (f) => ({nombre: f.nombre, categoria: f.categoria, resumen: f.resumen, voltaje: f.voltaje, interfaz: f.interfaz, alias: f.alias,
+  pines: f.pines.map(([pin, uso, funcion]) => ({pin, uso, funcion})), datos: f.datos.map(([dato, valor]) => ({dato, valor})), ojo: f.ojo});
+
+// pide la revisión y devuelve {propuesta: {objetivo, actual, nueva, cambios, motivos, dudas, confianza, coste}, modelo}
+async function proponerRevision(db, entrada, foto, sesion) {
+  const {m, clave} = await modeloElegido(db, entrada.modelo);
+  const {diferencias, estadoActual} = await import('./revision.mjs');
+  const obj = entrada.objetivo;
+  const actual = estadoActual(db, obj);
+  if (!actual.tipo && !actual.pieza) throw new Error('Lo que había que revisar ya no existe');
+  const conPieza = !!actual.pieza;
+  const ctx = contexto(db);
+  const datosTexto = JSON.stringify({ficha: actual.tipo ? fichaSalida(actual.tipo) : null,
+    pieza: conPieza ? {nombre: actual.pieza.nombre, notas: actual.pieza.notas, datos_pieza: actual.pieza.datos_pieza.map(([dato, valor]) => ({dato, valor}))} : undefined});
+  const contenido = [{type: 'text', text: `${entrada.texto ? `Lo que quiero que revises: ${entrada.texto}\n\n` : 'Revisa la ficha entera.\n\n'}Lo que hay guardado:\n${datosTexto}`}];
+  if (foto) contenido.push({type: 'file', mediaType: 'image/jpeg', data: {type: 'data', data: foto}});
+  let error;
+  for (let intento = 1; intento <= 2; intento++) {
+    try {
+      const r = await generateText({
+        model: crearModelo(m, clave, sesion), system: instruccionesRevision(ctx, conPieza), messages: [{role: 'user', content: contenido}],
+        output: Output.object({schema: esquemaRevision(ctx, conPieza), name: 'revision', description: 'Ficha corregida'}),
+        maxOutputTokens: 6000, maxRetries: 1, abortSignal: AbortSignal.timeout(ESPERA_MS),
+      });
+      const o = r.output;
+      // la ficha propuesta pasa por la misma limpieza que un alta (categorías y funciones válidas, longitudes, «no aplica»…)
+      const limpia = normalizar(db, {nombre: o.tipo.nombre, tipo_nuevo: o.tipo, datos_pieza: o.pieza?.datos_pieza, dudas: o.dudas, confianza: o.confianza});
+      const nueva = {
+        tipo: actual.tipo && limpia.tipo_nuevo ? {...actual.tipo, ...limpia.tipo_nuevo} : actual.tipo,
+        pieza: conPieza ? {nombre: txt(o.pieza?.nombre, 200) || actual.pieza.nombre, notas: String(o.pieza?.notas ?? actual.pieza.notas).slice(0, 2000), datos_pieza: limpia.datos_pieza} : undefined,
+      };
+      const categorias = Object.fromEntries(ctx.categorias.map((c) => [c.id, c.nombre]));
+      const funciones = Object.fromEntries(ctx.funciones.map((f) => [f.id, f.nombre]));
+      return {
+        modelo: m.id,
+        propuesta: {
+          objetivo: obj, cambios: diferencias(actual, nueva, {categorias, funciones}),
+          motivos: arr(o.motivos).map((x) => ({campo: txt(x.campo, 60), motivo: txt(x.motivo, 300)})).filter((x) => x.motivo).slice(0, 20),
+          dudas: limpia.dudas, confianza: limpia.confianza, coste: coste(m, r.totalUsage ?? r.usage),
+        },
+      };
+    } catch (e) {
+      error = e;
+      if (!NoObjectGeneratedError.isInstance(e)) break;
+      console.warn(`[ia] ${m.id}: revisión con formato no válido (intento ${intento}): ${txt(e.cause?.message || e.message, 300)}`);
+      console.warn(`[ia] ${m.id}: texto devuelto: ${txt(e.text, 800) || '(vacío)'}`);
+    }
+  }
+  throw new Error(explicar(error));
+}
+
+// ejecuta una tarea ya creada (estado 'pendiente'): alta o revisión; deja 'propuesta' o 'error'. No lanza excepciones.
 export async function ejecutarAlta(db, fotosDir, id) {
   const t = db.prepare('SELECT * FROM ia_tareas WHERE id = ?').get(id);
   const entrada = JSON.parse(t.entrada);
   try {
     const foto = entrada.foto ? await readFile(`${fotosDir}/${entrada.foto}`) : null;
-    const {propuesta, modelo} = await proponer(db, entrada, foto, `ams-lab-tarea-${id}`);
+    const {propuesta, modelo} = t.clase === 'revisar'
+      ? await proponerRevision(db, entrada, foto, `ams-lab-tarea-${id}`)
+      : await proponer(db, entrada, foto, `ams-lab-tarea-${id}`);
     db.prepare("UPDATE ia_tareas SET estado = 'propuesta', propuesta = ?, modelo = ?, error = NULL WHERE id = ? AND estado = 'pendiente'")
       .run(JSON.stringify(propuesta), modelo, id);
   } catch (e) {
