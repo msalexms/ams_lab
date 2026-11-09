@@ -123,6 +123,7 @@
     }
   ],
   "ajustes": {
-    "tema": "auto"
+    "tema": "auto",
+    "vista_inventario": "lista"
   }
 }

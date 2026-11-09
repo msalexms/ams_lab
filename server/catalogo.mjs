@@ -7,6 +7,8 @@
 //   · Borrar una pieza deja 2 minutos para deshacerlo (la foto espera en la papelera).
 import {rename, unlink, readdir} from 'node:fs/promises';
 import {join} from 'node:path';
+import {createHash} from 'node:crypto';
+import {leerFicha, guardarTipo} from './db.mjs';
 
 export class ErrorCatalogo extends Error { constructor(code, msg, extra = {}) { super(msg); this.code = code; Object.assign(this, extra); } }
 const fallo = (code, msg, extra) => { throw new ErrorCatalogo(code, msg, extra); };
@@ -190,4 +192,47 @@ export async function restaurarPieza(db, fotosDir, token) {
 // al arrancar: fotos que se quedaron en la papelera (el servidor se paró antes de vaciarla)
 export async function limpiarPapelera(fotosDir) {
   for (const f of await readdir(fotosDir).catch(() => [])) if (f.startsWith('papelera-')) await unlink(join(fotosDir, f)).catch(() => {});
+}
+// al restaurar una copia: lo que había en la papelera era de la base de datos anterior (ya no se puede deshacer)
+export function vaciarPapelera() { papelera.clear(); }
+
+// ---------- editor de fichas (fase D): el usuario reescribe la ficha entera ----------
+// «huella»: resumen de la ficha tal como estaba al abrir el editor; si al guardar no coincide (la cambió la IA u otra
+// pestaña entretanto), no se pisa: 409 y hay que recargar.
+const camposFicha = (f) => ({nombre: f.nombre, categoria: f.categoria, resumen: f.resumen || '', voltaje: f.voltaje || '', ojo: f.ojo || '',
+  alias: [...f.alias].sort(), interfaz: f.interfaz, pines: f.pines, datos: f.datos});
+const huella = (f) => createHash('sha1').update(JSON.stringify(camposFicha(f))).digest('hex').slice(0, 16);
+
+export function fichaEditable(db, id) {
+  const f = leerFicha(db, id);
+  if (!f) fallo(404, 'Ese tipo no existe');
+  return {id, ...f, huella: huella(f)};
+}
+
+export function guardarFicha(db, id, b) {
+  const actual = leerFicha(db, id);
+  if (!actual) fallo(404, 'Ese tipo no existe');
+  if (String(b.huella || '') !== huella(actual)) fallo(409, 'La ficha ha cambiado mientras la editabas (¿la IA u otra pestaña?): recarga y vuelve a hacer tus cambios');
+  const funcs = new Set(db.prepare('SELECT id FROM funciones_pin').all().map((r) => r.id));
+  const nombre = texto(b.nombre, 120);
+  if (!nombre) fallo(400, 'Falta el nombre del tipo');
+  const categoria = String(b.categoria || '');
+  if (!db.prepare('SELECT 1 FROM categorias WHERE id = ?').get(categoria)) fallo(400, 'Esa categoría no existe');
+  const filas = (v) => (Array.isArray(v) ? v : []).filter(Array.isArray);
+  const repetido = (claves) => claves.find((k, i) => claves.findIndex((x) => x.toLowerCase() === k.toLowerCase()) !== i);
+  const pines = filas(b.pines).map(([pin, uso, fn]) => [texto(pin, 60), texto(uso, 60), String(fn || '')])
+    .filter(([pin]) => pin).slice(0, 80);
+  const pinRepe = repetido(pines.map((p) => p[0]));
+  if (pinRepe) fallo(400, `El pin «${pinRepe}» está repetido`);
+  for (const p of pines) if (!funcs.has(p[2])) fallo(400, `Elige la función del pin «${p[0]}»`);
+  const datos = filas(b.datos).map(([k, v]) => [texto(k, 60), texto(v, 200)]).filter(([k, v]) => k && v).slice(0, 40);
+  const datoRepe = repetido(datos.map((d) => d[0]));
+  if (datoRepe) fallo(400, `El dato «${datoRepe}» está repetido`);
+  const lista = (v, max, n) => [...new Set((Array.isArray(v) ? v : String(v || '').split(',')).map((x) => texto(x, max)).filter(Boolean))].slice(0, n);
+  const ficha = {...actual, nombre, categoria, resumen: texto(b.resumen, 400), voltaje: texto(b.voltaje, 120), ojo: texto(b.ojo, 400),
+    alias: lista(b.alias, 80, 12), interfaz: lista(b.interfaz, 40, 12), pines, datos};
+  return enTransaccion(db, () => {
+    guardarTipo(db, id, ficha, {origen: 'usuario', revisado: 1}); // la escribe el usuario: comprobada y seed/ ya no la pisa
+    return fichaEditable(db, id);
+  });
 }

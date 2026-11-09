@@ -130,7 +130,7 @@ const stepper = (c, grande = false) => c.varios
 const specs = (pares) => `<dl class="specs">${pares.filter(([, v]) => v !== '' && v != null)
   .map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
 const cabecera = (titulo, cat, resumen) => `<header class="hoja-cab"><h1>${titulo}</h1>${cat ? `<span class="cat">${esc(cat)}</span>` : ''}</header>
-  ${resumen ? `<p class="resumen">${esc(resumen)}</p>` : '<div style="height:14px"></div>'}`;
+  ${resumen ? `<p class="resumen">${esc(resumen)}</p>` : '<div class="sin-resumen"></div>'}`;
 
 // tabla de pines: color y nombre de cada función salen de la base de datos (claro y noche)
 function tablaPines(f) {
@@ -163,6 +163,26 @@ function filaComp(c) {
     ${stepper(c)}</div>`;
 }
 
+// cuadrícula: la foto manda; sin foto, solo el nombre (sin recuadros de relleno)
+function tarjetaComp(c) {
+  return `<div class="tarjeta${c.foto ? '' : ' sin-foto'}">
+    <a class="tarjeta-main" href="#/c/${c.id}">${c.foto ? `<img class="tarjeta-foto" src="${fotoUrl(c)}" alt="" loading="lazy">` : ''}
+      <span class="tarjeta-txt"><span class="nombre">${esc(c.nombre)}${revisar(c)}</span>
+      <span class="sub">${[c.tipo ? g(c.tipo).nombre : '', c.ubicacion].filter(Boolean).map(esc).join(' · ')}</span></span></a>
+    <div class="tarjeta-pie">${stepper(c)}</div></div>`;
+}
+const vistaInv = () => (D.ajustes.vista_inventario === 'cuadricula' ? 'cuadricula' : 'lista');
+
+// en una lista filtrada: «también hay N tipos y M proyectos con eso» → búsqueda en todo
+function tambien(query, aqui) {
+  if (!query) return '';
+  const r = buscarTodo(query), partes = [];
+  if (aqui !== 'piezas' && r.piezas.length) partes.push(plural(r.piezas.length, 'pieza'));
+  if (aqui !== 'tipos' && r.tipos.length) partes.push(plural(r.tipos.length, 'tipo'));
+  if (aqui !== 'proyectos' && r.proyectos.length) partes.push(plural(r.proyectos.length, 'proyecto'));
+  return partes.length ? `<p class="tambien">También con «${esc(query)}»: <a href="#/buscar">${partes.join(', ')} →</a></p>` : '';
+}
+
 function vInventario() {
   const query = q.value.trim();
   let cs = D.componentes.slice();
@@ -183,16 +203,44 @@ function vInventario() {
         ${ubicaciones().map((u) => `<option ${ui.ubic === u ? 'selected' : ''}>${esc(u)}</option>`).join('')}
         <option value="∅" ${ui.ubic === '∅' ? 'selected' : ''}>Sin sitio</option></select>
       ${nRevisar ? `<button class="f ${ui.revisar ? 'on' : ''}" id="rev">Por revisar<span class="n">${nRevisar}</span></button>` : ''}
-      <a class="btn" href="#/ia">Añadir con IA</a>
+      <span class="conmuta" role="group" aria-label="Vista">${[['lista', 'Lista'], ['cuadricula', 'Cuadrícula']].map(([k, v]) =>
+        `<button class="f ${vistaInv() === k ? 'on' : ''}" data-vista="${k}" aria-pressed="${vistaInv() === k}">${v}</button>`).join('')}</span>
+      <a class="btn solo-escritorio" href="#/ia">Añadir con IA</a>
       <a class="btn prim solo-escritorio" href="#/nuevo">Añadir pieza</a>
     </div></div>`;
 
   if (!D.componentes.length) return filtros + vacio('Aún no hay piezas. Pulsa + para añadir la primera.');
-  if (!cs.length) return filtros + vacio('Nada coincide con el filtro.');
-  return filtros + Object.keys(CATS).map((k) => {
+  if (!cs.length) return filtros + tambien(query, 'piezas') + vacio('Nada coincide con el filtro.');
+  const rejilla = vistaInv() === 'cuadricula';
+  return filtros + tambien(query, 'piezas') + Object.keys(CATS).map((k) => {
     const items = cs.filter((c) => catOf(c) === k).sort(byName);
-    return items.length ? `<section class="grupo"><h3 class="grupo-t">${CATS[k]}<span class="n">${items.length}</span></h3>${items.map(filaComp).join('')}</section>` : '';
+    return items.length ? `<section class="grupo"><h3 class="grupo-t">${CATS[k]}<span class="n">${items.length}</span></h3>${rejilla
+      ? `<div class="rejilla">${items.map(tarjetaComp).join('')}</div>` : items.map(filaComp).join('')}</section>` : '';
   }).join('');
+}
+
+// ---------- búsqueda en todo (piezas, tipos y proyectos) ----------
+function buscarTodo(query) {
+  const piezas = D.componentes.filter((c) => matches(compText(c), query)).sort(byName);
+  const tipos = Object.entries(D.tipos).map(([k, t]) => ({k, ...t})).filter((t) => !t.archivado && matches([t.k, t.nombre, t.resumen,
+    CATS[t.categoria], ...list(t.alias), ...list(t.interfaz), ...list(t.pines).flat(), ...list(t.datos).flat()].join(' '), query)).sort(byName);
+  const proyectos = D.proyectos.filter((p) => matches([p.nombre, p.resumen, ...(p.material || []).flatMap((m) => list(m.tipo).map((t) => g(t).nombre))].join(' '), query));
+  return {piezas, tipos, proyectos};
+}
+const filaTipo = (t) => `<div class="fila"><a class="fila-main" href="#/g/${esc(t.k)}"><div><div class="nombre">${esc(t.nombre)}${t.revisado === 0 ? ' <span class="aviso">· sin comprobar</span>' : ''}</div>
+  <div class="sub">${esc(t.resumen || '')}</div></div></a>
+  <div class="der"><div class="num ${stock(t.k) ? '' : 'gris'}">${stockText(t.k)}</div><div class="sub">${esc(voltajeDe(t))}</div></div></div>`;
+
+function vBuscar() {
+  const query = q.value.trim();
+  if (!query) return `<h1 class="titulo-vista">Buscar</h1><p class="gris">Escribe arriba. Busca en las piezas (nombre, notas, sitio), en el glosario
+    (nombre, alias, interfaces, pines y datos) y en los proyectos.</p>`;
+  const r = buscarTodo(query), n = r.piezas.length + r.tipos.length + r.proyectos.length;
+  const grupo = (titulo, items, html) => (items.length ? `<section class="grupo"><h3 class="grupo-t">${titulo}<span class="n">${items.length}</span></h3>${html}</section>` : '');
+  return `<h1 class="titulo-vista">«${esc(query)}» <span class="gris">· ${plural(n, 'resultado')}</span></h1>${n ? '' : vacio(`Nada con «${esc(query)}».`)}
+    ${grupo('Piezas', r.piezas, r.piezas.map(filaComp).join(''))}
+    ${grupo('Tipos', r.tipos, r.tipos.map(filaTipo).join(''))}
+    ${grupo('Proyectos', r.proyectos, listaProyectos(r.proyectos))}`;
 }
 
 function vComponente(id) {
@@ -203,6 +251,7 @@ function vComponente(id) {
     <article class="hoja">
       ${cabecera(esc(c.nombre) + revisar(c), c.tipo ? CATS[f.categoria] : '', c.tipo ? f.resumen : '')}
       ${c.tipo && f.revisado === 0 ? avisoIA(c.tipo) : ''}
+      ${c.tipo ? notaOjo(f) : ''}
       ${specs([
         ['Cantidad', stepper(c, true)],
         ['Sitio', esc(c.ubicacion || '—')],
@@ -214,32 +263,109 @@ function vComponente(id) {
         <div>${c.tipo ? tablaPines(f) || '<p class="gris">Este tipo no tiene pines.</p>' : '<p class="gris">Asígnale un tipo para ver sus pines.</p>'}</div>
         <aside class="lateral">
           ${c.foto ? `<a href="${fotoUrl(c)}" target="_blank"><img class="foto" src="${fotoUrl(c)}" alt="${esc(c.nombre)}"></a>` : ''}
-          <div class="acciones">
+          <div class="acciones apiladas">
+            <a class="btn prim" href="#/editar/${c.id}">Editar pieza</a>
             <label class="btn">${c.foto ? 'Cambiar foto' : 'Añadir foto'}<input type="file" accept="image/*" id="foto" hidden></label>
-            ${c.foto ? '<button class="btn" id="quitar-foto">Quitar foto</button>' : ''}
-            <a class="btn" href="#/editar/${c.id}">Editar</a>
-            <button class="btn peligro" id="borrar" type="button">Borrar</button>
+            ${c.tipo ? `<a class="btn" href="#/g/${esc(c.tipo)}/editar">Editar ficha del tipo</a>` : ''}
+            ${c.foto ? '<button class="btn" id="quitar-foto" type="button">Quitar foto</button>' : ''}
           </div>
           ${panelRevisar('pieza', c.id, c.tipo ? 'Revisa esta pieza y la ficha de su tipo.' : 'Revisa esta pieza.')}
-          <div>
-          </div>
           ${c.notas ? `<div><h3>Notas</h3><p class="notas">${esc(c.notas)}</p></div>` : ''}
           <p class="meta">Actualizado ${esc(c.actualizado)}</p>
+          <button class="enlace-peligro" id="borrar" type="button">Borrar esta pieza</button>
         </aside>
       </div>
     </article>
     ${usadoEn(c.tipo)}`;
 }
 
-function opcionesTipo(sel, nuevo = 'Nuevo tipo…') {
-  return `<option value="">Sin tipo</option>` + Object.keys(CATS).map((cat) => {
-    const ts = Object.entries(D.tipos).filter(([k, t]) => t.categoria === cat && (!t.archivado || k === sel)).sort((a, b) => a[1].nombre.localeCompare(b[1].nombre, 'es'));
-    return ts.length ? `<optgroup label="${CATS[cat]}">${ts.map(([k, t]) => `<option value="${esc(k)}" ${k === sel ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</optgroup>` : '';
-  }).join('') + `<option value="__nuevo" ${sel === '__nuevo' ? 'selected' : ''}>${esc(nuevo)}</option>`;
+const notaOjo = (f) => (f.ojo ? `<p class="nota nota-ojo"><span class="nota-t">Ojo</span> ${esc(f.ojo)}</p>` : '');
+
+// ---------- selector de tipo con búsqueda (fase D) ----------
+// un campo de texto que filtra los tipos por nombre, alias, interfaz o categoría; el id va en un campo oculto (name="tipo")
+const nombreSel = (sel, nuevo) => (sel === '__nuevo' ? nuevo : sel ? g(sel).nombre : '');
+function selectorTipo(sel, nuevo = 'Nuevo tipo…') {
+  return `<div class="combo" data-nuevo="${esc(nuevo)}">
+    <input type="hidden" name="tipo" id="tipo" value="${esc(sel || '')}">
+    <input class="combo-q" type="text" value="${esc(nombreSel(sel, nuevo))}" placeholder="Sin tipo · escribe para buscar (ESP32, relé, I2C…)"
+      autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="tipo-lista" aria-label="Tipo">
+    <div class="combo-lista" id="tipo-lista" role="listbox" hidden></div></div>`;
+}
+function opcionesCombo(combo) {
+  const query = combo.querySelector('.combo-q').value.trim(), sel = combo.querySelector('#tipo').value;
+  // si el texto es justo el nombre elegido, enseña todo (se acaba de abrir)
+  const filtro = query && query !== nombreSel(sel, combo.dataset.nuevo) ? query : '';
+  const ts = Object.entries(D.tipos).filter(([k, t]) => (!t.archivado || k === sel)
+    && (!filtro || matches([k, t.nombre, CATS[t.categoria], ...list(t.alias), ...list(t.interfaz)].join(' '), filtro)));
+  const orden = Object.keys(CATS);
+  ts.sort((a, b) => orden.indexOf(a[1].categoria) - orden.indexOf(b[1].categoria) || a[1].nombre.localeCompare(b[1].nombre, 'es'));
+  const op = (valor, texto, sub = '') => `<button type="button" class="combo-op${valor === sel ? ' on' : ''}" role="option" data-valor="${esc(valor)}"
+    aria-selected="${valor === sel}"><span>${esc(texto)}</span>${sub ? `<span class="sub">${esc(sub)}</span>` : ''}</button>`;
+  combo.querySelector('.combo-lista').innerHTML = (filtro ? '' : op('', 'Sin tipo'))
+    + ts.slice(0, 60).map(([k, t]) => op(k, t.nombre, CATS[t.categoria] || '')).join('')
+    + (ts.length > 60 ? `<p class="combo-mas">${ts.length - 60} más: escribe para afinar</p>` : '')
+    + (!ts.length ? `<p class="combo-mas">Ningún tipo con «${esc(filtro)}»</p>` : '')
+    + op('__nuevo', combo.dataset.nuevo, 'crear una ficha nueva');
+}
+function abrirCombo(combo) {
+  opcionesCombo(combo);
+  combo.querySelector('.combo-lista').hidden = false;
+  combo.querySelector('.combo-q').setAttribute('aria-expanded', 'true');
+}
+function cerrarCombo(combo) {
+  const lista = combo.querySelector('.combo-lista');
+  lista.hidden = true;
+  combo.querySelector('.combo-q').setAttribute('aria-expanded', 'false');
+  combo.querySelector('.combo-q').value = nombreSel(combo.querySelector('#tipo').value, combo.dataset.nuevo); // sin elegir: vuelve lo que había
+}
+function elegirTipo(combo, valor) {
+  combo.querySelector('#tipo').value = valor;
+  cerrarCombo(combo);
+  const nt = $('#nuevo-tipo');
+  if (nt) nt.hidden = valor !== '__nuevo';
 }
 
-function vForm(id) {
-  const c = id ? comp(id) : {nombre: '', tipo: '', cantidad: 1, varios: 0, ubicacion: '', notas: '', revisar: 0};
+// ---------- tablas editables: pines y datos (fase D) ----------
+// cada fila: sus campos y botones para subir, bajar y quitar. Se leen con leerEditor(form, nombre).
+const COLS = {
+  pines: [{k: 'pin', t: 'Pin', clase: 'mono', max: 60, ph: 'GPIO4'}, {k: 'uso', t: 'Uso', max: 60, ph: 'Datos del sensor'}, {k: 'fn', t: 'Función', funcion: true}],
+  datos: [{k: 'clave', t: 'Dato', max: 60, ph: 'Corriente máx.'}, {k: 'valor', t: 'Valor', max: 200, ph: '20 mA'}],
+};
+const colorFn = (id) => { const x = FUNC[id] || {color_claro: '#888888', color_oscuro: '#888888'}; return `--cc:${esc(x.color_claro)};--co:${esc(x.color_oscuro)}`; };
+function filaEditor(nombre, valores = []) {
+  return `<div class="ed-fila">${COLS[nombre].map((c, i) => c.funcion
+    ? `<label class="ed-celda ed-fn" style="${colorFn(valores[i] || 'otro')}"><span class="ed-et">${c.t}</span><i class="dot"></i>
+        <select data-col="${i}">${Object.entries(FUNC).map(([k, f]) => `<option value="${esc(k)}" ${k === (valores[i] || 'otro') ? 'selected' : ''}>${esc(f.nombre)}</option>`).join('')}</select></label>`
+    : `<label class="ed-celda"><span class="ed-et">${c.t}</span><input data-col="${i}" class="${c.clase || ''}" maxlength="${c.max}" value="${esc(valores[i] || '')}" placeholder="${esc(c.ph)}"></label>`).join('')}
+    <span class="ed-botones"><button type="button" class="btn mini" data-ed-mover="-1" aria-label="Subir">↑</button><button type="button" class="btn mini" data-ed-mover="1" aria-label="Bajar">↓</button>
+      <button type="button" class="btn mini peligro" data-ed-quitar aria-label="Quitar fila">✕</button></span></div>`;
+}
+function editorFilas(nombre, filas, {etiqueta, boton, ayuda = '', campo = nombre} = {}) {
+  return `<fieldset class="ed ed-${nombre}" data-ed="${campo}" data-cols="${nombre}">
+    <legend>${etiqueta}</legend>${ayuda ? `<p class="ayuda">${ayuda}</p>` : ''}
+    <div class="ed-cab" aria-hidden="true">${COLS[nombre].map((c) => `<span>${c.t}</span>`).join('')}<span></span></div>
+    <div class="ed-filas">${list(filas).map((f) => filaEditor(nombre, f)).join('')}</div>
+    <button type="button" class="btn mini" data-ed-anadir>${boton}</button></fieldset>`;
+}
+const leerEditor = (raiz, campo) => [...(raiz.querySelector(`[data-ed="${campo}"]`)?.querySelectorAll('.ed-fila') || [])]
+  .map((f) => [...f.querySelectorAll('[data-col]')].map((x) => x.value.trim())).filter((v) => v[0]);
+function clicEditor(t) {
+  const ed = t.closest('.ed');
+  if (!ed) return false;
+  const fila = t.closest('.ed-fila');
+  if ('edAnadir' in t.dataset) {
+    ed.querySelector('.ed-filas').insertAdjacentHTML('beforeend', filaEditor(ed.dataset.cols));
+    ed.querySelector('.ed-fila:last-child input')?.focus();
+  } else if ('edQuitar' in t.dataset) fila.remove();
+  else if (t.dataset.edMover) {
+    const otra = t.dataset.edMover === '-1' ? fila.previousElementSibling : fila.nextElementSibling;
+    if (otra) { if (t.dataset.edMover === '-1') otra.before(fila); else otra.after(fila); t.focus(); }
+  } else return false;
+  return true;
+}
+
+function vForm(id, tipoInicial = '') {
+  const c = id ? comp(id) : {nombre: '', tipo: D.tipos[tipoInicial] ? tipoInicial : '', cantidad: 1, varios: 0, ubicacion: '', notas: '', revisar: 0, datos: []};
   if (!c) return vacio('No existe esa pieza.');
   return `<a class="back" href="${id ? `#/c/${id}` : '#/'}">← ${id ? 'Volver' : 'Inventario'}</a>
     <article class="hoja">
@@ -247,7 +373,7 @@ function vForm(id) {
       ${!id ? '<p class="ia-atajo"><a href="#/ia">O que la IA la rellene a partir de una foto →</a></p>' : ''}
       <form id="form" class="form" autocomplete="off">
         <label>Nombre<input name="nombre" required maxlength="200" value="${esc(c.nombre)}" placeholder="ESP32-WROOM-32 DevKit"></label>
-        <label>Tipo<select name="tipo" id="tipo">${opcionesTipo(c.tipo)}</select></label>
+        <div class="campo"><span class="campo-t">Tipo</span>${selectorTipo(c.tipo)}</div>
         <div id="nuevo-tipo" class="nuevo-tipo" hidden>
           <label>Nombre del tipo<input name="tipoNombre" maxlength="120" placeholder="Relé de 5 V"></label>
           <label>Categoría<select name="tipoCat">${Object.entries(CATS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
@@ -259,6 +385,8 @@ function vForm(id) {
         <label>Sitio<input name="ubicacion" list="ubics" maxlength="120" value="${esc(c.ubicacion)}" placeholder="Cajita 3"></label>
         <datalist id="ubics">${ubicaciones().map((u) => `<option value="${esc(u)}">`).join('')}</datalist>
         <label>Notas<textarea name="notas" rows="3" maxlength="2000">${esc(c.notas)}</textarea></label>
+        ${editorFilas('datos', c.datos, {campo: 'datos_pieza', etiqueta: 'Datos de esta pieza', boton: 'Añadir dato',
+          ayuda: 'Lo que cambia de una pieza a otra del mismo tipo: «Valor» → «220 Ω», «Color» → «rojo».'})}
         ${id ? '' : '<label>Foto (opcional)<input type="file" name="foto" accept="image/*"></label>'}
         <label class="check"><input type="checkbox" name="revisar" ${c.revisar ? 'checked' : ''}> Marcar para revisar</label>
         <div class="acciones">
@@ -279,7 +407,7 @@ async function guardarForm(form, id) {
   }
   const varios = !!fd.get('varios');
   const body = {nombre: fd.get('nombre'), tipo: tipo || null, varios, cantidad: varios ? null : fd.get('cantidad'),
-    ubicacion: fd.get('ubicacion'), notas: fd.get('notas'), revisar: !!fd.get('revisar')};
+    ubicacion: fd.get('ubicacion'), notas: fd.get('notas'), revisar: !!fd.get('revisar'), datos: leerEditor(form, 'datos_pieza')};
   const c = id ? await api('PATCH', `api/componentes/${id}`, body) : await api('POST', 'api/componentes', body);
   guardarLocal(c);
   const foto = fd.get('foto');
@@ -299,13 +427,10 @@ function vGlosario() {
   const filtros = sinComprobar ? `<div class="filtros"><div class="cats">
     <button class="f ${ui.sinComprobar ? '' : 'on'}" data-glo="todo">Todo<span class="n">${Object.keys(D.tipos).length}</span></button>
     <button class="f ${ui.sinComprobar ? 'on' : ''}" data-glo="sin">Sin comprobar<span class="n">${sinComprobar}</span></button></div></div>` : '';
-  if (!tipos.length) return filtros + vacio('Nada coincide.');
-  return filtros + Object.keys(CATS).map((cat) => {
+  if (!tipos.length) return filtros + tambien(query, 'tipos') + vacio('Nada coincide.');
+  return filtros + tambien(query, 'tipos') + Object.keys(CATS).map((cat) => {
     const ts = tipos.filter((t) => (t.categoria || 'otro') === cat).sort(byName);
-    return ts.length ? `<section class="grupo"><h3 class="grupo-t">${CATS[cat]}<span class="n">${ts.length}</span></h3>${ts.map((t) => `
-      <div class="fila"><a class="fila-main" href="#/g/${esc(t.k)}"><div><div class="nombre">${esc(t.nombre)}${t.revisado === 0 ? ' <span class="aviso">· sin comprobar</span>' : ''}</div>
-        <div class="sub">${esc(t.resumen || '')}</div></div></a>
-        <div class="der"><div class="num ${stock(t.k) ? '' : 'gris'}">${stockText(t.k)}</div><div class="sub">${esc(voltajeDe(t))}</div></div></div>`).join('')}</section>` : '';
+    return ts.length ? `<section class="grupo"><h3 class="grupo-t">${CATS[cat]}<span class="n">${ts.length}</span></h3>${ts.map(filaTipo).join('')}</section>` : '';
   }).join('');
 }
 
@@ -313,25 +438,78 @@ function vTipo(tipo) {
   const f = D.tipos[tipo];
   if (!f) return vacio('Ese tipo no está en el glosario.');
   const cs = D.componentes.filter((c) => c.tipo === tipo).sort(byName);
-  const datos = list(f.datos).length ? `<h3 style="margin-top:18px">Datos</h3><table class="t"><tbody>${f.datos.map(([k, v]) =>
-    `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>` : '';
+  const datos = list(f.datos).length ? `<h3 class="sep">Datos</h3><table class="t datos"><tbody>${f.datos.map(([k, v]) =>
+    `<tr><td class="gris">${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>` : '';
   return `<a class="back" href="#/glosario">← Glosario</a>
     <article class="hoja">
       ${cabecera(esc(f.nombre), CATS[f.categoria], f.resumen)}
       ${f.revisado === 0 ? avisoIA(tipo, true) : ''}
-      ${f.archivado ? `<p class="ia-aviso">Archivado: no sale en el glosario ni al elegir tipo. <button class="btn" data-tipo-archivar="${esc(tipo)}" data-v="0">Recuperar</button></p>` : ''}
-      ${specs([['Tienes', stockText(tipo)], ['Tensión', esc(voltajeDe(f))], ['También', esc(list(f.alias).join(', '))]])}
+      ${f.archivado ? `<p class="nota">Archivado: no sale en el glosario ni al elegir tipo. <button class="btn mini" data-tipo-archivar="${esc(tipo)}" data-v="0">Recuperar</button></p>` : ''}
+      ${notaOjo(f)}
+      ${specs([['Tienes', stockText(tipo)], ['Tensión', esc(voltajeDe(f))], ['Interfaces', esc(list(f.interfaz).join(', '))], ['También', esc(list(f.alias).join(', '))]])}
       <div class="hoja-cuerpo">
         <div>${tablaPines(f) || '<p class="gris">Sin pines.</p>'}${datos}</div>
-        <aside class="lateral">${f.origen === 'ia' ? '' : dibujo(tipo)}
-          <div><h3>Los que tienes</h3>${cs.length ? cs.map(filaComp).join('') : '<p class="gris">Ninguno.</p>'}</div>
-          <a class="btn" href="#/nuevo?tipo=${esc(tipo)}">Añadir uno de este tipo</a>
+        <aside class="lateral">${f.origen === 'seed' ? dibujo(tipo) : ''}
+          <div class="acciones apiladas">
+            <a class="btn prim" href="#/g/${esc(tipo)}/editar">Editar ficha</a>
+            <a class="btn" href="#/nuevo?tipo=${esc(tipo)}">Añadir una pieza de este tipo</a>
+          </div>
           ${panelRevisar('tipo', tipo, 'Revisa la ficha del tipo: vale para todas sus piezas.')}
-          <a class="ia-atajo sin-margen" href="#/ajustes/tipos?t=${esc(tipo)}">Archivar, fusionar o borrar este tipo →</a>
+          <div><h3>Los que tienes</h3>${cs.length ? cs.map(filaComp).join('') : '<p class="gris">Ninguno.</p>'}</div>
+          <p class="meta">Ficha ${{seed: 'del catálogo base', ia: 'de la IA', usuario: 'escrita por ti'}[f.origen] || ''} ·
+            <a href="#/ajustes/tipos?t=${esc(tipo)}">archivar, fusionar o borrar</a></p>
         </aside>
       </div>
     </article>
     ${usadoEn(tipo)}`;
+}
+
+// ---------- editar la ficha de un tipo a mano (fase D) ----------
+// la ficha se pide al servidor con su «huella»: si alguien la cambia mientras editas, al guardar no se pisa (409)
+function vEditarTipo(tipo) {
+  if (!D.tipos[tipo]) return vacio('Ese tipo no está en el glosario.');
+  return `<a class="back" href="#/g/${esc(tipo)}">← ${esc(D.tipos[tipo].nombre)}</a>
+    <article class="hoja" id="ed-tipo" data-tipo="${esc(tipo)}"><p class="gris pad">Cargando…</p></article>`;
+}
+async function editarTipoCargar() {
+  const zona = $('#ed-tipo');
+  if (!zona) return;
+  let f;
+  try { f = await api('GET', `api/tipos/${encodeURIComponent(zona.dataset.tipo)}/ficha`); } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; return; }
+  const piezas = D.componentes.filter((c) => c.tipo === f.id).length;
+  zona.innerHTML = `${cabecera(`Editar ficha · ${esc(f.nombre)}`, '', piezas > 1 ? `La usan ${piezas} piezas: los cambios se verán en todas.` : '')}
+    ${f.origen === 'seed' ? '<p class="nota">Es del catálogo base. Al guardar pasa a ser tuya: las actualizaciones del catálogo ya no la cambiarán.</p>' : ''}
+    ${f.revisado === 0 ? '<p class="nota nota-ia">La escribió la IA. Al guardar queda como comprobada por ti.</p>' : ''}
+    <form id="form-ficha" class="form ancho" autocomplete="off" data-huella="${esc(f.huella)}" data-tipo="${esc(f.id)}">
+      <div class="dos">
+        <label>Nombre<input name="nombre" required maxlength="120" value="${esc(f.nombre)}"></label>
+        <label>Categoría<select name="categoria">${Object.entries(CATS).map(([k, v]) => `<option value="${esc(k)}" ${k === f.categoria ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+      </div>
+      <label>Resumen<textarea name="resumen" rows="2" maxlength="400">${esc(f.resumen)}</textarea></label>
+      <div class="dos">
+        <label>Tensión<input name="voltaje" maxlength="120" value="${esc(f.voltaje)}" placeholder="3,3 V · 5 V tolerante"></label>
+        <label>Interfaces<input name="interfaz" value="${esc(list(f.interfaz).join(', '))}" placeholder="I2C, UART"><span class="ayuda">Separadas por comas</span></label>
+      </div>
+      <label>También se llama<input name="alias" value="${esc(list(f.alias).join(', '))}" placeholder="DHT-11, sensor de humedad"><span class="ayuda">Separado por comas: sirve para buscar</span></label>
+      <label>Ojo (advertencia)<textarea name="ojo" rows="2" maxlength="400" placeholder="No conectar a 5 V sin divisor">${esc(f.ojo)}</textarea></label>
+      ${editorFilas('pines', f.pines, {etiqueta: 'Pines', boton: 'Añadir pin', ayuda: 'En el orden de la placa. La función da el color del pin en todas las fichas.'})}
+      ${editorFilas('datos', f.datos, {etiqueta: 'Datos', boton: 'Añadir dato', ayuda: 'Iguales para todas las piezas de este tipo: «Corriente máx.» → «20 mA».'})}
+      <div class="acciones">
+        <button class="btn prim" type="submit">Guardar ficha</button>
+        <a class="btn" href="#/g/${esc(f.id)}">Cancelar</a>
+      </div>
+    </form>`;
+}
+async function guardarFicha(form) {
+  const fd = new FormData(form), tipo = form.dataset.tipo;
+  await api('PUT', `api/tipos/${encodeURIComponent(tipo)}/ficha`, {
+    huella: form.dataset.huella, nombre: fd.get('nombre'), categoria: fd.get('categoria'), resumen: fd.get('resumen'), voltaje: fd.get('voltaje'),
+    interfaz: comas(fd.get('interfaz')), alias: comas(fd.get('alias')), ojo: fd.get('ojo'), pines: leerEditor(form, 'pines'), datos: leerEditor(form, 'datos'),
+  });
+  await cargar();
+  contadores();
+  location.hash = `#/g/${encodeURIComponent(tipo)}`;
+  toast('Ficha guardada');
 }
 
 function vProyectos() {
@@ -346,6 +524,7 @@ function vProyectos() {
   ps.sort((a, b) => faltas(a).length - faltas(b).length || (a.dificultad || 1) - (b.dificultad || 1));
   const btn = (k, t) => `<button class="f ${ui.proFiltro === k ? 'on' : ''}" data-pf="${k}">${t}<span class="n">${n[k]}</span></button>`;
   return `<div class="filtros"><div class="cats">${btn('ya', 'Puedo hacerlo ya')}${btn('poco', 'Me falta poco')}${btn('todos', 'Todos')}</div></div>
+    ${tambien(query, 'proyectos')}
     ${ps.length ? `<section class="grupo"><h3 class="grupo-t">Proyectos<span class="n">${ps.length}</span></h3>${listaProyectos(ps)}</section>` : vacio('Ninguno en este filtro.')}`;
 }
 
@@ -362,7 +541,7 @@ function vProyecto(id) {
     }).join('')}</tbody></table>`;
   const con = p.conexiones?.length ? `<h3>Conexiones</h3><table class="t"><thead><tr><th>Desde</th><th>Hasta</th></tr></thead><tbody>
     ${p.conexiones.map(([a, b, n]) => `<tr><td class="pin">${esc(a)}</td><td class="pin">${esc(b)}${n ? `<div class="sub" style="font-family:var(--sans)">${esc(n)}</div>` : ''}</td></tr>`).join('')}</tbody></table>` : '';
-  const pasos = p.pasos?.length ? `<h3 style="margin-top:18px">Pasos</h3><ol class="pasos">${p.pasos.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : '';
+  const pasos = p.pasos?.length ? `<h3 class="sep">Pasos</h3><ol class="pasos">${p.pasos.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : '';
   return `<a class="back" href="#/proyectos">← Proyectos</a>
     <article class="hoja">
       ${cabecera(esc(p.nombre), '', p.resumen)}
@@ -407,12 +586,9 @@ function arrancarContador(zona) {
   tic();
   ticContador = setInterval(tic, 1000);
 }
-const avisoIA = (tipo, conBoton = false) => `<p class="ia-aviso">Ficha generada por IA, sin comprobar: revisa la tensión y los pines antes de conectar nada.
-  ${conBoton ? `<button class="btn" id="revisada" data-tipo="${esc(tipo)}">Marcar como revisada</button>` : ''}</p>`;
+const avisoIA = (tipo, conBoton = false) => `<div class="nota nota-ia"><p><span class="nota-t">Sin comprobar</span> Ficha escrita por la IA: revisa la tensión y los pines antes de conectar nada.</p>
+  ${conBoton ? `<button class="btn mini" id="revisada" data-tipo="${esc(tipo)}">Marcar como revisada</button>` : ''}</div>`;
 const ESTADO_IA = {pendiente: 'Analizando…', propuesta: 'Propuesta por revisar', error: 'Error', aplicada: 'Guardada', descartada: 'Descartada'};
-const lineasPares = (pares) => list(pares).map(([k, v]) => `${k}: ${v}`).join('\n');
-const paresLineas = (s) => String(s || '').split('\n').map((l) => l.split(/:\s*/)).filter(([k, ...v]) => k.trim() && v.join(':').trim())
-  .map(([k, ...v]) => [k.trim(), v.join(':').trim()]);
 const comas = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
 function vIA(id) {
@@ -593,7 +769,6 @@ async function iaTarea(id) {
   }
   if (t.clase === 'revisar') { pintar(vistaCambios(t)); return; }
   const p = t.propuesta, n = p.tipo_nuevo || {}, sel = p.tipo_existente || (p.tipo_nuevo ? '__nuevo' : '');
-  const funciones = Object.entries(FUNC).map(([k, f]) => `${k} = ${f.nombre}`).join(' · ');
   pintar(`${cabecera('Revisa la propuesta', '', 'Corrige lo que haga falta, mira cómo quedará y guarda. Nada se ha guardado todavía.')}
     ${specs([['Confianza', esc(p.confianza)], ['Modelo', esc(nombreModelo(t.modelo))], ['Coste', esc(costeTexto(p.coste))], ['Vuelta', t.rondas ? String(t.rondas + 1) : '']])}
     ${dudasIA(t, p)}
@@ -604,21 +779,20 @@ async function iaTarea(id) {
     <form id="form-ia-ok" class="form" autocomplete="off" data-id="${t.id}" data-foto="${t.foto ? `fotos/${encodeURIComponent(t.foto)}` : ''}">
       ${foto}
       <label>Nombre<input name="nombre" required maxlength="200" value="${esc(p.nombre)}"></label>
-      <label>Tipo<select name="tipo" id="tipo">${opcionesTipo(sel, p.tipo_nuevo ? `Nuevo: ${p.tipo_nuevo.nombre} (propuesto por la IA)` : 'Nuevo tipo…')}</select></label>
+      <div class="campo"><span class="campo-t">Tipo</span>${selectorTipo(sel, p.tipo_nuevo ? `Nuevo: ${p.tipo_nuevo.nombre} (propuesto por la IA)` : 'Nuevo tipo…')}</div>
       <div id="nuevo-tipo" class="nuevo-tipo" ${sel === '__nuevo' ? '' : 'hidden'}>
-        <p class="ia-aviso sin-pad">Ficha nueva escrita por la IA: quedará marcada como «sin comprobar».</p>
+        <p class="nota nota-ia">Ficha nueva escrita por la IA: quedará marcada como «sin comprobar».</p>
         <label>Nombre del tipo<input name="tn_nombre" maxlength="120" value="${esc(n.nombre || '')}"></label>
         <label>Categoría<select name="tn_categoria">${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${k === (n.categoria || 'otro') ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
         <label>Resumen<textarea name="tn_resumen" rows="2" maxlength="400">${esc(n.resumen || '')}</textarea></label>
         <label>Tensión<input name="tn_voltaje" maxlength="120" value="${esc(n.voltaje || '')}"></label>
         <label>Interfaces (separadas por comas)<input name="tn_interfaz" value="${esc(list(n.interfaz).join(', '))}"></label>
         <label>También se llama (separado por comas)<input name="tn_alias" value="${esc(list(n.alias).join(', '))}"></label>
-        <label>Pines: una línea por pin, «pin | uso | función»<textarea name="tn_pines" rows="${Math.max(3, list(n.pines).length + 1)}" class="mono">${esc(list(n.pines).map((x) => x.join(' | ')).join('\n'))}</textarea>
-          <span class="ayuda">Funciones: ${esc(funciones)}</span></label>
-        <label>Datos del tipo: una línea por dato, «dato: valor»<textarea name="tn_datos" rows="3">${esc(lineasPares(n.datos))}</textarea></label>
+        ${editorFilas('pines', n.pines, {campo: 'tn_pines', etiqueta: 'Pines', boton: 'Añadir pin', ayuda: 'En el orden de la placa. La función da el color del pin.'})}
+        ${editorFilas('datos', n.datos, {campo: 'tn_datos', etiqueta: 'Datos del tipo', boton: 'Añadir dato', ayuda: 'Iguales para todas las piezas de este tipo.'})}
         <label>Ojo (advertencia)<textarea name="tn_ojo" rows="2" maxlength="400">${esc(n.ojo || '')}</textarea></label>
       </div>
-      <label>Datos de esta pieza: «dato: valor»<textarea name="datos_pieza" rows="2">${esc(lineasPares(p.datos_pieza))}</textarea></label>
+      ${editorFilas('datos', p.datos_pieza, {campo: 'datos_pieza', etiqueta: 'Datos de esta pieza', boton: 'Añadir dato'})}
       <div class="dos">
         <label>Cantidad<input name="cantidad" type="number" min="0" inputmode="numeric" value="${esc(p.cantidad ?? 1)}"></label>
         <label class="check"><input type="checkbox" name="varios"> Hay muchos (sin contar)</label>
@@ -652,12 +826,12 @@ function leerFormIA(form) {
   const varios = !!fd.get('varios');
   const body = {
     nombre: fd.get('nombre'), tipo: fd.get('tipo') || null, varios, cantidad: varios ? null : fd.get('cantidad'),
-    ubicacion: fd.get('ubicacion'), notas: fd.get('notas'), datos_pieza: paresLineas(fd.get('datos_pieza')),
+    ubicacion: fd.get('ubicacion'), notas: fd.get('notas'), datos_pieza: leerEditor(form, 'datos_pieza'),
   };
   if (body.tipo === '__nuevo') body.tipo_nuevo = {
     nombre: fd.get('tn_nombre'), categoria: fd.get('tn_categoria'), resumen: fd.get('tn_resumen'), voltaje: fd.get('tn_voltaje'),
-    interfaz: comas(fd.get('tn_interfaz')), alias: comas(fd.get('tn_alias')), ojo: fd.get('tn_ojo'), datos: paresLineas(fd.get('tn_datos')),
-    pines: String(fd.get('tn_pines') || '').split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((x) => x[0]),
+    interfaz: comas(fd.get('tn_interfaz')), alias: comas(fd.get('tn_alias')), ojo: fd.get('tn_ojo'),
+    datos: leerEditor(form, 'tn_datos'), pines: leerEditor(form, 'tn_pines'),
   };
   return body;
 }
@@ -684,7 +858,7 @@ function dudasIA(t, p) {
 function vistaPreviaIA(b, fotoUrl) {
   const nuevo = b.tipo === '__nuevo';
   const f = nuevo ? {...b.tipo_nuevo, revisado: 0} : b.tipo ? g(b.tipo) : null;
-  const datosTipo = f && list(f.datos).length ? `<h3 style="margin-top:18px">Datos del tipo</h3><table class="t"><tbody>${f.datos.map(([k, v]) =>
+  const datosTipo = f && list(f.datos).length ? `<h3 class="sep">Datos del tipo</h3><table class="t"><tbody>${f.datos.map(([k, v]) =>
     `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>` : '';
   const ocultos = nuevo ? [f.ojo ? 'la advertencia («Ojo»)' : '', list(f.interfaz).length ? 'las interfaces (sirven para buscar)' : ''].filter(Boolean) : [];
   return `<p class="ayuda pad">Así quedará${nuevo ? ` la pieza, y el tipo nuevo «${esc(f.nombre)}» en el glosario (sin la palabra «Nuevo»)` : ' la pieza'}. No se ha guardado nada.</p>
@@ -851,19 +1025,99 @@ function ajSitios(sitios) {
       </div>`).join('') : vacio('Aún no hay sitios: se crean al poner «Sitio» en una pieza.')}</div>`;
 }
 
+const fechaLarga = (iso) => (iso ? new Date(iso).toLocaleString('es-ES', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}) : '');
+const tamano = (b) => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+// copias de cada día, manuales y las que se hacen solas antes de migrar o de restaurar
+const claseCopia = (n) => (n.startsWith('lab-antes-restaurar') ? 'antes de restaurar' : n.startsWith('lab-antes-') ? 'antes de una migración'
+  : /^lab-\d{4}-\d{2}-\d{2}\.db$/.test(n) ? 'diaria' : 'manual');
+
 function ajDatos(r) {
   const u = r.copias.ultima;
-  const fecha = (iso) => new Date(iso).toLocaleString('es-ES', {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'});
-  return `${cabecera('Datos', '', 'Copias de seguridad de la base de datos (con las fotos nuevas) y exportación.')}
-    ${specs([['Piezas', r.piezas], ['Tipos', `${r.tipos}${r.archivados ? ` (+${r.archivados} archivado${r.archivados === 1 ? '' : 's'})` : ''}`], ['Categorías', r.categorias],
+  return `${cabecera('Datos', '', 'Copias de seguridad: descárgalas para guardarlas fuera del servidor y restáuralas si algo sale mal.')}
+    ${specs([['Piezas', r.piezas], ['Fotos', r.fotos], ['Tipos', `${r.tipos}${r.archivados ? ` (+${r.archivados} archivado${r.archivados === 1 ? '' : 's'})` : ''}`], ['Categorías', r.categorias],
       ['Sitios', r.sitios], ['Proyectos', r.proyectos], ['Modelo de datos', `v${r.version}`]])}
     <section class="pad ia-bloque">
-      <h3>Copias de seguridad</h3>
-      <p>${u ? `Última: ${esc(fecha(u.fecha))} · ${Math.round(u.bytes / 1024)} KB` : '<span class="mal">Aún no hay ninguna</span>'}</p>
-      <p class="ayuda">Se hace una al día sola y se guardan ${r.copias.maximo} (${r.copias.guardadas} ahora). Carpeta: ${esc(r.copias.carpeta)}</p>
-      <div class="acciones"><button class="btn prim" type="button" id="aj-copia">Hacer copia ahora</button>
-        <a class="btn" href="api/exportar" download>Exportar (JSON)</a></div>
+      <h3>Exportar</h3>
+      <p class="ayuda">Un solo archivo .tar.gz con la base de datos y las ${r.fotos} fotos. Sirve para restaurarlo aquí o en otro servidor.
+        Incluye la clave de la IA: guárdalo en un sitio seguro.</p>
+      <div class="acciones"><a class="btn prim" href="api/copia/exportar" download>Descargar copia completa</a>
+        <a class="btn" href="api/exportar" download>Datos en JSON (solo lectura)</a></div>
+    </section>
+    <section class="pad ia-bloque" id="aj-importar-zona">
+      <h3>Restaurar desde un archivo</h3>
+      <p class="ayuda">El .tar.gz que exporta la app, o un .db suelto (una copia diaria). Primero se comprueba y te enseña qué contiene; no cambia nada hasta que confirmes.</p>
+      <div class="acciones"><label class="btn">Elegir archivo…<input type="file" id="aj-importar" accept=".gz,.tgz,.tar.gz,.db,application/gzip,application/x-gzip" hidden></label></div>
+      <p class="ayuda" id="aj-importar-estado" role="status"></p>
+      <div id="aj-restaurar"></div>
+    </section>
+    <section class="pad ia-bloque">
+      <h3>Copias en el servidor</h3>
+      <p class="ayuda">Se hace una al día sola y se guardan ${r.copias.maximo} diarias (${r.copias.guardadas} copias ahora, contando las especiales).
+        ${u ? `Última: ${esc(fechaLarga(u.fecha))}.` : '<span class="mal">Aún no hay ninguna.</span>'} Carpeta: <span class="mono">${esc(r.copias.carpeta)}</span></p>
+      <div class="acciones"><button class="btn" type="button" id="aj-copia">Hacer copia ahora</button></div>
+      ${r.copias.lista.length ? `<table class="t copias"><thead><tr><th>Fecha</th><th>Clase</th><th class="der">Tamaño</th><th></th></tr></thead><tbody>
+        ${r.copias.lista.map((c) => `<tr><td class="num">${esc(fechaLarga(c.fecha))}</td><td class="gris">${esc(claseCopia(c.nombre))}</td>
+          <td class="der num">${tamano(c.bytes)}</td><td class="der"><span class="aj-botones">
+            <a class="btn mini" href="api/copias/${encodeURIComponent(c.nombre)}" download>Descargar</a>
+            <button class="btn mini" type="button" data-copia-preparar="${esc(c.nombre)}">Restaurar…</button></span></td></tr>`).join('')}</tbody></table>
+        <p class="ayuda">Las copias del servidor solo llevan la base de datos: las fotos están en su carpeta de copias y no se borran nunca.</p>` : ''}
     </section>`;
+}
+
+// lo que se va a restaurar frente a lo que hay ahora; nada cambia hasta pulsar «Restaurar»
+function panelRestaurar(r) {
+  const fila = (k, a, b) => `<tr><td class="gris">${k}</td><td class="der num">${esc(a)}</td><td class="der num">${esc(b)}</td></tr>`;
+  const de = {archivo: 'el archivo subido', base: 'la base de datos subida', copia: `la copia del servidor ${r.copia || ''}`}[r.origen] || 'la copia';
+  return `<div class="restaurar aparece">
+    <h3>Restaurar ${esc(de)}</h3>
+    <table class="t"><thead><tr><th></th><th class="der">Ahora</th><th class="der">Copia</th></tr></thead><tbody>
+      ${fila('Piezas', r.actual.piezas, r.piezas)}${fila('Tipos', r.actual.tipos + r.actual.archivados, r.tipos)}${fila('Proyectos', r.actual.proyectos, r.proyectos)}
+      ${fila('Fotos', r.actual.fotos, r.origen === 'archivo' ? `${r.fotos} en el archivo` : 'las de ahora')}
+      ${fila('Modelo de datos', `v${r.actual.version}`, `v${r.version}${r.version < r.actual.version ? ' (se actualiza al restaurar)' : ''}`)}
+      ${r.exportado ? fila('Fecha', '—', fechaLarga(r.exportado)) : ''}</tbody></table>
+    <p class="nota nota-peligro">Se sustituye todo lo de ahora: inventario, glosario, proyectos, ajustes y la clave de la IA. Antes se guarda una copia
+      del estado actual en el servidor («antes de restaurar»), así que se puede volver atrás. Las fotos no se borran.</p>
+    <div class="acciones"><button class="btn prim peligro-prim" type="button" data-restaurar="${esc(r.token)}">Restaurar</button>
+      <button class="btn" type="button" data-restaurar-cancelar>Cancelar</button></div></div>`;
+}
+
+// subida con progreso (XMLHttpRequest: fetch no da el progreso de subida)
+function subirCopia(file) {
+  const estado = $('#aj-importar-estado'), zona = $('#aj-restaurar');
+  zona.innerHTML = '';
+  estado.className = 'ayuda';
+  estado.textContent = `Subiendo ${file.name} (${tamano(file.size)})…`;
+  const x = new XMLHttpRequest();
+  x.open('POST', 'api/copia/preparar');
+  x.setRequestHeader('content-type', 'application/octet-stream');
+  x.upload.onprogress = (e) => { if (e.lengthComputable) estado.textContent = `Subiendo ${file.name}: ${Math.round((e.loaded / e.total) * 100)} %`; };
+  x.upload.onload = () => { estado.textContent = 'Comprobando el archivo…'; };
+  x.onerror = () => { estado.className = 'mal'; estado.textContent = 'Sin conexión con el servidor: no se ha subido'; };
+  x.onload = () => {
+    let r = {};
+    try { r = JSON.parse(x.responseText); } catch {}
+    if (x.status !== 200) { estado.className = 'mal'; estado.textContent = r.error || `Error ${x.status}`; return; }
+    estado.textContent = 'Archivo comprobado: está bien. Mira lo que contiene antes de restaurar.';
+    zona.innerHTML = panelRestaurar(r);
+    zona.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  };
+  x.send(file);
+}
+
+async function restaurarCopia(boton) {
+  if (!confirm('¿Restaurar esta copia? Se sustituye todo lo de ahora (antes se guarda una copia del estado actual en el servidor).')) return;
+  boton.disabled = true;
+  boton.textContent = 'Restaurando…';
+  try {
+    const r = await api('POST', 'api/copia/restaurar', {token: boton.dataset.restaurar});
+    MODELOS_IA = null;
+    await cargar();
+    aplicarTema();
+    contadores();
+    location.hash = '#/ajustes/datos';
+    await ajCargar();
+    toast(`Restaurada: ${plural(r.piezas, 'pieza')}${r.fotos ? ` y ${r.fotos} foto${r.fotos === 1 ? ' nueva' : 's nuevas'}` : ''}`);
+  } catch (err) { boton.disabled = false; boton.textContent = 'Restaurar'; toast(err.message, true); }
 }
 
 async function clicAjustes(t) {
@@ -872,6 +1126,24 @@ async function clicAjustes(t) {
   if ('ajCerrar' in d) { t.closest('.aj-panel').hidden = true; return true; }
   if (d.ajTipos) { ui.ajTipos = d.ajTipos; await ajCargar(); return true; }
   if (t.id === 'aj-copia') { t.disabled = true; const r = await api('POST', 'api/copias'); await ajCargar(); toast(`Copia hecha: ${r.nombre}`); return true; }
+  if (d.copiaPreparar) {
+    t.disabled = true;
+    try {
+      const r = await api('POST', `api/copias/${encodeURIComponent(d.copiaPreparar)}/preparar`);
+      const zona = $('#aj-restaurar');
+      zona.innerHTML = panelRestaurar(r);
+      $('#aj-importar-estado').textContent = '';
+      zona.closest('section').scrollIntoView({block: 'start', behavior: 'smooth'});
+    } finally { t.disabled = false; }
+    return true;
+  }
+  if (d.restaurar) { await restaurarCopia(t); return true; }
+  if ('restaurarCancelar' in d) {
+    await api('DELETE', 'api/copia/preparada').catch(() => {});
+    $('#aj-restaurar').innerHTML = '';
+    $('#aj-importar-estado').textContent = 'Cancelado: no se ha cambiado nada.';
+    return true;
+  }
   if (d.catMover) {
     const ids = [...document.querySelectorAll('[data-cat]')].map((e) => e.dataset.cat), i = ids.indexOf(d.catMover), j = i + Number(d.dir);
     if (j < 0 || j >= ids.length) return true;
@@ -1031,21 +1303,22 @@ async function aplicarRevisionIA(boton) {
 // ---------- router ----------
 function route() {
   const [ruta, qs = ''] = location.hash.replace(/^#\/?/, '').split('?');
-  const [v = '', arg = ''] = ruta.split('/').map(decodeURIComponent);
+  const [v = '', arg = '', sub = ''] = ruta.split('/').map(decodeURIComponent);
   const map = {
     '': ['inventario', vInventario], c: ['inventario', () => vComponente(arg)],
-    nuevo: ['inventario', () => vForm()], editar: ['inventario', () => vForm(arg)],
+    nuevo: ['inventario', () => vForm(null, new URLSearchParams(qs).get('tipo') || '')], editar: ['inventario', () => vForm(arg)],
     proyectos: ['proyectos', vProyectos], p: ['proyectos', () => vProyecto(arg)],
-    glosario: ['glosario', vGlosario], g: ['glosario', () => vTipo(arg)],
+    glosario: ['glosario', vGlosario], g: ['glosario', () => (sub === 'editar' ? vEditarTipo(arg) : vTipo(arg))],
     ia: ['inventario', () => vIA(arg)],
     ajustes: ['ajustes', () => vAjustes(arg)],
+    buscar: ['buscar', vBuscar],
   };
   const [tab, fn] = map[v] || map[''];
-  document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.v === tab));
-  $('#fab').hidden = v === 'nuevo' || v === 'editar' || v === 'ia' || v === 'ajustes';
+  document.querySelectorAll('#nav a, #barra a').forEach((a) => a.classList.toggle('on', a.dataset.v === tab));
   cerrarMenuFab();
   app.innerHTML = fn();
   document.title = `[AMS] lab · ${tab}`;
+  if (v === 'g' && sub === 'editar') editarTipoCargar();
   if (v === 'ia') { if (arg === 'ajustes') iaAjustes(); else if (arg) iaTarea(arg); else { iaAbiertas(); llenarModelosAlta(); } }
   if (v === 'ajustes') {
     const t = new URLSearchParams(qs).get('t');
@@ -1053,11 +1326,7 @@ function route() {
     if (arg === 'ia') iaAjustes(); else if (arg) ajCargar();
     else if (!MODELOS_IA && D.ia?.activa) modelosIA().then(() => { if (location.hash === '#/ajustes') route(); }).catch(() => {});
   }
-  if (v === 'nuevo') {
-    const t = new URLSearchParams(qs).get('tipo');
-    if (t && D.tipos[t]) $('#tipo').value = t;
-    $('#form [name=nombre]').focus();
-  }
+  if (v === 'nuevo' && matchMedia('(hover: hover)').matches) $('#form [name=nombre]').focus(); // en el móvil, sin abrir el teclado
 }
 
 function contadores() {
@@ -1068,9 +1337,18 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios');
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-vista],.combo-op,[data-ed-anadir],[data-ed-quitar],[data-ed-mover],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar]');
   if (!t || !app.contains(t)) return; // solo botones de la propia vista (no el <html>, que lleva data-* del tema)
+  // sin redibujar la vista: el selector de tipo y las tablas editables viven dentro de formularios a medio rellenar
+  if (t.classList.contains('combo-op')) { elegirTipo(t.closest('.combo'), t.dataset.valor); return; }
+  if (clicEditor(t)) return;
   try {
+    if (t.dataset.vista) {
+      await api('PUT', 'api/ajustes/vista_inventario', {valor: t.dataset.vista});
+      D.ajustes.vista_inventario = t.dataset.vista;
+      route();
+      return;
+    }
     if (t.id === 'ia-cambiar-clave') { $('#form-ia-config').hidden = false; t.closest('.acciones').hidden = true; $('#form-ia-config [name=clave]').focus(); return; }
     if (t.dataset.glo) { ui.sinComprobar = t.dataset.glo === 'sin'; route(); return; }
     if (await clicAjustes(t)) return;
@@ -1132,7 +1410,8 @@ app.addEventListener('change', async (e) => {
   if (t.name === 'ia-modelo') cambiarModeloIA(t);
   if (t.dataset.catNombre || t.dataset.sitioNombre) cambioAjustes(t);
   if (t.classList.contains('ia-cambio')) contarCambios();
-  if (t.id === 'tipo') $('#nuevo-tipo').hidden = t.value !== '__nuevo';
+  if (t.id === 'aj-importar' && t.files[0]) { subirCopia(t.files[0]); t.value = ''; }
+  if (t.matches('.ed-fn select')) t.closest('.ed-fn').style.cssText = colorFn(t.value); // el punto de color sigue a la función
   if (t.name === 'varios') { const n = t.form.querySelector('[name=cantidad]'); n.disabled = t.checked; if (!t.checked && !n.value) n.value = 1; }
   if (t.id === 'foto' && t.files[0]) {
     try { await subirFoto(Number(location.hash.split('/')[2]), t.files[0]); route(); } catch (err) { toast(err.message, true); }
@@ -1155,6 +1434,7 @@ app.addEventListener('submit', async (e) => {
       await ajRefrescar(`Categoría «${nombre}» añadida`);
     }
     else if (e.target.id === 'form-ia-ok') await aplicarIA(e.target);
+    else if (e.target.id === 'form-ficha') await guardarFicha(e.target);
     else await guardarForm(e.target, location.hash.startsWith('#/editar/') ? location.hash.split('/')[2] : null);
   } catch (err) { toast(err.message, true); b.disabled = false; b.textContent = b.dataset.texto; }
 });
@@ -1194,11 +1474,31 @@ app.addEventListener('input', (e) => {
   document.querySelectorAll('.aj-tipo').forEach((r) => (r.hidden = !!qn && !norm(r.querySelector('.nombre').textContent + ' ' + r.dataset.tipo).includes(qn)));
 });
 
-q.addEventListener('input', () => {
-  const v = location.hash.replace(/^#\/?/, '').split(/[/?]/)[0];
-  const lista = {c: '#/', g: '#/glosario', p: '#/proyectos', nuevo: '#/', editar: '#/', ia: '#/'}[v];
-  if (lista) location.hash = lista; else route();
+// selector de tipo: se abre al entrar, filtra al escribir, flechas + Intro para elegir, Esc para cerrar
+app.addEventListener('focusin', (e) => { if (e.target.classList.contains('combo-q')) { abrirCombo(e.target.closest('.combo')); e.target.select(); } });
+app.addEventListener('focusout', (e) => {
+  const combo = e.target.closest?.('.combo');
+  if (combo) setTimeout(() => { if (!combo.contains(document.activeElement)) cerrarCombo(combo); }, 0);
 });
+app.addEventListener('pointerdown', (e) => { if (e.target.closest('.combo-op')) e.preventDefault(); }); // que el campo no pierda el foco antes del clic
+app.addEventListener('input', (e) => { if (e.target.classList.contains('combo-q')) abrirCombo(e.target.closest('.combo')); });
+app.addEventListener('keydown', (e) => {
+  if (!e.target.classList.contains('combo-q')) return;
+  const combo = e.target.closest('.combo'), lista = combo.querySelector('.combo-lista');
+  const ops = [...lista.querySelectorAll('.combo-op')], i = ops.indexOf(lista.querySelector('.combo-op.foco'));
+  const mover = (j) => { ops.forEach((o) => o.classList.remove('foco')); const o = ops[(j + ops.length) % ops.length]; o?.classList.add('foco'); o?.scrollIntoView({block: 'nearest'}); };
+  if (e.key === 'ArrowDown') { e.preventDefault(); if (lista.hidden) abrirCombo(combo); mover(i + 1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); mover(i - 1); }
+  else if (e.key === 'Enter' && !lista.hidden) { e.preventDefault(); const o = ops[i] || (ops.length === 2 ? ops[0] : null); if (o) elegirTipo(combo, o.dataset.valor); }
+  else if (e.key === 'Escape') { e.stopPropagation(); cerrarCombo(combo); }
+});
+
+// buscar: en una lista (inventario, glosario, proyectos) la filtra; desde cualquier otro sitio, o con Intro, busca en todo
+const vistaActual = () => location.hash.replace(/^#\/?/, '').split(/[/?]/)[0];
+q.addEventListener('input', () => {
+  if (['', 'glosario', 'proyectos', 'buscar'].includes(vistaActual())) route(); else location.hash = '#/buscar';
+});
+q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && q.value.trim()) { if (vistaActual() === 'buscar') route(); else location.hash = '#/buscar'; q.blur(); } });
 document.addEventListener('keydown', (e) => {
   const escribiendo = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
   if (e.key === '/' && !escribiendo) { e.preventDefault(); q.focus(); q.select(); }
