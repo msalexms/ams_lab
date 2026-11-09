@@ -25,13 +25,20 @@
       <a href="#/ajustes" data-v="ajustes">Ajustes</a>
     </nav>
     <div class="top-der">
-      <input id="q" type="search" placeholder="Buscar" autocomplete="off" spellcheck="false" aria-label="Buscar (tecla /)">
+      <input id="q" type="search" placeholder="Buscar piezas, tipos, pines…" autocomplete="off" spellcheck="false" enterkeyhint="search" aria-label="Buscar (tecla /)">
       <button id="tema" class="tema" type="button" title="Cambiar tema">Tema</button>
     </div>
   </header>
   <p id="sin-red" class="sin-red" role="status" hidden><span id="sin-red-txt"></span> <button id="sin-red-btn" class="tema" type="button">Reintentar</button></p>
   <main id="app"><p class="gris">Cargando…</p></main>
-  <a id="fab" class="fab" href="#/nuevo" aria-label="Añadir pieza" aria-haspopup="menu" aria-expanded="false" aria-controls="fab-menu">+</a>
+  <!-- móvil: barra de abajo, al alcance del pulgar; el «+» del centro abre el menú de añadir -->
+  <nav id="barra" class="barra" aria-label="Secciones">
+    <a href="#/" data-v="inventario"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></svg>Inventario</a>
+    <a href="#/glosario" data-v="glosario"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg>Glosario</a>
+    <a id="fab" class="fab" href="#/nuevo" aria-label="Añadir pieza" aria-haspopup="menu" aria-expanded="false" aria-controls="fab-menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></a>
+    <a href="#/proyectos" data-v="proyectos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v5l-5 9a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-5-9V3"/><path d="M8 3h8M7 14h10"/></svg>Proyectos</a>
+    <a href="#/ajustes" data-v="ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Ajustes</a>
+  </nav>
   <div id="fab-menu" class="fab-menu" role="menu" hidden>
     <label class="fab-op" role="menuitem">Foto con IA<span class="sub">abre la cámara y la analiza</span>
       <input type="file" accept="image/*" capture="environment" id="fab-camara" hidden></label>

@@ -8,9 +8,10 @@ import {readFile, writeFile, unlink, rename} from 'node:fs/promises';
 import {extname, join, normalize, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {networkInterfaces} from 'node:os';
-import {readdirSync, statSync} from 'node:fs';
+import {readdirSync, statSync, existsSync, createReadStream, copyFileSync, renameSync, rmSync, mkdirSync} from 'node:fs';
 import {abrir, ubicacionId, sincronizarCatalogo, guardarTipo, VERSION} from './db.mjs';
-import {programarCopias, opcionesCopias, copiar} from './copias.mjs';
+import {programarCopias, opcionesCopias, copiar, copiarFotosNuevas} from './copias.mjs';
+import * as respaldo from './respaldo.mjs';
 import * as cat from './catalogo.mjs';
 import {aplicarCambios} from './revision.mjs';
 import {estado, ejecutarAlta, normalizar, cerrarInterrumpidas, modelos, guardarConfig, modeloValido, MODELO_RECOMENDADO} from './ia.mjs';
@@ -23,16 +24,21 @@ const PORT = Number(process.env.PORT) || 4321;
 const MAX_FOTO = 10 * 1024 * 1024;
 
 const SEED = join(ROOT, 'seed');
-const db = abrir(DATA, SEED);
+// «let»: al restaurar una copia se cierra y se vuelve a abrir (los demás módulos la reciben en cada llamada)
+let db = abrir(DATA, SEED);
 // el catálogo (glosario, proyectos, colores…) se aplica desde seed/ en cada arranque: así una imagen nueva de Docker
 // trae las fichas al día sin tener que entrar al contenedor. No toca el inventario.
-try {
-  const n = sincronizarCatalogo(db, SEED);
-  console.log(`Catálogo: ${n.tipos} tipos, ${n.proyectos} proyectos${n.respetados ? ` (${n.respetados} tipo(s) cambiado(s) por la IA o por ti: no se pisan)` : ''}`);
-} catch (e) {
-  console.error('No se pudo aplicar el catálogo de seed/ (sigue el anterior):', e.message);
+function aplicarCatalogo() {
+  try {
+    const n = sincronizarCatalogo(db, SEED);
+    console.log(`Catálogo: ${n.tipos} tipos, ${n.proyectos} proyectos${n.respetados ? ` (${n.respetados} tipo(s) cambiado(s) por la IA o por ti: no se pisan)` : ''}`);
+  } catch (e) {
+    console.error('No se pudo aplicar el catálogo de seed/ (sigue el anterior):', e.message);
+  }
 }
-programarCopias(db, DATA);
+aplicarCatalogo();
+programarCopias(() => db, DATA);
+respaldo.limpiarEtapas(DATA); // restauraciones preparadas y no confirmadas
 cat.limpiarPapelera(FOTOS);
 cerrarInterrumpidas(db);
 { const e = estado(db); console.log(e.activa ? `[ia] activa: ${e.modelo} (clave de ${e.origen_clave})` : '[ia] sin clave: se configura desde la web'); }
@@ -82,7 +88,7 @@ function tipos() {
     alias: (alias[t.id] || []).map((a) => a.alias), interfaz: (inter[t.id] || []).map((i) => i.interfaz),
     pines: (pines[t.id] || []).map((p) => [p.pin, p.uso, p.funcion_id]),
     datos: (datos[t.id] || []).map((d) => [d.clave, d.valor]),
-    origen: t.origen, revisado: t.revisado, archivado: t.archivado,
+    ojo: t.advertencias || '', origen: t.origen, revisado: t.revisado, archivado: t.archivado,
   }]));
 }
 
@@ -140,25 +146,76 @@ function limpiar(b, parcial) {
   return out;
 }
 
+// datos extra de una pieza («Valor» → «220 Ω»): se reescriben enteros cuando llegan
+function guardarDatosPieza(id, datos) {
+  if (!Array.isArray(datos)) return;
+  const limpio = (v, max) => texto(v, max).replace(/\s+/g, ' ');
+  const filas = datos.filter(Array.isArray).map(([k, v]) => [limpio(k, 60), limpio(v, 200)]).filter(([k, v]) => k && v).slice(0, 40);
+  const repe = filas.find(([k], i) => filas.findIndex(([x]) => x.toLowerCase() === k.toLowerCase()) !== i);
+  if (repe) throw new HttpError(400, `El dato «${repe[0]}» está repetido`);
+  db.prepare('DELETE FROM componente_datos WHERE componente_id = ?').run(id);
+  filas.forEach(([k, v], n) => db.prepare('INSERT INTO componente_datos (componente_id, orden, clave, valor) VALUES (?, ?, ?, ?)').run(id, n + 1, k, v));
+}
+
+// preferencias que se pueden cambiar desde la web y sus valores válidos (los valores por defecto están en seed/referencia.json)
+const AJUSTES = {tema: ['auto', 'claro', 'noche'], vista_inventario: ['lista', 'cuadricula']};
+
+// ---------- restaurar una copia (Ajustes → Datos) ----------
+// antes de nada, copia completa del estado actual (base de datos + fotos) en la carpeta de copias, fuera de la rotación.
+// Luego se cierra la base de datos, se pone la de la copia, se añaden sus fotos (sin borrar ni pisar ninguna) y se
+// vuelve a abrir (con su migración si es de una versión anterior). Todo síncrono: ninguna petición se cuela entre medias.
+function restaurar(token) {
+  const {dir, resumen: r} = respaldo.etapa(DATA, token);
+  if (db.prepare("SELECT COUNT(*) AS n FROM ia_tareas WHERE estado = 'pendiente'").get().n)
+    throw new HttpError(409, 'La IA está trabajando en algo: espera a que termine y vuelve a intentarlo');
+  respaldo.comprobarBase(join(dir, 'lab.db')); // otra vez, por si acaso
+  const op = opcionesCopias(DATA);
+  mkdirSync(op.dir, {recursive: true});
+  let antes = join(op.dir, `lab-antes-restaurar-${respaldo.sello()}.db`);
+  for (let n = 2; existsSync(antes); n++) antes = join(op.dir, `lab-antes-restaurar-${respaldo.sello()}-${n}.db`); // dos en el mismo segundo
+  db.exec(`VACUUM INTO '${antes.replaceAll("'", "''")}'`);
+  copiarFotosNuevas(DATA, op.dir);
+  db.close();
+  let fotos = 0;
+  try {
+    copyFileSync(join(dir, 'lab.db'), join(DATA, 'lab.db.nueva'));
+    for (const x of ['-wal', '-shm']) rmSync(join(DATA, `lab.db${x}`), {force: true});
+    renameSync(join(DATA, 'lab.db.nueva'), join(DATA, 'lab.db'));
+    fotos = respaldo.moverFotos(dir, FOTOS);
+  } finally {
+    db = abrir(DATA, SEED); // la restaurada, o la de antes si algo falló al cambiarla
+    aplicarCatalogo();
+    cerrarInterrumpidas(db);
+    cat.vaciarPapelera();
+  }
+  respaldo.limpiarEtapas(DATA);
+  console.log(`[copias] restaurada (${r.origen}): ${r.piezas} piezas, +${fotos} fotos · estado anterior en ${antes}`);
+  return {ok: true, piezas: r.piezas, tipos: r.tipos, fotos, antes: antes.split(/[\\/]/).pop()};
+}
+function listaCopias() {
+  const {dir} = opcionesCopias(DATA);
+  try {
+    return readdirSync(dir).filter((f) => /^lab-[\w.-]+\.db$/.test(f)).map((f) => {
+      const st = statSync(join(dir, f));
+      return {nombre: f, bytes: st.size, fecha: st.mtime.toISOString()};
+    }).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  } catch { return []; }
+}
+
 // id para un tipo nuevo: libre y que no esté entre los quitados (si no, seed/ lo confundiría con el borrado)
 const slug = (s) => cat.idLibre(db, 'tipos', s, 'tipo');
 
 // Ajustes → Datos: versión, recuentos y copias de seguridad
 function resumen() {
   const {dir, max} = opcionesCopias(DATA);
-  let copias = [];
-  try {
-    copias = readdirSync(dir).filter((f) => f.endsWith('.db')).map((f) => {
-      const st = statSync(join(dir, f));
-      return {nombre: f, bytes: st.size, fecha: st.mtime.toISOString()};
-    }).sort((a, b) => b.fecha.localeCompare(a.fecha));
-  } catch {}
+  const copias = listaCopias();
   const n = (sql) => db.prepare(sql).get().n;
   return {
     version: VERSION, piezas: n('SELECT COUNT(*) AS n FROM componentes'), tipos: n('SELECT COUNT(*) AS n FROM tipos WHERE archivado = 0'),
     archivados: n('SELECT COUNT(*) AS n FROM tipos WHERE archivado = 1'), categorias: n('SELECT COUNT(*) AS n FROM categorias'),
     sitios: n('SELECT COUNT(*) AS n FROM ubicaciones'), proyectos: n('SELECT COUNT(*) AS n FROM proyectos'),
-    copias: {carpeta: dir, guardadas: copias.length, maximo: max, ultima: copias[0] || null},
+    fotos: n('SELECT COUNT(*) AS n FROM componentes WHERE foto IS NOT NULL'),
+    copias: {carpeta: dir, guardadas: copias.length, maximo: max, ultima: copias[0] || null, lista: copias.slice(0, 12)},
   };
 }
 
@@ -342,10 +399,16 @@ async function api(req, res, path) {
       {'content-disposition': `attachment; filename="ams-lab-${new Date().toISOString().slice(0, 10)}.json"`});
 
   if (m === 'POST' && path === '/api/componentes') {
-    const c = limpiar(await leerJson(req), false);
+    const b = await leerJson(req), c = limpiar(b, false);
     const cols = Object.keys(c);
-    const {lastInsertRowid} = db.prepare(`INSERT INTO componentes (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...Object.values(c));
-    return send(res, 201, comp(lastInsertRowid));
+    let id;
+    db.exec('BEGIN');
+    try {
+      id = db.prepare(`INSERT INTO componentes (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...Object.values(c)).lastInsertRowid;
+      guardarDatosPieza(id, b.datos);
+      db.exec('COMMIT');
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
+    return send(res, 201, comp(id));
   }
   if (m === 'POST' && path === '/api/tipos') {
     const b = await leerJson(req);
@@ -401,6 +464,29 @@ async function api(req, res, path) {
     const ruta = copiar(db, DATA, {...op, max: op.max || 14}, true);
     return send(res, 200, {ok: true, nombre: String(ruta).split(/[\\/]/).pop(), resumen: resumen()});
   }
+  // copias completas: exportar (.tar.gz), preparar una restauración (subida o copia del servidor) y confirmarla
+  if (m === 'GET' && path === '/api/copia/exportar') return respaldo.exportar(db, DATA, res);
+  if (m === 'POST' && path === '/api/copia/preparar') {
+    if (Number(req.headers['content-length']) > 2 * 1024 ** 3) throw new HttpError(413, 'El archivo es demasiado grande (máx. 2 GB)');
+    return send(res, 200, {...(await respaldo.prepararSubida(req, DATA)), actual: resumen()});
+  }
+  if (m === 'POST' && path === '/api/copia/restaurar') return send(res, 200, restaurar((await leerJson(req)).token));
+  if (m === 'DELETE' && path === '/api/copia/preparada') { respaldo.limpiarEtapas(DATA); return send(res, 200, {ok: true}); }
+  if ((r = path.match(/^\/api\/copias\/(lab-[\w.-]+\.db)(\/preparar)?$/))) {
+    const copia = listaCopias().find((x) => x.nombre === r[1]);
+    if (!copia) throw new HttpError(404, 'No existe esa copia');
+    if (m === 'POST' && r[2]) return send(res, 200, {...respaldo.prepararCopia(DATA, opcionesCopias(DATA).dir, copia.nombre), actual: resumen()});
+    if (m === 'GET' && !r[2]) {
+      res.writeHead(200, {'content-type': 'application/vnd.sqlite3', 'content-length': copia.bytes, 'cache-control': 'no-store',
+        'content-disposition': `attachment; filename="ams-${copia.nombre}"`});
+      return createReadStream(join(opcionesCopias(DATA).dir, copia.nombre)).pipe(res);
+    }
+  }
+  // editor de fichas (fase D)
+  if ((r = path.match(/^\/api\/tipos\/([a-z0-9-]+)\/ficha$/))) {
+    if (m === 'GET') return send(res, 200, cat.fichaEditable(db, r[1]));
+    if (m === 'PUT') return send(res, 200, cat.guardarFicha(db, r[1], await leerJson(req)));
+  }
   if (m === 'GET' && path === '/api/categorias') return send(res, 200, cat.listarCategorias(db));
   if (m === 'POST' && path === '/api/categorias') return send(res, 201, cat.crearCategoria(db, await leerJson(req)));
   if (m === 'PUT' && path === '/api/categorias/orden') return send(res, 200, cat.ordenarCategorias(db, (await leerJson(req)).ids));
@@ -420,16 +506,22 @@ async function api(req, res, path) {
 
   if ((r = path.match(/^\/api\/ajustes\/([a-z_]+)$/)) && m === 'PUT') {
     const valor = texto((await leerJson(req)).valor, 200);
-    if (!db.prepare('SELECT 1 FROM ajustes WHERE clave = ?').get(r[1])) throw new HttpError(404, 'Ese ajuste no existe');
-    db.prepare('UPDATE ajustes SET valor = ? WHERE clave = ?').run(valor, r[1]); // la tabla valida los valores (CHECK)
+    if (!AJUSTES[r[1]] || !db.prepare('SELECT 1 FROM ajustes WHERE clave = ?').get(r[1])) throw new HttpError(404, 'Ese ajuste no existe');
+    if (!AJUSTES[r[1]].includes(valor)) throw new HttpError(400, `Valor no válido para «${r[1]}»`);
+    db.prepare('UPDATE ajustes SET valor = ? WHERE clave = ?').run(valor, r[1]);
     return send(res, 200, {clave: r[1], valor});
   }
   if ((r = path.match(/^\/api\/componentes\/(\d+)$/))) {
     const c = comp(r[1]);
     if (m === 'PATCH') {
-      const cambios = limpiar(await leerJson(req), true);
-      if (Object.keys(cambios).length)
-        db.prepare(`UPDATE componentes SET ${Object.keys(cambios).map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(cambios), c.id);
+      const b = await leerJson(req), cambios = limpiar(b, true);
+      db.exec('BEGIN');
+      try {
+        if (Object.keys(cambios).length)
+          db.prepare(`UPDATE componentes SET ${Object.keys(cambios).map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(cambios), c.id);
+        guardarDatosPieza(c.id, b.datos);
+        db.exec('COMMIT');
+      } catch (e) { db.exec('ROLLBACK'); throw e; }
       return send(res, 200, comp(c.id));
     }
     if (m === 'DELETE') return send(res, 200, await cat.borrarPieza(db, FOTOS, c.id)); // se puede deshacer durante 2 minutos
@@ -482,7 +574,7 @@ const server = createServer(async (req, res) => {
     if (path.startsWith('/fotos/')) return await estatico(res, FOTOS, path.slice(7), 'public, max-age=31536000, immutable');
     return await estatico(res, PUB, path === '/' ? 'index.html' : path, 'no-cache');
   } catch (e) {
-    let code = e instanceof HttpError || e instanceof cat.ErrorCatalogo ? e.code : 500;
+    let code = e instanceof HttpError || e instanceof cat.ErrorCatalogo || e instanceof respaldo.ErrorRespaldo ? e.code : 500;
     if (/constraint failed/i.test(e.message)) code = 400; // reglas de la base de datos (CHECK, FOREIGN KEY, UNIQUE)
     if (code === 500) console.error(e);
     if (!res.headersSent) send(res, code, {error: e.message || 'Error', ...(e instanceof cat.ErrorCatalogo ? {tipos: e.tipos, piezas: e.piezas, proyectos: e.proyectos} : {})});
