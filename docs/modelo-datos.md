@@ -1,4 +1,4 @@
-# Modelo de datos (v5) — `data/lab.db`
+# Modelo de datos (v6) — `data/lab.db`
 
 SQLite (`node:sqlite`). Esquema y migraciones en `server/db.mjs`; versión en `PRAGMA user_version`.
 
@@ -31,7 +31,7 @@ erDiagram
   componente_datos { int componente_id PK,FK; text clave PK; int orden; text valor }
   catalogo_quitados { text clase PK "tipo|categoria"; text id PK; text reemplazo; text fecha }
   ia_config { int id PK "siempre 1"; text clave "nunca sale por la API"; text modelo; text actualizado }
-  ia_tareas { int id PK; text clase "alta|reorganizar"; text estado "pendiente|propuesta|aplicada|descartada|error"; text entrada "JSON"; text propuesta "JSON"; int componente_id FK; text modelo; text error; text creada; text actualizada }
+  ia_tareas { int id PK; text clase "alta|revisar|reorganizar"; text estado "pendiente|propuesta|aplicada|descartada|error"; text entrada "JSON"; text propuesta "JSON"; int componente_id FK; text modelo; text error; text creada; text actualizada }
   tipo_pines { text tipo_id PK,FK; int orden PK; text pin; text uso; text funcion_id FK }
   tipo_alias { text tipo_id PK,FK; text alias PK }
   tipo_interfaces { text tipo_id PK,FK; int orden PK; text interfaz }
@@ -72,6 +72,9 @@ La web no guarda configuración propia: categorías, funciones de pin con sus co
 - **Sitios** (`ubicaciones`): renombrar; si el nombre ya existe (sin mirar mayúsculas), se juntan. Borrar deja sus piezas sin sitio.
 - **Piezas**: al borrar una, el servidor la guarda 2 minutos para «Deshacer» (la foto espera como `papelera-…` y se borra al vencer o al arrancar).
 
+## «Revisar con IA» (v6)
+Desde una pieza (revisa la pieza y la ficha de su tipo) o desde un tipo. La tarea (`clase = 'revisar'`) guarda en `entrada.objetivo` qué se revisa (`tipo_id`, `componente_id`). El modelo devuelve la ficha (y la pieza) **entera y corregida**; el servidor (`server/revision.mjs`) la compara con lo guardado y la propuesta es una lista de **cambios** (`id`, campo, antes, después; pines y datos emparejados por su nombre, así que reordenar no cuenta como cambio). Al aplicar los marcados se comprueba que lo de «antes» sigue igual: si la ficha cambió entretanto, no se aplica nada (409). Los cambios en la ficha la dejan con `origen = 'ia'` y `revisado = 0`.
+
 ## Datos extra (clave → valor)
 - `tipo_datos`: lo que es igual en todas las piezas de un tipo (corriente máxima, dirección I2C, frecuencia…). En `seed/glosario.json`, campo `datos` (`{"Clave": "valor"}`).
 - `componente_datos`: lo que cambia de una pieza a otra del mismo tipo (el valor de una resistencia, el encapsulado…).
@@ -89,7 +92,8 @@ Cada llamada al modelo se guarda: qué se le pidió (`entrada`, JSON), qué prop
 ## Migraciones
 - v1 → v2 (03/11/2026): `funciones_pin.color` pasa a `color_oscuro` y se añade `color_claro`; nueva tabla `ajustes`.
 - v2 → v3 (06/11/2026): `origen` en `categorias` y `tipos`, `revisado` en `tipos`; tablas `tipo_datos`, `componente_datos` e `ia_tareas`. Los tipos que no están en `seed/glosario.json` (creados desde la web) quedan con origen `usuario`.
+- v5 → v6 (09/11/2026): `ia_tareas.clase` admite `revisar` («Revisar con IA»). SQLite no deja cambiar un CHECK: se rehace la tabla copiando las filas, el índice y el trigger.
 - v4 → v5 (09/11/2026): `tipos.archivado` y tabla `catalogo_quitados` (lo borrado o fusionado desde Ajustes).
 - v3 → v4 (06/11/2026): tabla `ia_config` (una fila): clave y modelo de la IA puestos desde la web. La clave nunca sale por la API (ni en `/api/datos` ni en `/api/exportar`), pero sí está en las copias de seguridad de la base de datos.
 
-`abrir()` mira `PRAGMA user_version`: 0 sin tablas → crea y siembra desde `seed/`; si es más antigua que la actual, **primero hace una copia completa** (`VACUUM INTO`) en la carpeta de copias como `lab-antes-vX-a-vY-<fecha>.db` (fuera de la rotación: no se borra sola) y después migra paso a paso (v0 → v5 directo, v1 → v2 → … → v5).
+`abrir()` mira `PRAGMA user_version`: 0 sin tablas → crea y siembra desde `seed/`; si es más antigua que la actual, **primero hace una copia completa** (`VACUUM INTO`) en la carpeta de copias como `lab-antes-vX-a-vY-<fecha>.db` (fuera de la rotación: no se borra sola) y después migra paso a paso (v0 → v6 directo, v1 → v2 → … → v6).
