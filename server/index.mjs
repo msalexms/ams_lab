@@ -12,6 +12,7 @@ import {readdirSync, statSync} from 'node:fs';
 import {abrir, ubicacionId, sincronizarCatalogo, guardarTipo, VERSION} from './db.mjs';
 import {programarCopias, opcionesCopias, copiar} from './copias.mjs';
 import * as cat from './catalogo.mjs';
+import {aplicarCambios} from './revision.mjs';
 import {estado, ejecutarAlta, normalizar, cerrarInterrumpidas, modelos, guardarConfig, modeloValido, MODELO_RECOMENDADO} from './ia.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -166,6 +167,12 @@ async function borrarFoto(nombre) {
 }
 
 // ---------- IA: tareas de alta (crear → el modelo propone → el usuario confirma o descarta) ----------
+// nombre legible de lo que se revisa: la pieza (si se revisa desde una pieza) o el tipo
+function nombreObjetivo(o) {
+  if (!o) return null;
+  if (o.componente_id) return db.prepare('SELECT nombre FROM componentes WHERE id = ?').get(o.componente_id)?.nombre || null;
+  return o.tipo_id ? db.prepare('SELECT nombre FROM tipos WHERE id = ?').get(o.tipo_id)?.nombre || null : null;
+}
 const tarea = (id) => {
   const t = db.prepare('SELECT * FROM ia_tareas WHERE id = ?').get(Number(id));
   if (!t) throw new HttpError(404, 'No existe esa tarea');
@@ -174,7 +181,7 @@ const tarea = (id) => {
     propuesta: t.propuesta ? JSON.parse(t.propuesta) : null, error: t.error, modelo: t.modelo,
     componente_id: t.componente_id, creada: t.creada, rondas: (entrada.rondas || []).length,
     actualizada: t.actualizada, ahora: db.prepare("SELECT datetime('now') AS t").get().t, // para el contador de segundos
-    modelo_pedido: entrada.modelo || null};
+    modelo_pedido: entrada.modelo || null, objetivo: entrada.objetivo || null, objetivo_nombre: nombreObjetivo(entrada.objetivo)};
 };
 
 // el usuario contesta las dudas (y/o añade información) sobre la propuesta que tiene en pantalla, quizá ya corregida:
@@ -182,6 +189,7 @@ const tarea = (id) => {
 const MAX_RONDAS = 5;
 function responderAlta(id, b) {
   const t = tarea(id);
+  if (t.clase !== 'alta') throw new HttpError(400, 'Para otra revisión, pide una nueva desde la ficha');
   if (t.estado !== 'propuesta') throw new HttpError(409, `Esta tarea está «${t.estado}»: no se puede repensar`);
   if (t.rondas >= MAX_RONDAS) throw new HttpError(409, `Ya van ${MAX_RONDAS} vueltas: corrige a mano y guarda`);
   const respuestas = (Array.isArray(b.respuestas) ? b.respuestas : []).slice(0, 12)
@@ -199,6 +207,63 @@ function responderAlta(id, b) {
     .run(JSON.stringify(entrada), t.id);
   ejecutarAlta(db, FOTOS, t.id); // en segundo plano, como el alta
   return tarea(t.id);
+}
+
+// «Revisar con IA» desde una pieza (revisa la pieza y su tipo) o desde un tipo (revisa la ficha)
+async function crearRevision(req) {
+  if (!estado(db).activa) throw new HttpError(503, 'Falta la clave de OpenCode Go: ponla en Ajustes → IA');
+  let b;
+  try { b = JSON.parse((await leerCuerpo(req, MAX_FOTO * 1.4)).toString('utf8') || '{}'); } catch (e) {
+    if (e instanceof HttpError) throw e;
+    throw new HttpError(400, 'JSON no válido');
+  }
+  const objetivo = {};
+  if (b.objetivo === 'pieza') {
+    const c = db.prepare('SELECT id, tipo_id FROM componentes WHERE id = ?').get(Number(b.id));
+    if (!c) throw new HttpError(404, 'No existe esa pieza');
+    objetivo.componente_id = c.id;
+    if (c.tipo_id) objetivo.tipo_id = c.tipo_id;
+  } else if (b.objetivo === 'tipo') {
+    if (!db.prepare('SELECT 1 FROM tipos WHERE id = ?').get(String(b.id))) throw new HttpError(404, 'Ese tipo no existe');
+    objetivo.tipo_id = String(b.id);
+  } else throw new HttpError(400, 'Di qué hay que revisar (una pieza o un tipo)');
+  const entrada = {texto: texto(b.texto, 1000), objetivo};
+  if (b.modelo) {
+    if (!(await modeloValido(String(b.modelo)))) throw new HttpError(400, 'Ese modelo no está disponible para fotos');
+    entrada.modelo = String(b.modelo);
+  }
+  const foto = b.foto ? Buffer.from(String(b.foto), 'base64') : null;
+  if (foto && foto.length < 100) throw new HttpError(400, 'Foto vacía');
+  const {lastInsertRowid: id} = db.prepare("INSERT INTO ia_tareas (clase, entrada, componente_id) VALUES ('revisar', ?, ?)")
+    .run(JSON.stringify(entrada), objetivo.componente_id ?? null);
+  if (foto) {
+    entrada.foto = `ia-${id}-${Date.now()}.jpg`; // solo para que la vea el modelo: se borra al aplicar o descartar
+    await writeFile(join(FOTOS, entrada.foto), foto);
+    db.prepare('UPDATE ia_tareas SET entrada = ? WHERE id = ?').run(JSON.stringify(entrada), id);
+  }
+  ejecutarAlta(db, FOTOS, Number(id)); // en segundo plano, igual que un alta
+  return tarea(id);
+}
+
+// aplica los cambios marcados de una revisión, todos o ninguno, comprobando que nada ha cambiado desde entonces
+async function aplicarRevision(id, b) {
+  const t = tarea(id);
+  if (t.clase !== 'revisar') throw new HttpError(400, 'Esta tarea no es una revisión');
+  if (t.estado !== 'propuesta') throw new HttpError(409, `Esta revisión está «${t.estado}»`);
+  const ids = (Array.isArray(b.ids) ? b.ids : []).map(String);
+  let n;
+  db.exec('BEGIN');
+  try {
+    n = aplicarCambios(db, t.propuesta.objetivo, t.propuesta.cambios, ids);
+    db.prepare("UPDATE ia_tareas SET estado = 'aplicada' WHERE id = ?").run(t.id);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    if (e.code === 400 || e.code === 409) throw new HttpError(e.code, e.message);
+    throw e;
+  }
+  await borrarFoto(t.foto);
+  return {ok: true, aplicados: n, objetivo: t.propuesta.objetivo};
 }
 
 async function crearAlta(req) {
@@ -232,6 +297,7 @@ async function crearAlta(req) {
 // el usuario confirma la propuesta (quizá corregida): ficha nueva si hace falta, pieza, sus datos y la foto
 async function aplicarAlta(id, b) {
   const t = tarea(id);
+  if (t.clase !== 'alta') throw new HttpError(400, 'Esta tarea no es un alta');
   if (t.estado !== 'propuesta') throw new HttpError(409, `Esta tarea está «${t.estado}», no se puede aplicar`);
   const p = normalizar(db, {...b, tipo_existente: b.tipo === '__nuevo' ? null : b.tipo || null, tipo_nuevo: b.tipo === '__nuevo' ? b.tipo_nuevo : null});
   if (b.tipo && b.tipo !== '__nuevo' && !p.tipo_existente) throw new HttpError(400, 'Ese tipo no existe');
@@ -310,6 +376,8 @@ async function api(req, res, path) {
     return send(res, 200, lista.map((x) => ({...x, recomendado: x.id === MODELO_RECOMENDADO, coste_medio: medias[x.id] || null})));
   }
   if (m === 'POST' && path === '/api/ia/alta') return send(res, 202, await crearAlta(req));
+  if (m === 'POST' && path === '/api/ia/revisar') return send(res, 202, await crearRevision(req));
+  if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)\/aplicar-cambios$/)) && m === 'POST') return send(res, 200, await aplicarRevision(r[1], await leerJson(req)));
   if (m === 'GET' && path === '/api/ia/tareas') // las que siguen abiertas (pensando, propuesta sin confirmar o con error)
     return send(res, 200, db.prepare("SELECT id FROM ia_tareas WHERE estado IN ('pendiente', 'propuesta', 'error') ORDER BY id DESC LIMIT 20")
       .all().map((x) => tarea(x.id)));

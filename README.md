@@ -20,6 +20,7 @@ Botón «Añadir con IA»: foto y/o texto de una pieza → el modelo propone nom
 - Antes de guardar: **vista previa** de cómo quedará la ficha, y puedes **contestar las dudas** del modelo para que rehaga la propuesta (hasta 5 vueltas; cada una cuenta como una consulta). Se ve el coste aproximado de cada consulta.
 - **Modelo**: el de siempre se cambia con un toque en Configuración (sin volver a poner la clave), y al analizar se puede elegir otro solo para esa pieza. Cada modelo muestra lo que cuesta por pieza: la media real de tus consultas o una estimación.
 - **Móvil**: el botón «+» ofrece «Foto con IA» (abre la cámara y la analiza al momento), «Elegir foto con IA» o «A mano». Mientras el modelo piensa se ve qué pasa, cuántos segundos lleva y el esqueleto de la ficha.
+- **Revisar con IA**: en la ficha de cada pieza y de cada tipo. Dices qué revisar (opcional, también con foto) y el modelo propone cambios; ves **solo los cambios** (antes tachado, después en claro) y marcas cuáles aplicar. Si la ficha cambió mientras tanto, no se pisa nada.
 - Cada consulta se guarda en la tabla `ia_tareas`: si cierras la pestaña mientras piensa, la propuesta te espera en «Añadir con IA».
 
 ## Docker (homelab)
