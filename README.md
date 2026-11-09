@@ -40,6 +40,7 @@ docker compose exec ams-lab npm run copia
 ```
 
 - Los datos viven en `./data` (base de datos + fotos). Al arrancar, la app aplica el catálogo de `seed/`: actualizar el glosario o los proyectos = reconstruir la imagen (`docker compose up -d --build`).
+- Una instalación nueva empieza con un **catálogo básico** (18 tipos comunes con sus pines y 4 proyectos) y **6 piezas de ejemplo** («(ejemplo)» en el nombre): bórralas cuando añadas las tuyas. Para llevarte tu inventario a otra máquina, descarga una copia completa y restáurala allí.
 - Sin `docker compose`: `docker build -t ams-lab .` y `docker run -d --name ams-lab --init -p 4321:4321 -v ./data:/data ams-lab`
 - Llevar la imagen a otra máquina sin el código: `docker save ams-lab:latest -o ams-lab.tar` → copiar → `docker load -i ams-lab.tar`. Si el servidor es ARM (Raspberry Pi): `docker buildx build --platform linux/arm64 -t ams-lab .`
 - La app corre como el usuario `node` del contenedor; al arrancar deja `./data` a su nombre (uid 1000).

@@ -212,7 +212,7 @@ ol.pasos li { padding: var(--e1) 0; }
 .form.ancho { max-width: 760px; }
 .form label, .form .campo { display: grid; gap: 6px; font-size: .84rem; font-weight: 500; color: var(--tinta2); }
 .campo-t { display: block; }
-.form :is(input:not([type=checkbox]):not([type=radio]):not([type=hidden]), select, textarea) {
+.form :where(input:not([type=checkbox], [type=radio], [type=hidden]), select, textarea) { /* :where: sin peso, cada campo puede ajustar lo suyo */
   background: var(--hoja); color: var(--tinta); border: 1px solid var(--linea); border-radius: 2px; min-height: 42px;
   padding: 9px 12px; font: inherit; font-size: 16px; font-weight: 400; width: 100%;
 }
@@ -247,7 +247,7 @@ ol.pasos li { padding: var(--e1) 0; }
 .ed legend { padding: 0; margin-bottom: var(--e1); }
 .ed .ayuda { margin-top: calc(-1 * var(--e1)); }
 .ed-cab, .ed-fila { display: grid; gap: var(--e2); align-items: center; }
-.ed-pines :is(.ed-cab, .ed-fila) { grid-template-columns: minmax(80px, .8fr) minmax(0, 1.4fr) minmax(130px, 1fr) auto; }
+.ed-pines :is(.ed-cab, .ed-fila) { grid-template-columns: minmax(110px, 1fr) minmax(0, 1.3fr) minmax(150px, .9fr) auto; }
 .ed-datos :is(.ed-cab, .ed-fila) { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; }
 .ed-cab { border-bottom: 1px solid var(--tinta); padding-bottom: var(--e1); }
 .ed-filas { display: grid; gap: var(--e2); }
