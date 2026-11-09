@@ -99,8 +99,8 @@ async function cambiarTema() {
   catch (err) { toast(err.message, true); }
 }
 
-// reduce la foto en el móvil antes de subirla (lado largo 1600 px, JPEG) y respeta la orientación
-async function reducir(file, max = 1600) {
+// la foto en un lienzo (lado largo como mucho «max» px), respetando la orientación de la cámara
+async function lienzoDe(file, max) {
   let src;
   try { src = await createImageBitmap(file, {imageOrientation: 'from-image'}); }
   catch {
@@ -110,11 +110,132 @@ async function reducir(file, max = 1600) {
   const cv = document.createElement('canvas');
   cv.width = Math.round(w * s); cv.height = Math.round(h * s);
   cv.getContext('2d').drawImage(src, 0, 0, cv.width, cv.height);
-  return new Promise((ok) => cv.toBlob(ok, 'image/jpeg', 0.85));
+  return cv;
 }
+const jpeg = (cv) => new Promise((ok) => cv.toBlob(ok, 'image/jpeg', 0.85));
+
+// ---------- encuadre: un recuadro 4:3 fijo (el formato de las tarjetas); la foto se mueve, se amplía y se gira ----------
+// para que todas las piezas salgan igual. Devuelve el JPEG recortado, la foto entera («Sin recortar») o null (cancelado).
+const ENC_RATIO = 4 / 3, ENC_ZOOM = 5;
+function encuadrar(file) {
+  return new Promise(async (resolver) => {
+    let S;
+    try { S = await lienzoDe(file, 3200); } /* con margen para acercar sin perder detalle */ catch (err) { toast(err.message, true); resolver(null); return; }
+    const capa = document.createElement('div');
+    capa.className = 'encuadre';
+    capa.setAttribute('role', 'dialog');
+    capa.setAttribute('aria-modal', 'true');
+    capa.setAttribute('aria-label', 'Encuadrar la foto');
+    capa.innerHTML = `<div class="enc-cab"><strong>Encuadra la pieza</strong>
+        <span>Que quepa entera dentro del recuadro. Arrastra para moverla; pellizca o usa la barra para acercarla.</span></div>
+      <div class="enc-escena"><canvas class="enc-img"></canvas><div class="enc-marco" aria-hidden="true"><i></i><i></i><i></i><i></i></div></div>
+      <div class="enc-controles"><label class="enc-zoom-et">Acercar<input type="range" class="enc-zoom" min="1" max="${ENC_ZOOM}" step="0.01" value="1"></label>
+        <button type="button" class="btn" data-enc="girar">Girar</button></div>
+      <div class="enc-pie"><button type="button" class="btn" data-enc="cancelar">Cancelar</button>
+        <button type="button" class="btn" data-enc="entera">Sin recortar</button>
+        <button type="button" class="btn prim" data-enc="usar">Usar foto</button></div>`;
+    document.body.append(capa);
+    document.body.classList.add('con-encuadre');
+    const escena = capa.querySelector('.enc-escena'), img = capa.querySelector('.enc-img'), marcoEl = capa.querySelector('.enc-marco'), zoom = capa.querySelector('.enc-zoom');
+    const lim = (v, a, b) => Math.min(b, Math.max(a, v));
+    let M = {x: 0, y: 0, w: 1, h: 1}, s = 1, smin = 1, x = 0, y = 0; // marco (px de pantalla), escala y posición de la foto respecto al marco
+    const pintar = () => { img.width = S.width; img.height = S.height; img.getContext('2d').drawImage(S, 0, 0); };
+    const medir = () => {
+      const r = escena.getBoundingClientRect();
+      let w = r.width - 32, h = w / ENC_RATIO;
+      if (h > r.height - 32) { h = r.height - 32; w = h * ENC_RATIO; }
+      M = {x: (r.width - w) / 2, y: (r.height - h) / 2, w, h};
+      Object.assign(marcoEl.style, {left: `${M.x}px`, top: `${M.y}px`, width: `${w}px`, height: `${h}px`});
+      smin = Math.max(w / S.width, h / S.height); // la foto siempre cubre el recuadro
+    };
+    const ajustar = () => {
+      s = lim(s, smin, smin * ENC_ZOOM);
+      x = lim(x, M.w - S.width * s, 0);
+      y = lim(y, M.h - S.height * s, 0);
+      Object.assign(img.style, {width: `${S.width * s}px`, height: `${S.height * s}px`, transform: `translate(${M.x + x}px, ${M.y + y}px)`});
+      zoom.value = String(s / smin);
+    };
+    const centrar = () => { s = smin; x = (M.w - S.width * s) / 2; y = (M.h - S.height * s) / 2; ajustar(); };
+    const acercar = (nueva, px, py) => { // px, py: punto fijo, en px respecto al marco
+      const k = lim(nueva, smin, smin * ENC_ZOOM) / s;
+      x = px - (px - x) * k; y = py - (py - y) * k; s *= k;
+      ajustar();
+    };
+    pintar(); medir(); centrar();
+
+    // arrastrar con un dedo (o el ratón), pellizcar con dos, rueda en el ordenador
+    const dedos = new Map();
+    escena.addEventListener('pointerdown', (e) => { escena.setPointerCapture(e.pointerId); dedos.set(e.pointerId, {x: e.clientX, y: e.clientY}); });
+    escena.addEventListener('pointermove', (e) => {
+      const antes = dedos.get(e.pointerId);
+      if (!antes) return;
+      const ahora = {x: e.clientX, y: e.clientY};
+      if (dedos.size === 1) { x += ahora.x - antes.x; y += ahora.y - antes.y; ajustar(); }
+      else if (dedos.size === 2) {
+        const otro = [...dedos.entries()].find(([k]) => k !== e.pointerId)[1];
+        const d0 = Math.hypot(antes.x - otro.x, antes.y - otro.y), d1 = Math.hypot(ahora.x - otro.x, ahora.y - otro.y);
+        const r = escena.getBoundingClientRect();
+        x += (ahora.x - antes.x) / 2; y += (ahora.y - antes.y) / 2;
+        if (d0 > 0) acercar(s * (d1 / d0), (ahora.x + otro.x) / 2 - r.left - M.x, (ahora.y + otro.y) / 2 - r.top - M.y); else ajustar();
+      }
+      dedos.set(e.pointerId, ahora);
+    });
+    const soltar = (e) => dedos.delete(e.pointerId);
+    escena.addEventListener('pointerup', soltar);
+    escena.addEventListener('pointercancel', soltar);
+    escena.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const r = escena.getBoundingClientRect();
+      acercar(s * Math.exp(-e.deltaY / 400), e.clientX - r.left - M.x, e.clientY - r.top - M.y);
+    }, {passive: false});
+    zoom.addEventListener('input', () => acercar(smin * Number(zoom.value), M.w / 2, M.h / 2));
+    const alCambiarTamano = () => { const rel = s / smin; medir(); s = smin * rel; ajustar(); };
+    window.addEventListener('resize', alCambiarTamano);
+    const tecla = (e) => { if (e.key === 'Escape') cerrar(null); };
+    document.addEventListener('keydown', tecla);
+
+    function cerrar(valor) {
+      window.removeEventListener('resize', alCambiarTamano);
+      document.removeEventListener('keydown', tecla);
+      capa.remove();
+      document.body.classList.remove('con-encuadre');
+      resolver(valor);
+    }
+    capa.addEventListener('click', async (e) => {
+      const accion = e.target.closest('[data-enc]')?.dataset.enc;
+      if (accion === 'cancelar') cerrar(null);
+      else if (accion === 'girar') { // 90° a la derecha
+        const r = document.createElement('canvas');
+        r.width = S.height; r.height = S.width;
+        const c = r.getContext('2d');
+        c.translate(r.width, 0); c.rotate(Math.PI / 2); c.drawImage(S, 0, 0);
+        S = r; pintar(); medir(); centrar();
+      } else if (accion === 'entera') {
+        const k = Math.min(1, 1600 / Math.max(S.width, S.height)), o = document.createElement('canvas');
+        o.width = Math.round(S.width * k); o.height = Math.round(S.height * k);
+        o.getContext('2d').drawImage(S, 0, 0, o.width, o.height);
+        cerrar(await jpeg(o));
+      } else if (accion === 'usar') {
+        const sw = M.w / s, sh = M.h / s, o = document.createElement('canvas');
+        o.width = Math.round(lim(sw, 400, 1600)); o.height = Math.round(o.width / ENC_RATIO);
+        o.getContext('2d').drawImage(S, -x / s, -y / s, sw, sh, 0, 0, o.width, o.height);
+        cerrar(await jpeg(o));
+      }
+    });
+  });
+}
+// la foto que se sube: encuadrada por el usuario; null si canceló
+async function fotoEncuadrada(file) {
+  const blob = await encuadrar(file);
+  if (!blob) toast('Foto cancelada: no se ha subido nada');
+  return blob;
+}
+const base64 = (blob) => new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.readAsDataURL(blob); });
+
 async function subirFoto(id, file) {
+  const blob = await fotoEncuadrada(file);
+  if (!blob) return null;
   toast('Subiendo foto…');
-  const blob = await reducir(file);
   const c = await api('PUT', `api/componentes/${id}/foto`, blob, {'content-type': 'image/jpeg'});
   guardarLocal(c);
   toast('Foto guardada');
@@ -426,8 +547,7 @@ async function guardarForm(form, id) {
   const c = id ? await api('PATCH', `api/componentes/${id}`, body) : await api('POST', 'api/componentes', body);
   guardarLocal(c);
   const foto = fd.get('foto');
-  if (foto && foto.size) await subirFoto(c.id, foto);
-  else toast('Guardado');
+  if (!(foto && foto.size && await subirFoto(c.id, foto))) toast('Guardado');
   location.hash = `#/c/${c.id}`;
 }
 
@@ -827,8 +947,9 @@ async function enviarIA(form) {
   const file = fd.get('foto');
   let foto = null;
   if (file && file.size) {
-    const blob = await reducir(file);
-    foto = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.readAsDataURL(blob); });
+    const blob = await encuadrar(file);
+    if (!blob) throw new Error('Foto cancelada: no se ha enviado nada');
+    foto = await base64(blob);
   }
   toast('Enviando…');
   const t = await api('POST', 'api/ia/alta', {texto: fd.get('texto'), foto, modelo: fd.get('modelo') || undefined});
@@ -1240,6 +1361,16 @@ async function cambioAjustes(input) {
 }
 
 // ---------- «Corregir con IA» (fase C): el modelo corrige la ficha y aquí se eligen los cambios ----------
+// «ficha.datos», «pieza.notas»… (como los nombra el modelo) → nombre que se entiende
+const CAMPOS_FICHA = {nombre: 'Nombre del tipo', categoria: 'Categoría', resumen: 'Resumen', voltaje: 'Tensión', tension: 'Tensión',
+  interfaz: 'Interfaces', interfaces: 'Interfaces', alias: 'Otros nombres', pines: 'Pines', pin: 'Pines', datos: 'Datos del tipo',
+  ojo: 'Advertencia («Ojo»)', advertencias: 'Advertencia («Ojo»)'};
+const CAMPOS_PIEZA = {nombre: 'Nombre de la pieza', notas: 'Notas de la pieza', datos: 'Datos de la pieza', datos_pieza: 'Datos de la pieza'};
+function nombreCampo(campo) {
+  const m = norm(campo).match(/^(ficha|tipo|pieza)[.:s]+([a-z_]+)/) || [null, 'ficha', norm(campo).match(/^[a-z_]+/)?.[0]];
+  const nombre = (m[1] === 'pieza' ? CAMPOS_PIEZA : CAMPOS_FICHA)[m[2]];
+  return nombre || may(String(campo).replace(/^(ficha|tipo|pieza)./i, '').replace(/[._]/g, ' '));
+}
 const volverRevision = (t) => (t.objetivo?.componente_id ? `#/c/${t.objetivo.componente_id}` : t.objetivo?.tipo_id ? `#/g/${encodeURIComponent(t.objetivo.tipo_id)}` : '#/ia');
 
 // desplegable en la ficha (pieza o tipo): qué revisar y una foto, ambos opcionales
@@ -1249,7 +1380,8 @@ function panelRevisar(objetivo, id, ayuda) {
     <form id="form-revisar" class="form sin-pad" autocomplete="off" data-objetivo="${objetivo}" data-id="${esc(id)}">
       <p class="ayuda">${esc(ayuda)} Te enseña solo lo que cambiaría y tú eliges qué aplicar.</p>
       <label>Qué corregir (opcional)<textarea name="texto" rows="2" maxlength="1000" placeholder="Los pines están al revés · Añade el consumo"></textarea></label>
-      <label>Foto (opcional)<input type="file" name="foto" accept="image/*"></label>
+      <label>Foto (opcional)<input type="file" name="foto" accept="image/*">
+        <span class="ayuda">Si no pones ninguna, la IA mira la foto que ya tiene la pieza.</span></label>
       <div class="acciones"><button class="btn prim" type="submit">Pedir correcciones</button></div>
     </form></details>`;
 }
@@ -1258,8 +1390,9 @@ async function enviarRevision(form) {
   const fd = new FormData(form), file = fd.get('foto');
   let foto = null;
   if (file && file.size) {
-    const blob = await reducir(file);
-    foto = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.readAsDataURL(blob); });
+    const blob = await encuadrar(file);
+    if (!blob) throw new Error('Foto cancelada: no se ha enviado nada');
+    foto = await base64(blob);
   }
   const t = await api('POST', 'api/ia/revisar', {objetivo: form.dataset.objetivo, id: form.dataset.id, texto: fd.get('texto'), foto});
   location.hash = `#/ia/${t.id}`;
@@ -1281,12 +1414,13 @@ function vistaCambios(t) {
   return `${cabecera(`Correcciones para «${esc(t.objetivo_nombre || '')}»`, '', p.cambios.length
       ? 'Marca los cambios que quieras aplicar. Lo que no marques se queda como está.'
       : 'La IA no ve nada que cambiar.')}
+    ${t.foto ? `<p class="ayuda pad">${t.foto_de_pieza ? 'Ha mirado la foto que ya tenía la pieza.' : 'Ha mirado la foto que adjuntaste.'}</p>` : ''}
     ${specs([['Cambios', String(p.cambios.length)], ['Confianza', esc(p.confianza)], ['Modelo', esc(nombreModelo(t.modelo))], ['Coste', esc(costeTexto(p.coste))]])}
     ${p.dudas?.length ? `<div class="pad ia-dudas"><h3>Dudas del modelo</h3><ul>${p.dudas.map((d) => `<li>${esc(d)}</li>`).join('')}</ul>
       <p class="ayuda">Si sabes la respuesta, pide otra corrección desde la ficha y escríbela en «Qué corregir».</p></div>` : ''}
     ${grupo('tipo', `Ficha del tipo «${esc(nombreTipo)}»`, piezasTipo > 1 ? `La usan ${piezasTipo} piezas: los cambios se verán en todas. La ficha quedará «sin comprobar» hasta que la mires.` : 'La ficha quedará «sin comprobar» hasta que la mires.')}
     ${grupo('pieza', 'Esta pieza', '')}
-    ${p.motivos?.length ? `<details class="pad ia-motivos"><summary>Por qué (${p.motivos.length})</summary><ul>${p.motivos.map((m) => `<li><strong>${esc(m.campo)}</strong>: ${esc(m.motivo)}</li>`).join('')}</ul></details>` : ''}
+    ${p.motivos?.length ? `<details class="pad ia-motivos"><summary>Por qué (${p.motivos.length})</summary><ul>${p.motivos.map((m) => `<li><strong>${esc(nombreCampo(m.campo))}</strong>: ${esc(m.motivo)}</li>`).join('')}</ul></details>` : ''}
     <div class="acciones pad">
       ${p.cambios.length ? `<button class="btn prim" type="button" id="ia-aplicar-cambios" data-id="${t.id}" data-volver="${volver}">Aplicar ${p.cambios.length} cambio${p.cambios.length === 1 ? '' : 's'}</button>
         <button class="btn" type="button" data-ia-marcar="todo">Marcar todo</button>
@@ -1472,9 +1606,10 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarMenu
 async function fotoDirectaIA(file) {
   cerrarMenuFab();
   if (!D.ia?.activa) { toast('Primero pon la clave de OpenCode Go'); location.hash = '#/ia/ajustes'; return; }
+  const blob = await fotoEncuadrada(file);
+  if (!blob) return;
   toast('Enviando foto…');
-  const blob = await reducir(file);
-  const foto = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.readAsDataURL(blob); });
+  const foto = await base64(blob);
   const t = await api('POST', 'api/ia/alta', {foto});
   location.hash = `#/ia/${t.id}`;
 }
@@ -1523,6 +1658,12 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && document.activeElement === q) { q.value = ''; route(); q.blur(); }
 });
 window.addEventListener('hashchange', () => { route(); window.scrollTo(0, 0); });
+
+// móvil: con el teclado abierto se esconde la barra de abajo (iOS la deja flotando en mitad de la pantalla, encima del texto)
+const escribe = (el) => !!el && (el.matches('textarea, select, [contenteditable]')
+  || (el.tagName === 'INPUT' && !/^(checkbox|radio|file|button|submit|range|hidden)$/.test(el.type)));
+document.addEventListener('focusin', (e) => { if (escribe(e.target)) document.body.classList.add('teclado'); });
+document.addEventListener('focusout', () => setTimeout(() => { if (!escribe(document.activeElement)) document.body.classList.remove('teclado'); }, 60));
 
 // ---------- datos y modo sin conexión ----------
 // sin red, el service worker (sw.js) entrega la última copia de /api/datos con la cabecera x-guardado

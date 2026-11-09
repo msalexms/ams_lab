@@ -4,7 +4,7 @@
 //   AMS_LAB_COPIAS=/ruta → carpeta de las copias diarias (por defecto <datos>/copias) · ver server/copias.mjs
 //   «Añadir con IA» (OpenCode Go): clave y modelo desde la web (o IA_CLAVE / IA_MODELO) · ver server/ia.mjs
 import {createServer} from 'node:http';
-import {readFile, writeFile, unlink, rename} from 'node:fs/promises';
+import {readFile, writeFile, unlink, rename, copyFile} from 'node:fs/promises';
 import {extname, join, normalize, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {networkInterfaces} from 'node:os';
@@ -237,7 +237,7 @@ const tarea = (id) => {
   const t = db.prepare('SELECT * FROM ia_tareas WHERE id = ?').get(Number(id));
   if (!t) throw new HttpError(404, 'No existe esa tarea');
   const entrada = JSON.parse(t.entrada);
-  return {id: t.id, clase: t.clase, estado: t.estado, texto: entrada.texto || '', foto: entrada.foto || null,
+  return {id: t.id, clase: t.clase, estado: t.estado, texto: entrada.texto || '', foto: entrada.foto || null, foto_de_pieza: !!entrada.foto_de_pieza,
     propuesta: t.propuesta ? JSON.parse(t.propuesta) : null, error: t.error, modelo: t.modelo,
     componente_id: t.componente_id, creada: t.creada, rondas: (entrada.rondas || []).length,
     actualizada: t.actualizada, ahora: db.prepare("SELECT datetime('now') AS t").get().t, // para el contador de segundos
@@ -294,11 +294,15 @@ async function crearRevision(req) {
   }
   const foto = b.foto ? Buffer.from(String(b.foto), 'base64') : null;
   if (foto && foto.length < 100) throw new HttpError(400, 'Foto vacía');
+  // sin foto nueva, el modelo ve la que ya tiene la pieza (o, desde un tipo, la de una de sus piezas)
+  const suya = foto ? null : db.prepare(`SELECT foto FROM componentes WHERE foto LIKE '%.jpg' AND ${objetivo.componente_id ? 'id = ?' : 'tipo_id = ?'}
+    ORDER BY actualizado DESC LIMIT 1`).get(objetivo.componente_id ?? objetivo.tipo_id)?.foto;
   const {lastInsertRowid: id} = db.prepare("INSERT INTO ia_tareas (clase, entrada, componente_id) VALUES ('revisar', ?, ?)")
     .run(JSON.stringify(entrada), objetivo.componente_id ?? null);
-  if (foto) {
-    entrada.foto = `ia-${id}-${Date.now()}.jpg`; // solo para que la vea el modelo: se borra al aplicar o descartar
-    await writeFile(join(FOTOS, entrada.foto), foto);
+  if (foto || suya) {
+    entrada.foto = `ia-${id}-${Date.now()}.jpg`; // una copia solo para el modelo: se borra al aplicar o descartar (la de la pieza no se toca)
+    if (foto) await writeFile(join(FOTOS, entrada.foto), foto);
+    else { await copyFile(join(FOTOS, suya), join(FOTOS, entrada.foto)); entrada.foto_de_pieza = true; }
     db.prepare('UPDATE ia_tareas SET entrada = ? WHERE id = ?').run(JSON.stringify(entrada), id);
   }
   ejecutarAlta(db, FOTOS, Number(id)); // en segundo plano, igual que un alta
