@@ -356,7 +356,7 @@ ol.pasos li { padding: var(--e1) 0; }
 .aj-buscar { background: var(--hoja); color: var(--tinta); border: 1px solid var(--linea); border-radius: 2px; padding: 8px 12px; font: inherit; font-size: 16px; max-width: 260px; }
 .ia-atajo.sin-margen { margin: 0; display: inline-block; font-size: .88rem; }
 
-/* «Revisar con IA» */
+/* «Corregir con IA» */
 .ia-revisar { border-top: 1px solid var(--linea2); padding-top: var(--e4); }
 .ia-revisar > summary { list-style: none; cursor: pointer; width: 100%; }
 .ia-revisar > summary::-webkit-details-marker { display: none; }
@@ -464,3 +464,18 @@ ol.pasos li { padding: var(--e1) 0; }
   * { transition: none !important; }
 }
 @media (hover: none) { .fila:hover, .ia-modelo:hover { background: none; } }
+
+/* ficha de una pieza: arriba lo de esta pieza, debajo la ficha de su tipo (común a todas las piezas iguales) */
+.sec-etq { margin: 0 var(--pad) var(--e2); font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--gris); }
+.ficha-tipo { display: grid; gap: var(--e3); align-content: start; }
+.sec-cab { display: flex; justify-content: space-between; align-items: center; gap: var(--e3); border-bottom: 1px solid var(--tinta); padding-bottom: var(--e2); }
+.hoja-cuerpo .sec-cab h3 { margin: 0; }
+.sec-nombre { font-size: 1.05rem; font-weight: 500; }
+.sec-nombre a { text-decoration: none; border-bottom: 1px solid var(--linea); }
+.sec-nombre a:hover { border-color: var(--tinta); }
+.sec-nombre .gris { font-size: .86rem; font-weight: 400; }
+.ficha-tipo .resumen { margin: 0; }
+.ficha-tipo .nota { margin: 0; }
+.sec-datos { display: flex; flex-wrap: wrap; gap: var(--e1) var(--e5); font-size: .92rem; }
+.sec-datos .gris { font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-right: var(--e1); }
+.ficha-tipo h3.sep { margin-top: var(--e3); }

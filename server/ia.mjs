@@ -203,7 +203,7 @@ export function normalizar(db, p) {
 // el modelo de la tarea: el elegido para esa pieza en concreto (si lo hay) o el de la configuración
 async function modeloElegido(db, idTarea = null) {
   const c = config(db);
-  if (!c.clave) throw new Error('Falta la clave de OpenCode Go: ponla en «Añadir con IA» → Configuración.');
+  if (!c.clave) throw new Error('Falta la clave de OpenCode Go: ponla en Ajustes → IA.');
   const id = idTarea || c.modelo;
   const m = (await modelos()).find((x) => x.id === id);
   if (!m) throw new Error(`El modelo «${id}» no está en el catálogo de OpenCode Go con fotos y salida estructurada: elige otro en la configuración.`);
@@ -305,7 +305,7 @@ export function rescatar(db, ctx, texto) {
   let propuesta;
   try { propuesta = normalizar(db, p); } catch { return null; }
   if (!propuesta.nombre) return null;
-  if (problemas.length) propuesta.dudas.push(`El modelo no rellenó bien algunos campos y se han corregido solos; revisa: ${[...new Set(problemas)].slice(0, 6).join(', ')}.`);
+  if (problemas.length) propuesta.dudas.push(`El modelo no rellenó bien algunos campos y se han corregido solos; compruébalos: ${[...new Set(problemas)].slice(0, 6).join(', ')}.`);
   return propuesta;
 }
 
@@ -343,7 +343,7 @@ export async function guardarConfig(db, {clave, modelo, quitarClave} = {}) {
   return estado(db);
 }
 
-// ---------- «Revisar con IA»: el modelo corrige una ficha existente (y la pieza, si se revisa desde una pieza) ----------
+// ---------- «Corregir con IA»: el modelo corrige una ficha existente (y la pieza, si se revisa desde una pieza) ----------
 function instruccionesRevision(ctx, conPieza) {
   return `Eres el asistente de un almacén personal de componentes de electrónica. Te paso la FICHA de un tipo de componente
 ${conPieza ? 'y los datos de UNA pieza concreta de ese tipo ' : ''}tal como están guardados, y quizá una foto y lo que el usuario quiere que revises.
@@ -390,7 +390,7 @@ async function proponerRevision(db, entrada, foto, sesion) {
   const {diferencias, estadoActual} = await import('./revision.mjs');
   const obj = entrada.objetivo;
   const actual = estadoActual(db, obj);
-  if (!actual.tipo && !actual.pieza) throw new Error('Lo que había que revisar ya no existe');
+  if (!actual.tipo && !actual.pieza) throw new Error('Lo que había que corregir ya no existe');
   const conPieza = !!actual.pieza;
   const ctx = contexto(db);
   const datosTexto = JSON.stringify({ficha: actual.tipo ? fichaSalida(actual.tipo) : null,

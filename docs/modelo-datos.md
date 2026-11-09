@@ -72,7 +72,7 @@ La web no guarda configuración propia: categorías, funciones de pin con sus co
 - **Sitios** (`ubicaciones`): renombrar; si el nombre ya existe (sin mirar mayúsculas), se juntan. Borrar deja sus piezas sin sitio.
 - **Piezas**: al borrar una, el servidor la guarda 2 minutos para «Deshacer» (la foto espera como `papelera-…` y se borra al vencer o al arrancar).
 
-## «Revisar con IA» (v6)
+## «Corregir con IA» (v6; antes «Revisar con IA»)
 Desde una pieza (revisa la pieza y la ficha de su tipo) o desde un tipo. La tarea (`clase = 'revisar'`) guarda en `entrada.objetivo` qué se revisa (`tipo_id`, `componente_id`). El modelo devuelve la ficha (y la pieza) **entera y corregida**; el servidor (`server/revision.mjs`) la compara con lo guardado y la propuesta es una lista de **cambios** (`id`, campo, antes, después; pines y datos emparejados por su nombre, así que reordenar no cuenta como cambio). Al aplicar los marcados se comprueba que lo de «antes» sigue igual: si la ficha cambió entretanto, no se aplica nada (409). Los cambios en la ficha la dejan con `origen = 'ia'` y `revisado = 0`.
 
 ## Editar una ficha a mano (fase D)
