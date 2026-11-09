@@ -380,7 +380,8 @@ function copiaAntesDeMigrar(db, dataDir, version) {
   const {dir} = opcionesCopias(dataDir);
   mkdirSync(dir, {recursive: true});
   const sello = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-');
-  const destino = join(dir, `lab-antes-v${version}-a-v${VERSION}-${sello}.db`);
+  let destino = join(dir, `lab-antes-v${version}-a-v${VERSION}-${sello}.db`);
+  for (let n = 2; existsSync(destino); n++) destino = join(dir, `lab-antes-v${version}-a-v${VERSION}-${sello}-${n}.db`); // dos en el mismo segundo
   db.exec(`VACUUM INTO '${destino.replaceAll("'", "''")}'`);
   console.log(`[migración] copia previa: ${destino}`);
 }

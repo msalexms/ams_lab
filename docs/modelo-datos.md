@@ -48,7 +48,7 @@ erDiagram
 ## Tres capas
 | Capa | Tablas | Quién la cambia |
 |---|---|---|
-| **Referencia** (configuración) | `categorias`, `funciones_pin` (nombre + **color claro y de noche** + tachado), `dificultades`; `ajustes` (tema: auto, claro, noche — el valor por defecto viene de seed, el elegido no se pisa) | `seed/referencia.json`; las categorías también la IA o el usuario |
+| **Referencia** (configuración) | `categorias`, `funciones_pin` (nombre + **color claro y de noche** + tachado), `dificultades`; `ajustes` (tema: auto, claro, noche; vista_inventario: lista, cuadricula — el valor por defecto viene de seed, el elegido no se pisa; los valores válidos los comprueba el servidor) | `seed/referencia.json`; las categorías también la IA o el usuario |
 | **Catálogo** | `tipos`, `tipo_pines`, `tipo_alias`, `tipo_interfaces`, `tipo_datos`, `proyectos` y sus tablas | `seed/glosario.json`, `seed/proyectos.json`; los tipos también la IA o el usuario |
 | **Inventario** (datos del usuario) | `componentes`, `componente_datos`, `ubicaciones`, `historial` | solo la aplicación |
 | **IA** | `ia_tareas` | la aplicación al llamar al modelo |
@@ -74,6 +74,13 @@ La web no guarda configuración propia: categorías, funciones de pin con sus co
 
 ## «Revisar con IA» (v6)
 Desde una pieza (revisa la pieza y la ficha de su tipo) o desde un tipo. La tarea (`clase = 'revisar'`) guarda en `entrada.objetivo` qué se revisa (`tipo_id`, `componente_id`). El modelo devuelve la ficha (y la pieza) **entera y corregida**; el servidor (`server/revision.mjs`) la compara con lo guardado y la propuesta es una lista de **cambios** (`id`, campo, antes, después; pines y datos emparejados por su nombre, así que reordenar no cuenta como cambio). Al aplicar los marcados se comprueba que lo de «antes» sigue igual: si la ficha cambió entretanto, no se aplica nada (409). Los cambios en la ficha la dejan con `origen = 'ia'` y `revisado = 0`.
+
+## Editar una ficha a mano (fase D)
+`GET /api/tipos/:id/ficha` da la ficha entera (formato de `guardarTipo`) y su **huella** (resumen de nombre, categoría, textos, alias, interfaces, pines y datos). `PUT` con la ficha nueva y esa huella: si la de ahora no coincide (la cambió la IA u otra pestaña), 409 y no se guarda nada. Se valida (nombre, categoría existente, función de pin existente, sin pines ni datos repetidos) y se guarda con `origen = 'usuario'`, `revisado = 1`. Los datos de una pieza llegan como `datos: [[clave, valor], …]` en el alta y la edición y se reescriben enteros.
+
+## Copias completas: exportar y restaurar
+- Exportar: `.tar.gz` (ustar + gzip) con `manifiesto.json`, `lab.db` (`VACUUM INTO`) y `fotos/*` (`server/respaldo.mjs`).
+- Restaurar en dos pasos: **preparar** (`POST /api/copia/preparar` con el archivo, o `POST /api/copias/<nombre>/preparar`) lo deja en `<datos>/restaurar/<token>/` y lo comprueba (cabecera SQLite, `user_version` ≤ la de la app, tablas `componentes` y `tipos`, `integrity_check`); **confirmar** (`POST /api/copia/restaurar {token}`) hace `VACUUM INTO lab-antes-restaurar-<fecha>.db`, cierra la base de datos, pone la nueva, mueve las fotos que falten y la vuelve a abrir (`abrir()` migra si es antigua). Solo hay una restauración preparada a la vez; las que no se confirman se borran al arrancar. No se restaura mientras la IA tiene una tarea pensando.
 
 ## Datos extra (clave → valor)
 - `tipo_datos`: lo que es igual en todas las piezas de un tipo (corriente máxima, dirección I2C, frecuencia…). En `seed/glosario.json`, campo `datos` (`{"Clave": "valor"}`).

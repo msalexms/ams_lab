@@ -28,10 +28,7 @@ export function copiar(db, dataDir, {dir, max}, forzar = false) {
   }
   db.exec(`VACUUM INTO '${destino.replaceAll("'", "''")}'`);
 
-  const fotos = join(dataDir, 'fotos');
-  let nuevas = 0;
-  for (const f of existsSync(fotos) ? readdirSync(fotos) : [])
-    if (!existsSync(join(dir, 'fotos', f))) { copyFileSync(join(fotos, f), join(dir, 'fotos', f)); nuevas++; }
+  const nuevas = copiarFotosNuevas(dataDir, dir);
 
   const viejas = readdirSync(dir).filter((f) => PATRON.test(f)).sort().slice(0, -max || undefined);
   if (max > 0) viejas.forEach((f) => unlinkSync(join(dir, f)));
@@ -39,11 +36,22 @@ export function copiar(db, dataDir, {dir, max}, forzar = false) {
   return destino;
 }
 
-// al arrancar y luego cada hora comprueba si falta la copia del día
-export function programarCopias(db, dataDir) {
+// las fotos que aún no están en la carpeta de copias (las de la papelera no)
+export function copiarFotosNuevas(dataDir, dir) {
+  const fotos = join(dataDir, 'fotos');
+  mkdirSync(join(dir, 'fotos'), {recursive: true});
+  let nuevas = 0;
+  for (const f of existsSync(fotos) ? readdirSync(fotos) : [])
+    if (!f.startsWith('papelera-') && !existsSync(join(dir, 'fotos', f))) { copyFileSync(join(fotos, f), join(dir, 'fotos', f)); nuevas++; }
+  return nuevas;
+}
+
+// al arrancar y luego cada hora comprueba si falta la copia del día.
+// «base» es una función que da la conexión actual (cambia al restaurar una copia)
+export function programarCopias(base, dataDir) {
   const op = opcionesCopias(dataDir);
   if (!op.max) return console.log('[copias] desactivadas (AMS_LAB_COPIAS_MAX=0)');
-  const intento = () => { try { copiar(db, dataDir, op); } catch (e) { console.error('[copias] error:', e.message); } };
+  const intento = () => { try { copiar(base(), dataDir, op); } catch (e) { console.error('[copias] error:', e.message); } };
   intento();
   setInterval(intento, 60 * 60 * 1000).unref();
 }
