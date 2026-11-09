@@ -221,3 +221,57 @@ ol.pasos li { padding: 3px 0; }
   .stepper button { width: 36px; height: 36px; }
   .form { padding: 16px; }
 }
+
+/* ---------- fase A: espera de la IA, modelos, menú «+», Guardar fijo ---------- */
+/* espera: una línea fina que avanza (nada de spinners ni colores), qué pasa, segundos y el esqueleto de la ficha */
+.ia-progreso { position: relative; height: 2px; margin: 0 20px; background: var(--linea2); overflow: hidden; }
+.ia-progreso span { position: absolute; top: 0; bottom: 0; left: 0; width: 30%; background: var(--tinta); animation: ia-barra 1.4s ease-in-out infinite; }
+@keyframes ia-barra { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.ia-paso { margin: 0; font-size: .9rem; }
+.ia-paso .num { font-variant-numeric: tabular-nums; }
+.ia-espera { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: start; }
+.ia-esqueleto { display: grid; gap: 10px; }
+.esq { height: 12px; background: var(--linea2); animation: ia-latido 1.6s ease-in-out infinite; }
+.esq-titulo { height: 20px; width: 55%; }
+.esq-linea { width: 80%; }
+.esq-specs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 6px 0; }
+.esq-specs .esq { height: 28px; }
+.esq-fila { height: 16px; }
+.esq-fila.corta { width: 60%; }
+@keyframes ia-latido { 50% { opacity: .45; } }
+.aparece { animation: ia-aparece .25s ease-out; }
+@keyframes ia-aparece { from { opacity: 0; transform: translateY(4px); } }
+
+/* lista de modelos: se elige con un toque */
+.ia-bloque { display: grid; gap: 8px; border-bottom: 1px solid var(--linea2); }
+.ia-bloque h3, .ia-bloque p { margin: 0; }
+.ia-modelos { display: grid; border-top: 1px solid var(--linea2); }
+.ia-modelo { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--linea2); cursor: pointer; }
+.ia-modelo:hover { background: var(--sel); }
+.ia-modelo input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--tinta); }
+.ia-modelo > span { display: grid; gap: 2px; }
+.ia-modelo .sub { font-size: .8rem; color: var(--gris); }
+.ia-modelo:has(input:checked) .nombre { font-weight: 600; }
+.form.sin-pad { padding: 0; }
+
+/* menú del «+»: una hoja pequeña sobre el botón */
+.fab-menu { position: fixed; right: 18px; bottom: calc(max(18px, env(safe-area-inset-bottom)) + 62px); z-index: 7; min-width: 230px;
+  background: var(--hoja); border: 1px solid var(--tinta); display: grid; }
+.fab-op { display: grid; gap: 2px; padding: 12px 14px; border-bottom: 1px solid var(--linea2); color: var(--tinta); text-decoration: none; cursor: pointer; font-size: .95rem; }
+.fab-op:last-child { border-bottom: 0; }
+.fab-op:hover, .fab-op:focus-within { background: var(--sel); }
+.fab-op .sub { font-size: .75rem; color: var(--gris); }
+
+@media (max-width: 760px) {
+  .ia-progreso { margin: 0 16px; }
+  .ia-espera { grid-template-columns: 1fr; }
+  .esq-specs { grid-template-columns: repeat(2, 1fr); }
+  /* Guardar siempre a mano en formularios largos: barra fija abajo */
+  .form > .acciones { position: sticky; bottom: 0; z-index: 5; background: var(--hoja); border-top: 1px solid var(--linea);
+    margin: 0 -16px -16px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
+  .form.sin-pad > .acciones { margin: 0; padding: 10px 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ia-progreso span, .esq, .aparece { animation: none; }
+  .ia-progreso span { width: 100%; opacity: .35; }
+}
