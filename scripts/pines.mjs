@@ -1,5 +1,6 @@
 // Pines resumidos de cada tipo: [pin, uso corto, función]. Funciones: vcc, gnd, bus, dig, ana, no, otro.
-// npm run pines → los guarda en seed/glosario.json; después, npm run catalogo los pasa a la base de datos
+// npm run pines → los guarda en seed/glosario.json; después, npm run catalogo los pasa a la base de datos.
+// Los tipos que no están en seed/glosario.json (fuera del catálogo básico) se ignoran.
 import {readFileSync, writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 

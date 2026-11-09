@@ -1,4 +1,4 @@
-// «Revisar con IA» (fase C): el modelo devuelve la ficha (y la pieza) corregida ENTERA; aquí se compara con lo que hay
+// «Corregir con IA» (antes «Revisar con IA») (fase C): el modelo devuelve la ficha (y la pieza) corregida ENTERA; aquí se compara con lo que hay
 // y se sacan los cambios campo a campo, para que el usuario marque cuáles aplicar. Al aplicar se comprueba que lo de
 // «antes» sigue igual (si alguien editó la ficha entretanto, no se pisa: hay que pedir otra revisión).
 import {leerFicha, guardarTipo} from './db.mjs';
@@ -86,7 +86,7 @@ export function aplicarCambios(db, objetivo, cambios, ids) {
   const ahora = estadoActual(db, objetivo);
   if (elegidos.some((c) => c.ambito === 'tipo') && !ahora.tipo) throw new ConflictoRevision('Ese tipo ya no existe');
   if (elegidos.some((c) => c.ambito === 'pieza') && !ahora.pieza) throw new ConflictoRevision('Esa pieza ya no existe');
-  const cambiado = (c) => { throw new ConflictoRevision(`«${c.etiqueta}» ha cambiado desde la revisión: pide otra revisión para no pisar lo nuevo`); };
+  const cambiado = (c) => { throw new ConflictoRevision(`«${c.etiqueta}» ha cambiado desde que lo miró la IA: pide otra corrección para no pisar lo nuevo`); };
   const fila = (filas, k) => filas.find((x) => clave(x[0]) === k);
 
   for (const c of elegidos) {

@@ -1,358 +1,44 @@
 [
- {
-  "nombre": "Freenove ESP32-WROVER-DEV (con conector de cámara)",
-  "tipo": "esp32-wrover-freenove",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "Placa de extensión GPIO Freenove (entrada 7–12 V)",
-  "tipo": "freenove-gpio-extension",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "ESP32-S3 DevKit (USB + UART)",
-  "tipo": "esp32-s3-devkit",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "ESP32-WROOM-32 DevKit de 38 pines",
-  "tipo": "esp32-wroom-devkit",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "Placa de expansión ESP32 morada (DC 6,5–16 V, USB-C, puente 3,3/5 V)",
-  "tipo": "esp32-expansion-board",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "HC-SR04",
-  "tipo": "hc-sr04",
-  "cantidad": 2,
-  "ubicacion": ""
- },
- {
-  "nombre": "VL53L0/1XV2 (VL53L0X)",
-  "tipo": "vl53l0x",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "HC-SR501",
-  "tipo": "hc-sr501",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "ENS160 + AHT21",
-  "tipo": "ens160-aht21",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "Micro SD card adapter",
-  "tipo": "microsd",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "Sensor de nivel de agua",
-  "tipo": "sensor-agua",
-  "cantidad": 5,
-  "ubicacion": ""
- },
- {
-  "nombre": "KY-037",
-  "tipo": "ky-037",
-  "cantidad": 3,
-  "ubicacion": ""
- },
- {
-  "nombre": "Zumbador",
-  "tipo": "buzzer-activo",
-  "cantidad": 2,
-  "ubicacion": "",
-  "notas": "Comprobar cuál es cuál: el activo pita solo con 5 V."
- },
- {
-  "nombre": "Zumbador de frecuencia ajustable",
-  "tipo": "buzzer-pasivo",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "Altavoz 16 Ω 0,5 W",
-  "tipo": "altavoz",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "Altavoz 8 Ω 1,5 W",
-  "tipo": "altavoz",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "INMP441 (versión redonda)",
-  "tipo": "inmp441",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "Freenove 8 RGB LED Module",
-  "tipo": "led-ws2812-8",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "Freenove Audio Converter & Amplifier (ES7148 + PAM8403)",
-  "tipo": "es7148-pam8403",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "TFT 1.8\" SPI 128×160 V1.1 con lector SD",
-  "tipo": "tft-st7735",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "Protoboard de 830 puntos",
-  "tipo": "protoboard-830",
-  "cantidad": 2,
-  "ubicacion": ""
- },
- {
-  "nombre": "Pulsador 12×12 mm",
-  "tipo": "pulsador-12x12",
-  "cantidad": 10,
-  "ubicacion": "",
-  "notas": "Con capuchones de colores (redondos y cuadrados) sueltos."
- },
- {
-  "nombre": "Pulsador 6×6 mm",
-  "tipo": "pulsador-6x6",
-  "cantidad": 5,
-  "ubicacion": ""
- },
- {
-  "nombre": "Interruptor deslizante de 3 pines",
-  "tipo": "interruptor-deslizante",
-  "cantidad": 2,
-  "ubicacion": ""
- },
- {
-  "nombre": "Interruptor DIP de 6 posiciones",
-  "tipo": "dip-switch",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "NFC PN532",
-  "tipo": "pn532",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "SRX882S V2.0 (receptor 433 MHz)",
-  "tipo": "rf433-rx",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "STX882 V1.2 (emisor 433 MHz)",
-  "tipo": "rf433-tx",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "OLED 128×64 SSD1306",
-  "tipo": "oled-ssd1306",
-  "cantidad": 2,
-  "ubicacion": ""
- },
- {
-  "nombre": "JQ-V360 F100 V3",
-  "tipo": "jq-v360",
-  "cantidad": 1,
-  "ubicacion": "",
-  "seguro": false,
-  "notas": "No sé qué módulo es: mándame una foto de cerca."
- },
- {
-  "nombre": "Joystick",
-  "tipo": "joystick",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "MPU6050",
-  "tipo": "mpu6050",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "Potenciómetro B10K",
-  "tipo": "potenciometro-b10k",
-  "cantidad": 3,
-  "ubicacion": ""
- },
- {
-  "nombre": "HMC5883L",
-  "tipo": "hmc5883l",
-  "cantidad": 1,
-  "ubicacion": "",
-  "notas": "Escanear el I2C: si responde en 0x0D es un QMC5883L."
- },
- {
-  "nombre": "10M 486",
-  "tipo": "10m-486",
-  "cantidad": 2,
-  "ubicacion": "",
-  "seguro": false,
-  "notas": "No sé qué es por la serigrafía: mándame una foto de cerca."
- },
- {
-  "nombre": "GPS u-blox NEO-6M-0-001",
-  "tipo": "gps-neo6m",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "4-Digit Display V1.2 (TM1637)",
-  "tipo": "tm1637-4dig",
-  "cantidad": 1,
-  "ubicacion": "",
-  "seguro": false,
-  "notas": "Supongo que es el de 4 pines CLK/DIO/VCC/GND (TM1637); confírmalo."
- },
- {
-  "nombre": "Matriz LED 8×8 788BS",
-  "tipo": "matriz-8x8",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "7 segmentos 4 dígitos 3461BS-1",
-  "tipo": "display-7seg-4dig",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "2510SR-1",
-  "tipo": "barra-led-10",
-  "cantidad": 1,
-  "ubicacion": "",
-  "seguro": false,
-  "notas": "Creo que es una barra de 10 LED; confírmalo."
- },
- {
-  "nombre": "7 segmentos SA51-1",
-  "tipo": "display-7seg-1dig",
-  "cantidad": 2,
-  "ubicacion": ""
- },
- {
-  "nombre": "7 segmentos 5161BS",
-  "tipo": "display-7seg-1dig",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "Motor DC",
-  "tipo": "motor-dc",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "Micro servo SG90",
-  "tipo": "servo-sg90",
-  "cantidad": 1,
-  "ubicacion": ""
- },
- {
-  "nombre": "Motor paso a paso 28BYJ-48",
-  "tipo": "stepper-28byj48",
-  "cantidad": 2,
-  "ubicacion": ""
- },
- {
-  "nombre": "Controlador de motor paso a paso (ULN2003)",
-  "tipo": "uln2003",
-  "cantidad": 2,
-  "ubicacion": "",
-  "seguro": false,
-  "notas": "Supongo ULN2003 (el que viene con el 28BYJ-48)."
- },
- {
-  "nombre": "LED de colores",
-  "tipo": "led",
-  "cantidad": null,
-  "ubicacion": "",
-  "varios": true
- },
- {
-  "nombre": "Resistencias variadas",
-  "tipo": "resistencia",
-  "cantidad": null,
-  "ubicacion": "",
-  "varios": true
- },
- {
-  "nombre": "Infrarrojos (receptor / LED)",
-  "tipo": "infrarrojo",
-  "cantidad": null,
-  "ubicacion": "",
-  "varios": true,
-  "seguro": false,
-  "notas": "¿Receptor VS1838B, LED IR, mando? Dime qué tienes y cuántos."
- },
- {
-  "nombre": "Cables dupont",
-  "tipo": "cable-dupont",
-  "cantidad": null,
-  "ubicacion": "",
-  "varios": true
- },
- {
-  "nombre": "Tornillos Allen M3×6 (DIN 912, inox)",
-  "tipo": "tornillo-allen",
-  "cantidad": 50,
-  "ubicacion": ""
- },
- {
-  "nombre": "Caja de tornillos Allen (M2 ×6/8/10/12 y M3 ×8/10/12/16, 25 de cada)",
-  "tipo": "tornillo-allen",
-  "cantidad": 200,
-  "ubicacion": ""
- },
- {
-  "nombre": "Tuercas M2 (en la caja de 400)",
-  "tipo": "tuerca",
-  "cantidad": 100,
-  "ubicacion": ""
- },
- {
-  "nombre": "Tuercas M3 (en la caja de 400)",
-  "tipo": "tuerca",
-  "cantidad": 100,
-  "ubicacion": ""
- },
- {
-  "nombre": "Insertos de latón M2 (L3, Ø ext. 3,2)",
-  "tipo": "inserto-laton",
-  "cantidad": 100,
-  "ubicacion": ""
- },
- {
-  "nombre": "Insertos de latón M3×5",
-  "tipo": "inserto-laton",
-  "cantidad": 50,
-  "ubicacion": "",
-  "notas": "La etiqueta dice también «M2.5»: comprueba con un tornillo M3."
- }
+  {
+    "nombre": "ESP32-WROOM-32 DevKit (ejemplo)",
+    "tipo": "esp32-wroom-devkit",
+    "cantidad": 1,
+    "ubicacion": "Cajón 1",
+    "notas": "Pieza de ejemplo: bórrala cuando añadas las tuyas."
+  },
+  {
+    "nombre": "Protoboard de 830 puntos (ejemplo)",
+    "tipo": "protoboard-830",
+    "cantidad": 1,
+    "ubicacion": "Cajón 1",
+    "notas": "Pieza de ejemplo: bórrala cuando añadas las tuyas."
+  },
+  {
+    "nombre": "Cables dupont (ejemplo)",
+    "tipo": "cable-dupont",
+    "varios": true,
+    "ubicacion": "Cajón 1",
+    "notas": "Pieza de ejemplo: bórrala cuando añadas las tuyas."
+  },
+  {
+    "nombre": "LEDs de 5 mm surtidos (ejemplo)",
+    "tipo": "led",
+    "varios": true,
+    "ubicacion": "Cajita 2",
+    "notas": "Pieza de ejemplo: bórrala cuando añadas las tuyas."
+  },
+  {
+    "nombre": "Resistencias surtidas (ejemplo)",
+    "tipo": "resistencia",
+    "varios": true,
+    "ubicacion": "Cajita 2",
+    "notas": "Pieza de ejemplo: bórrala cuando añadas las tuyas."
+  },
+  {
+    "nombre": "HC-SR04 (ejemplo)",
+    "tipo": "hc-sr04",
+    "cantidad": 2,
+    "ubicacion": "Cajita 3",
+    "notas": "Pieza de ejemplo: bórrala cuando añadas las tuyas."
+  }
 ]
