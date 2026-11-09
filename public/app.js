@@ -763,7 +763,7 @@ function vAjustes(sec) {
       ${fila('#/ajustes/datos', 'Datos', 'Copias de seguridad y exportar')}
       <div class="fila"><div class="fila-main"><div><div class="nombre">Tema</div><div class="sub">Claro de día, grafito de noche o según el sistema</div></div></div>
         <div class="cats">${Object.entries({auto: 'Automático', claro: 'Claro', noche: 'Noche'}).map(([k, v]) =>
-          `<button class="f ${(D.ajustes.tema || 'auto') === k ? 'on' : ''}" data-tema="${k}">${v}</button>`).join('')}</div></div>
+          `<button class="f ${(D.ajustes.tema || 'auto') === k ? 'on' : ''}" data-poner-tema="${k}">${v}</button>`).join('')}</div></div>
     </div></article>`;
 }
 
@@ -868,7 +868,7 @@ function ajDatos(r) {
 
 async function clicAjustes(t) {
   const d = t.dataset, fila = t.closest('.aj-fila'), panel = fila?.querySelector('.aj-panel');
-  if (d.tema) { await api('PUT', 'api/ajustes/tema', {valor: d.tema}); D.ajustes.tema = d.tema; aplicarTema(); route(); return true; }
+  if (d.ponerTema) { await api('PUT', 'api/ajustes/tema', {valor: d.ponerTema}); D.ajustes.tema = d.ponerTema; aplicarTema(); route(); return true; }
   if ('ajCerrar' in d) { t.closest('.aj-panel').hidden = true; return true; }
   if (d.ajTipos) { ui.ajTipos = d.ajTipos; await ajCargar(); return true; }
   if (t.id === 'aj-copia') { t.disabled = true; const r = await api('POST', 'api/copias'); await ajCargar(); toast(`Copia hecha: ${r.nombre}`); return true; }
@@ -1068,8 +1068,8 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios');
-  if (!t) return;
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios');
+  if (!t || !app.contains(t)) return; // solo botones de la propia vista (no el <html>, que lleva data-* del tema)
   try {
     if (t.id === 'ia-cambiar-clave') { $('#form-ia-config').hidden = false; t.closest('.acciones').hidden = true; $('#form-ia-config [name=clave]').focus(); return; }
     if (t.dataset.glo) { ui.sinComprobar = t.dataset.glo === 'sin'; route(); return; }
