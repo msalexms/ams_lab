@@ -4,11 +4,19 @@ Almacén digital personal de componentes electrónicos: inventario con stock y f
 
 - `npm start` → http://localhost:4321 · desde el móvil, la dirección «móvil →» que sale en la consola (misma Wi-Fi)
 - Sin contraseña: pensada solo para la red de casa (o Tailscale). No la publiques en internet tal cual.
-- Copia de seguridad: automática cada día (ver abajo), `npm run copia` para hacer una ya, o «exportar» en http://localhost:4321/api/exportar (solo datos, sin fotos)
+- Copia de seguridad: automática cada día (ver abajo), `npm run copia` para hacer una ya, y desde **Ajustes → Datos** se descarga una copia completa (`.tar.gz` con la base de datos y las fotos) o se restaura una
 
 ## Ajustes
 
-Pestaña **Ajustes**: IA (modelo y clave), **categorías** (renombrar, ordenar, añadir, borrar moviendo sus tipos), **tipos** (archivar, fusionar duplicados, borrar los que no usa nada; filtros «sin comprobar», «de la IA», «sin piezas», «archivados»), **sitios** (renombrar, juntar, borrar), **datos** (copias de seguridad, «hacer copia ahora», exportar) y tema. Lo que se borra del catálogo no vuelve al actualizar la imagen. Al borrar una pieza sale «Deshacer» unos segundos.
+Pestaña **Ajustes**: IA (modelo y clave), **categorías** (renombrar, ordenar, añadir, borrar moviendo sus tipos), **tipos** (archivar, fusionar duplicados, borrar los que no usa nada; filtros «sin comprobar», «de la IA», «sin piezas», «archivados»), **sitios** (renombrar, juntar, borrar), **datos** (descargar una copia completa, restaurar desde un archivo o desde una copia del servidor, «hacer copia ahora») y tema. Lo que se borra del catálogo no vuelve al actualizar la imagen. Al borrar una pieza sale «Deshacer» unos segundos.
+
+## Uso diario
+
+- **Inventario** en lista o en **cuadrícula con las fotos** (se recuerda en la tabla `ajustes`, `vista_inventario`).
+- **Buscar** (arriba, tecla `/`): en una lista la filtra y avisa si hay coincidencias en otras secciones; desde cualquier otro sitio, o con Intro, busca en todo (piezas, tipos —también por pines, alias, interfaces y datos— y proyectos).
+- **Editar ficha** de un tipo a mano: nombre, categoría, resumen, tensión, interfaces, alias, «Ojo» y las **tablas de pines y datos** (añadir, ordenar con ↑ ↓, quitar). Al guardar pasa a ser tuya (`origen = 'usuario'`, comprobada) y `seed/` ya no la toca. Si la ficha cambió mientras la editabas (la IA u otra pestaña), no se pisa: hay que recargar.
+- **Datos de cada pieza** («Valor» → «220 Ω») en su formulario, también como tabla. El **tipo** se elige escribiendo (busca por nombre, alias, interfaz o categoría).
+- **Móvil**: barra de abajo (Inventario, Glosario, «+», Proyectos, Ajustes); el «+» abre el menú de añadir.
 
 ## Añadir con IA
 
@@ -42,7 +50,9 @@ Cada día (al arrancar y luego cada hora comprueba si falta) se guarda `copias/l
 
 - `AMS_LAB_COPIAS=/ruta` cambia la carpeta (por defecto `data/copias`). **Mejor en otro disco**: en `docker-compose.yml` descomenta el volumen `/copias`.
 - `AMS_LAB_COPIAS_MAX=30` cambia cuántas se guardan (`0` = ninguna).
-- Restaurar: para la app, copia la que quieras a `data/lab.db` (borrando `lab.db-wal` y `lab.db-shm`) y las fotos de `copias/fotos/` a `data/fotos/`.
+- **Descargar** (Ajustes → Datos → «Descargar copia completa», `GET /api/copia/exportar`): un `.tar.gz` con `lab.db`, las fotos y `manifiesto.json`. Lleva la clave de la IA: guárdalo en un sitio seguro.
+- **Restaurar** (Ajustes → Datos): sube ese `.tar.gz` o un `.db` suelto, o elige una copia del servidor. Primero se comprueba (que sea SQLite, de esta app, de una versión que esta app entiende y sin daños) y se ve qué contiene frente a lo de ahora; nada cambia hasta confirmar. Al restaurar se guarda antes el estado actual como `copias/lab-antes-restaurar-<fecha>.db` (con sus fotos en `copias/fotos/`), se pone la base de datos de la copia (migrándola si es antigua) y se añaden sus fotos sin borrar ni pisar ninguna. No hace falta reiniciar.
+- A mano (con la app parada): copia la que quieras a `data/lab.db` (borrando `lab.db-wal` y `lab.db-shm`) y las fotos de `copias/fotos/` a `data/fotos/`.
 
 ## Sin conexión (móvil)
 
