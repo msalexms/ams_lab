@@ -356,7 +356,14 @@ Reglas:
 - Pines: "pin" es el nombre serigrafiado; "uso" en 2–4 palabras; la función tiene que ser uno de estos ids:
   ${ctx.funciones.map((f) => `${f.id} = ${f.nombre}`).join(' · ')}.
 - "datos" del tipo: lo que es igual en todas las piezas del tipo. ${conPieza ? '"datos_pieza": lo propio de esta pieza.' : ''}
-  Nada de «no aplica» ni «desconocido».
+  Clave corta y valor concreto; no repitas lo que ya dicen los pines. Nada de «no aplica» ni «desconocido».${conPieza ? `
+- "notas" son las notas PERSONALES del usuario sobre su pieza, escritas por él. No las reescribas ni pongas en ellas
+  descripciones de la pieza o de la foto. Solo puedes quitar lo que esta revisión deja resuelto (una duda como
+  «confírmalo»), manteniendo el resto con sus palabras; si no queda nada útil, déjalas vacías. Lo que averigües va
+  a la ficha o a "datos_pieza", no a las notas.` : ''}
+- Escribe como una hoja de datos: nunca hables de «la foto» ni de lo que se ve en ella en los textos que se guardan.
+- En "motivos", "campo" es uno de: ficha.nombre, ficha.categoria, ficha.resumen, ficha.voltaje, ficha.interfaz,
+  ficha.alias, ficha.pines, ficha.datos, ficha.ojo${conPieza ? ', pieza.nombre, pieza.notas, pieza.datos' : ''}.
 - NO INVENTES: si no estás seguro de un pinout, una tensión o un dato, déjalo como está y pregúntalo en "dudas"
   (preguntas cortas que el usuario pueda contestar). Un pinout o una tensión inventados pueden quemar una placa.
 - Categorías: ${ctx.categorias.map((c) => `${c.id} = ${c.nombre}`).join(' · ')}

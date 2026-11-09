@@ -42,7 +42,7 @@ export function diferencias(actual, nueva, {categorias = {}, funciones = {}} = {
     }
     for (const [k, p] of pinesA) if (!pinesN.has(k))
       poner({id: `tipo.pin.${k}`, ambito: 'tipo', campo: 'pin', etiqueta: `Pin ${limpio(p[0])}`, antes: verPin(p), despues: '', actual: p, nuevo: null, tipoCambio: 'quitado'});
-    datosCambios('tipo', 'dato', 'Dato', a.datos, n.datos, poner);
+    datosCambios('tipo', 'dato', 'Dato del tipo', a.datos, n.datos, poner);
   }
   if (actual.pieza && nueva.pieza) {
     const a = actual.pieza, n = nueva.pieza;
