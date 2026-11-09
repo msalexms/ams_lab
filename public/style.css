@@ -172,6 +172,18 @@ ol.pasos li { padding: 3px 0; }
 .ia-dudas ul { margin: 6px 0 0; padding-left: 18px; font-size: .9rem; }
 .ia-dudas li { padding: 2px 0; }
 .ia-foto { max-width: 260px; }
+.ia-dudas { display: grid; gap: 10px; border-bottom: 1px solid var(--linea2); }
+.ia-dudas h3 { margin: 0; }
+.ia-preguntas { margin: 0; padding-left: 20px; display: grid; gap: 10px; }
+.ia-preguntas p { margin: 0 0 4px; font-size: .9rem; }
+.ia-dudas :is(input, textarea) {
+  width: 100%; background: var(--hoja); color: var(--tinta); border: 1px solid var(--linea); border-radius: 2px;
+  padding: 8px 10px; font: inherit; font-size: 16px;
+}
+.ia-dudas .acciones { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.ia-dudas .ayuda, .pad.ayuda, p.ayuda { font-size: .78rem; color: var(--gris); margin: 0; }
+.ia-pestanas { padding: 10px 20px 0; }
+.ia-previa-hoja { margin: 0 20px; box-shadow: none; }
 
 .vacio { border: 1px solid var(--linea); background: var(--hoja); padding: 28px; text-align: center; color: var(--gris); }
 

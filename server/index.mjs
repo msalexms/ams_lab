@@ -154,8 +154,32 @@ const tarea = (id) => {
   const entrada = JSON.parse(t.entrada);
   return {id: t.id, clase: t.clase, estado: t.estado, texto: entrada.texto || '', foto: entrada.foto || null,
     propuesta: t.propuesta ? JSON.parse(t.propuesta) : null, error: t.error, modelo: t.modelo,
-    componente_id: t.componente_id, creada: t.creada};
+    componente_id: t.componente_id, creada: t.creada, rondas: (entrada.rondas || []).length};
 };
+
+// el usuario contesta las dudas (y/o añade información) sobre la propuesta que tiene en pantalla, quizá ya corregida:
+// se guarda como una «vuelta» y el modelo rehace la propuesta. Como mucho 5 vueltas por tarea.
+const MAX_RONDAS = 5;
+function responderAlta(id, b) {
+  const t = tarea(id);
+  if (t.estado !== 'propuesta') throw new HttpError(409, `Esta tarea está «${t.estado}»: no se puede repensar`);
+  if (t.rondas >= MAX_RONDAS) throw new HttpError(409, `Ya van ${MAX_RONDAS} vueltas: corrige a mano y guarda`);
+  const respuestas = (Array.isArray(b.respuestas) ? b.respuestas : []).slice(0, 12)
+    .map((x) => ({duda: texto(x?.duda, 300), respuesta: texto(x?.respuesta, 500)})).filter((x) => x.duda && x.respuesta);
+  const extra = texto(b.extra, 1000);
+  if (!respuestas.length && !extra) throw new HttpError(400, 'Contesta alguna duda o escribe algo más');
+  // la propuesta tal como la tiene el usuario (con sus correcciones), con el mismo formato y la misma limpieza que al guardar
+  const pb = b.propuesta && typeof b.propuesta === 'object' ? b.propuesta : {};
+  const actual = normalizar(db, {...t.propuesta, ...pb, dudas: t.propuesta.dudas, confianza: t.propuesta.confianza,
+    tipo_existente: pb.tipo === '__nuevo' ? null : pb.tipo ?? t.propuesta.tipo_existente,
+    tipo_nuevo: pb.tipo === '__nuevo' ? pb.tipo_nuevo : pb.tipo ? null : t.propuesta.tipo_nuevo});
+  const entrada = JSON.parse(db.prepare('SELECT entrada FROM ia_tareas WHERE id = ?').get(t.id).entrada);
+  entrada.rondas = [...(entrada.rondas || []), {propuesta: actual, respuestas, extra}];
+  db.prepare("UPDATE ia_tareas SET entrada = ?, estado = 'pendiente', error = NULL WHERE id = ? AND estado = 'propuesta'")
+    .run(JSON.stringify(entrada), t.id);
+  ejecutarAlta(db, FOTOS, t.id); // en segundo plano, como el alta
+  return tarea(t.id);
+}
 
 async function crearAlta(req) {
   if (!estado(db).activa) throw new HttpError(503, 'Falta la clave de OpenCode Go: ponla en Añadir con IA → Configuración');
@@ -258,6 +282,7 @@ async function api(req, res, path) {
       .all().map((x) => tarea(x.id)));
   if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)$/)) && m === 'GET') return send(res, 200, tarea(r[1]));
   if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)\/aplicar$/)) && m === 'POST') return send(res, 200, await aplicarAlta(r[1], await leerJson(req)));
+  if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)\/responder$/)) && m === 'POST') return send(res, 202, responderAlta(r[1], await leerJson(req)));
   if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)\/descartar$/)) && m === 'POST') {
     const t = tarea(r[1]);
     if (t.estado === 'aplicada') throw new HttpError(409, 'Esa tarea ya se aplicó');
