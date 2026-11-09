@@ -216,10 +216,48 @@ async function proponer(db, entrada, foto, sesion) {
     } catch (e) {
       error = e;
       if (!NoObjectGeneratedError.isInstance(e)) break; // solo se reintenta si el formato no era correcto
-      console.warn(`[ia] formato no válido (intento ${intento}): ${txt(e.message, 150)}`);
+      // diagnóstico: qué devolvió el modelo y por qué no valía (sin la foto ni la clave)
+      console.warn(`[ia] ${m.id}: formato no válido (intento ${intento}): ${txt(e.cause?.message || e.message, 400)}`);
+      console.warn(`[ia] ${m.id}: texto devuelto: ${txt(e.text, 800) || '(vacío)'}`);
+      // rescate: muchos modelos devuelven casi lo pedido (sin un campo, envuelto, con ```json…)
+      const rescatada = rescatar(db, ctx, e.text);
+      if (rescatada) {
+        console.warn(`[ia] ${m.id}: propuesta rescatada (${rescatada.dudas.length} dudas)`);
+        return {propuesta: rescatada, modelo: m.id};
+      }
     }
   }
   throw new Error(explicar(error));
+}
+
+// saca el JSON de un texto aunque venga con ```json … ``` o con texto alrededor; null si no hay
+export function extraerJson(texto) {
+  const s = String(texto || '').replace(/```(?:json)?/gi, '');
+  const a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a < 0 || b <= a) return null;
+  try { return JSON.parse(s.slice(a, b + 1)); } catch { return null; }
+}
+
+// segunda barrera: si la respuesta no cumple el esquema estricto pero es aprovechable, se normaliza y cada corrección
+// queda como «duda» para que el usuario la vea al revisar. Solo se rechaza si no hay ni un nombre.
+export function rescatar(db, ctx, texto) {
+  let p = extraerJson(texto);
+  if (!p || typeof p !== 'object') return null;
+  // envoltorios típicos: {"pieza": {...}}, {"data": {...}}, {"properties": {...}}
+  for (let i = 0; i < 2 && !('nombre' in p); i++) {
+    const hijos = Object.values(p).filter((v) => v && typeof v === 'object' && !Array.isArray(v));
+    if (hijos.length !== 1) break;
+    p = hijos[0];
+  }
+  const problemas = (() => {
+    const r = esquema(ctx).safeParse(p);
+    return r.success ? [] : r.error.issues.map((i) => i.path.join('.') || '(raíz)');
+  })();
+  let propuesta;
+  try { propuesta = normalizar(db, p); } catch { return null; }
+  if (!propuesta.nombre) return null;
+  if (problemas.length) propuesta.dudas.push(`El modelo no respetó del todo el formato; revisa: ${[...new Set(problemas)].slice(0, 6).join(', ')}.`);
+  return propuesta;
 }
 
 // comprueba una clave y un modelo con una llamada mínima (unos pocos tokens) antes de guardarlos
