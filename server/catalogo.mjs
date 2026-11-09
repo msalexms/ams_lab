@@ -68,7 +68,7 @@ export function borrarCategoria(db, id, destino) {
   if (!db.prepare('SELECT 1 FROM categorias WHERE id = ?').get(id)) fallo(404, 'Esa categoría no existe');
   const n = db.prepare('SELECT COUNT(*) AS n FROM tipos WHERE categoria_id = ?').get(id).n;
   if (n && !destino) fallo(409, `Tiene ${n} tipo${n === 1 ? '' : 's'}: elige a qué categoría pasan`, {tipos: n});
-  if (destino && (destino === id || !db.prepare('SELECT 1 FROM categorias WHERE id = ?').get(destino))) fallo(400, 'La categoría de destino no vale');
+  if (destino && (destino === id || !db.prepare('SELECT 1 FROM categorias WHERE id = ?').get(destino))) fallo(400, 'Elige otra categoría a la que mover sus tipos');
   enTransaccion(db, () => {
     if (n) db.prepare('UPDATE tipos SET categoria_id = ? WHERE categoria_id = ?').run(destino, id);
     db.prepare('DELETE FROM categorias WHERE id = ?').run(id);
