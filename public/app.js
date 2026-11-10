@@ -569,7 +569,7 @@ function filaCambio(c, extra = '') {
     ${c.despues ? `<span class="ia-ahora">${esc(c.despues)}</span>` : ''}${extra}`;
 }
 function vLoteIA(id) {
-  return `<a class="back" href="#/pendientes">← IA pendiente</a><article class="hoja" id="lote-zona" data-lote="${esc(id)}"><p class="gris pad">Cargando…</p></article>`;
+  return `<a class="back" href="#/pendientes">← Cambios pendientes</a><article class="hoja" id="lote-zona" data-lote="${esc(id)}"><p class="gris pad">Cargando…</p></article>`;
 }
 function htmlLote(ts) {
   const listas = ts.filter((t) => t.estado !== 'pendiente').length;
@@ -1290,7 +1290,7 @@ async function iaAbiertas() {
   if (!zona) return;
   try {
     const ts = await api('GET', 'api/ia/tareas');
-    zona.innerHTML = ts.length ? `<section class="grupo"><h3 class="grupo-t">Sin terminar<span class="n">${ts.length}</span></h3><p class="sub"><a href="#/pendientes">Ver todo en «IA pendiente»</a></p>${ts.map((t) => `
+    zona.innerHTML = ts.length ? `<section class="grupo"><h3 class="grupo-t">Sin terminar<span class="n">${ts.length}</span></h3><p class="sub"><a href="#/pendientes">Ver todo en «Cambios pendientes»</a></p>${ts.map((t) => `
       <div class="fila"><a class="fila-main" href="#/ia/${t.id}">${t.foto ? `<img class="thumb" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : ''}
         <div><div class="nombre">${esc(t.clase === 'revisar' ? `Correcciones para «${t.objetivo_nombre || '?'}»` : t.propuesta?.nombre || t.texto || 'Pieza sin nombre')}</div><div class="sub">${esc(t.creada)}</div></div></a>
         <div class="der">${t.estado === 'error' ? '<span class="mal">Error</span>' : esc(ESTADO_IA[t.estado])}</div></div>`).join('')}</section>` : '';
@@ -1303,10 +1303,9 @@ async function iaTarea(id) {
   let t;
   try { t = await api('GET', `api/ia/tareas/${id}`); } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; return; }
   const foto = t.foto ? `<img class="foto ia-foto" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : '';
-  if (t.clase === 'revisar') { // en una revisión, «volver» lleva a la ficha revisada
-    const atras = document.querySelector('a.back');
-    if (atras) { atras.href = volverRevision(t); atras.textContent = '← Volver a la ficha'; }
-  }
+  const atras = document.querySelector('a.back');
+  if (atras && t.clase === 'revisar') { atras.href = volverRevision(t); atras.textContent = `← ${textoVolver(t)}`; } // a su lote, a pendientes o a la ficha
+  else if (atras && desdePendientes(t)) { atras.href = '#/pendientes'; atras.textContent = '← Cambios pendientes'; }
   if (t.estado === 'pendiente') {
     // la pantalla de espera se pinta UNA vez (si no, la animación y el contador se reiniciarían en cada consulta)
     const clave = `${t.id}-${t.rondas}`;
@@ -1331,12 +1330,12 @@ async function iaTarea(id) {
   };
   if (t.estado === 'error') {
     pintar(`${cabecera('No ha salido', '', t.error || 'Error desconocido')}
-      <div class="pad">${foto}<div class="acciones"><a class="btn prim" href="${t.clase === 'revisar' ? volverRevision(t) : '#/ia'}">Probar otra vez</a>
+      <div class="pad">${foto}<div class="acciones"><a class="btn prim" href="${t.clase === 'revisar' ? fichaRevision(t) : '#/ia'}">Probar otra vez</a>
       <button class="btn peligro" id="ia-descartar" data-id="${t.id}">Descartar</button></div></div>`);
     return;
   }
   if (t.estado !== 'propuesta') {
-    const enlace = t.clase === 'revisar' ? `<a class="btn" href="${volverRevision(t)}">Volver a la ficha</a>`
+    const enlace = t.clase === 'revisar' ? `<a class="btn" href="${volverRevision(t)}">${textoVolver(t)}</a>`
       : t.componente_id ? `<a class="btn" href="#/c/${t.componente_id}">Ver la pieza</a>` : '';
     pintar(`${cabecera(ESTADO_IA[t.estado])}<div class="pad">${enlace}</div>`);
     return;
@@ -1495,7 +1494,7 @@ async function aplicarIA(form) {
 // ---------- Ajustes (fase B): IA, categorías, tipos, sitios, datos y tema ----------
 const plural = (n, uno, varios = `${uno}s`) => `${n} ${n === 1 ? uno : varios}`;
 
-// ---------- IA pendiente: lo que la IA tiene abierto (para no perder un lote al salir de su pantalla) ----------
+// ---------- cambios pendientes: correcciones y altas a medias (para no perder un lote al salir de su pantalla) ----------
 // fecha del servidor (UTC «AAAA-MM-DD HH:MM:SS») → «hace 5 min», «hoy 14:32», «ayer 09:10», «3 nov 14:32»
 function cuando(s) {
   const t = fechaSql(s);
@@ -1517,11 +1516,11 @@ const fechaCompleta = (s) => (fechaSql(s) ? new Date(fechaSql(s)).toLocaleString
 function vPendientes() {
   return `<a class="back" href="#/">← Inventario</a><article class="hoja" id="pend-zona"><p class="gris pad">Cargando…</p></article>`;
 }
-const estadosLote = (e) => [e.propuesta ? `${e.propuesta} lista${e.propuesta === 1 ? '' : 's'}` : '', e.pendiente ? `${e.pendiente} pensando` : '',
+const estadosLote = (e) => [e.propuesta ? `${e.propuesta} lista${e.propuesta === 1 ? '' : 's'}` : '', e.pendiente ? `${e.pendiente} preparándose` : '',
   e.error ? `<span class="mal">${e.error} con error</span>` : ''].filter(Boolean).join(' · ');
 function estadoTarea(t) {
   if (t.estado === 'error') return '<span class="mal">Error</span>';
-  if (t.estado === 'pendiente') return 'Pensando…';
+  if (t.estado === 'pendiente') return 'Preparándose…';
   if (t.clase !== 'revisar') return 'Lista para revisar';
   const n = t.propuesta?.cambios?.length || 0;
   return n ? plural(n, 'cambio') : 'Nada que cambiar';
@@ -1549,11 +1548,11 @@ async function cargarPendientes() {
   try { p = await api('GET', 'api/ia/pendientes'); } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; return; }
   const revisar = p.tareas.filter((t) => t.clase === 'revisar'), altas = p.tareas.filter((t) => t.clase !== 'revisar');
   const grupo = (titulo, filas) => (filas.length ? `<section class="grupo pad"><h3 class="grupo-t">${titulo}<span class="n">${filas.length}</span></h3>${filas.join('')}</section>` : '');
-  zona.innerHTML = `${cabecera('IA pendiente', '', 'Lo que la IA ha preparado y espera a que lo mires, lo que aún está pensando y lo que falló. Nada se aplica hasta que tú lo marcas.')}
-    ${p.total ? '' : '<p class="pad gris">No hay nada pendiente. Si pides correcciones o añades piezas con IA y sales sin terminar, aparecerán aquí.</p>'}
+  zona.innerHTML = `${cabecera('Cambios pendientes', '', 'Correcciones y piezas nuevas que esperan a que las revises, las que aún se están preparando y las que fallaron. Nada se aplica hasta que lo marcas.')}
+    ${p.total ? '' : '<p class="pad gris">No hay nada pendiente. Si dejas a medias unas correcciones o una pieza nueva, aparecerán aquí.</p>'}
     ${grupo('Varias piezas a la vez', p.lotes.map(filaLotePendiente))}
     ${grupo('Correcciones', revisar.map(filaPendiente))}
-    ${grupo('Piezas nuevas con IA', altas.map(filaPendiente))}
+    ${grupo('Piezas nuevas', altas.map(filaPendiente))}
     <p class="pad sub">Lo que ya aplicaste o descartaste está en <a href="#/ajustes/historial?g=ia">Ajustes → Historial</a>.</p>`;
   if (p.tareas.length) conModelos(() => { if (location.hash === '#/pendientes') cargarPendientes(); });
   const pensando = p.lotes.some((l) => l.estados.pendiente) || p.tareas.some((t) => t.estado === 'pendiente');
@@ -1565,7 +1564,7 @@ async function descartarPendiente(valor) {
   if (clase === 'lote') {
     ids = (await api('GET', `api/ia/lotes/${encodeURIComponent(id)}`)).filter((t) => t.estado === 'propuesta' || t.estado === 'error').map((t) => t.id);
     if (!ids.length || !(await confirmar(`¿Descartar las ${ids.length} correcciones que quedan en este lote?\nNo se cambia nada de tus piezas ni de sus fichas.`, {si: 'Descartar', peligro: true}))) return;
-  } else if (!(await confirmar('¿Descartar esta propuesta de la IA?\nNo se cambia nada.', {si: 'Descartar', peligro: true}))) return;
+  } else if (!(await confirmar('¿Descartar este cambio pendiente?\nNo se cambia nada.', {si: 'Descartar', peligro: true}))) return;
   for (const t of ids) await api('POST', `api/ia/tareas/${t}/descartar`).catch(() => {});
   CUENTA_PEND = null;
   await cargarPendientes();
@@ -1577,8 +1576,8 @@ let CUENTA_PEND = null;
 function pintarAvisoPend() {
   const z = $('#pend-aviso'), c = CUENTA_PEND;
   if (!z || !c) return;
-  z.innerHTML = c.tareas ? `<a class="pend-aviso" href="#/pendientes"><span class="nota-t">IA pendiente</span>
-    <span>${c.grupos === 1 ? 'Hay 1 cosa' : `Hay ${c.grupos} cosas`} de la IA sin terminar${c.pensando ? ` (${c.pensando} pensando)` : ''}</span><span class="gris">Ver →</span></a>` : '';
+  z.innerHTML = c.tareas ? `<a class="pend-aviso" href="#/pendientes"><span class="nota-t">Cambios pendientes</span>
+    <span>${c.grupos === 1 ? 'Tienes 1 sin revisar' : `Tienes ${c.grupos} sin revisar`}${c.pensando ? ` (${c.pensando} aún preparándose)` : ''}</span><span class="gris">Ver →</span></a>` : '';
 }
 async function avisoPendientes() {
   pintarAvisoPend(); // lo último que se supo, sin esperar
@@ -1710,7 +1709,7 @@ function vAjustes(sec) {
       ${fila('#/ajustes/tipos', 'Tipos', `${plural(tipos.length - archivados, 'tipo')}${archivados ? ` · ${archivados} archivado${archivados === 1 ? '' : 's'}` : ''} · archivar, fusionar, borrar`)}
       ${fila('#/ajustes/sitios', 'Sitios', `${plural(ubicaciones().length, 'sitio')} · renombrar, juntar, borrar`)}
       ${fila('#/ajustes/datos', 'Datos', 'Copias de seguridad y exportar')}
-      ${fila('#/pendientes', 'IA pendiente', 'Correcciones y piezas nuevas de la IA que esperan a que las mires')}
+      ${fila('#/pendientes', 'Cambios pendientes', 'Correcciones y piezas nuevas que dejaste a medias')}
       ${fila('#/ajustes/historial', 'Historial', 'Quién cambió qué y cuándo: tú, la IA (con su modelo) o el sistema')}
       ${fila('#/ajustes/registro', 'Registro', 'Mensajes del servidor: arranque, copias, IA y errores')}
       ${fila('#/ajustes/letra', 'Letra', `${esc(FUENTES[fuenteActual()].nombre)} · elige la letra de toda la app`)}
@@ -2032,7 +2031,10 @@ function nombreCampo(campo) {
   const nombre = (m[1] === 'pieza' ? CAMPOS_PIEZA : CAMPOS_FICHA)[m[2]];
   return nombre || may(String(campo).replace(/^(ficha|tipo|pieza)./i, '').replace(/[._]/g, ' '));
 }
-const volverRevision = (t) => (t.objetivo?.componente_id ? `#/c/${t.objetivo.componente_id}` : t.objetivo?.tipo_id ? `#/g/${encodeURIComponent(t.objetivo.tipo_id)}` : '#/ia');
+const fichaRevision = (t) => (t.objetivo?.componente_id ? `#/c/${t.objetivo.componente_id}` : t.objetivo?.tipo_id ? `#/g/${encodeURIComponent(t.objetivo.tipo_id)}` : '#/ia');
+const desdePendientes = (t) => ui.origenTarea?.hash === `#/ia/${t.id}` && ui.origenTarea.desde === '#/pendientes';
+const volverRevision = (t) => (t.lote ? `#/ia/lote/${encodeURIComponent(t.lote)}` : desdePendientes(t) ? '#/pendientes' : fichaRevision(t));
+const textoVolver = (t) => (t.lote ? 'Volver al lote' : desdePendientes(t) ? 'Volver a cambios pendientes' : 'Volver a la ficha');
 
 // desplegable en la ficha (pieza o tipo): qué revisar y una foto, ambos opcionales
 function panelRevisar(objetivo, id, ayuda) {
@@ -2061,7 +2063,7 @@ async function enviarRevision(form) {
 // los cambios propuestos: cada uno con su casilla (marcados al empezar), antes tachado y ahora en claro
 // vista previa de una corrección: la ficha tal como quedaría con SOLO los cambios marcados, aplicados aquí (sin guardar
 // nada) con la misma regla que el servidor (server/revision.mjs → aplicarCambios): pines y datos emparejados por su nombre
-const claveTxt = (v) => String(v ?? '').replace(/s+/g, ' ').trim().toLowerCase();
+const claveTxt = (v) => String(v ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 function aplicarEnLocal(t, ids) {
   const p = t.propuesta, o = p.objetivo || {};
   const base = o.tipo_id && D.tipos[o.tipo_id];
@@ -2072,7 +2074,7 @@ function aplicarEnLocal(t, ids) {
   let otroTipo = null; // la pieza pasa a otro tipo (uno que ya existe o uno nuevo)
   for (const c of marcados) {
     const obj = c.ambito === 'tipo' ? tipo : pieza;
-    if (!obj) continue;
+    if (!obj || c.campo === 'ordenPines') continue; // el orden de los pines, después de los demás cambios
     if (c.ambito === 'pieza' && c.campo === 'tipo') {
       const f = c.nuevo?.existente ? D.tipos[c.nuevo.existente] : c.nuevo?.nuevo;
       if (f) otroTipo = {...f, revisado: c.nuevo?.nuevo ? 0 : f.revisado, alias: [...list(f.alias)], interfaz: [...list(f.interfaz)],
@@ -2084,6 +2086,13 @@ function aplicarEnLocal(t, ids) {
       const i = obj[prop].findIndex((x) => claveTxt(x[0]) === k);
       if (c.nuevo) { if (i >= 0) obj[prop][i] = [...c.nuevo]; else obj[prop].push([...c.nuevo]); } else if (i >= 0) obj[prop].splice(i, 1);
     } else obj[c.campo] = Array.isArray(c.nuevo) ? [...c.nuevo] : c.nuevo;
+  }
+  const orden = marcados.find((c) => c.campo === 'ordenPines');
+  if (orden && tipo) { // igual que reordenar() del servidor: los de la lista, en su orden y con su nombre; los demás, quietos
+    const pos = new Map(orden.nuevo.map((x, i) => [claveTxt(x), i])), huecos = [], suyos = [];
+    tipo.pines.forEach((p, i) => { if (pos.has(claveTxt(p[0]))) { huecos.push(i); suyos.push([orden.nuevo[pos.get(claveTxt(p[0]))], ...p.slice(1)]); } });
+    suyos.sort((x, y) => pos.get(claveTxt(x[0])) - pos.get(claveTxt(y[0])));
+    huecos.forEach((h, i) => (tipo.pines[h] = suyos[i]));
   }
   if (tipo && marcados.some((c) => c.ambito === 'tipo')) tipo.revisado = 0; // lo cambia la IA: «sin comprobar»
   return {tipo: otroTipo || tipo, pieza, pc, marcados};
@@ -2155,7 +2164,7 @@ function vistaCambios(t) {
     <div class="acciones pad">
       ${p.cambios.length ? `<button class="btn prim" type="button" id="ia-aplicar-cambios" data-id="${t.id}" data-volver="${volver}">Aplicar ${p.cambios.length} cambio${p.cambios.length === 1 ? '' : 's'}</button>
         <button class="btn" type="button" data-ia-marcar="todo">Marcar todo</button>
-        <button class="btn" type="button" data-ia-marcar="nada">Ninguno</button>` : `<a class="btn prim" href="${volver}">Volver a la ficha</a>`}
+        <button class="btn" type="button" data-ia-marcar="nada">Ninguno</button>` : `<a class="btn prim" href="${volver}">${textoVolver(t)}</a>`}
       <button class="btn peligro" type="button" id="ia-descartar" data-id="${t.id}" data-volver="${volver}">Descartar</button>
     </div>`;
 }
@@ -2457,7 +2466,10 @@ document.addEventListener('keydown', (e) => {
   if (e.key === '/' && !escribiendo) { e.preventDefault(); q.focus(); q.select(); }
   if (e.key === 'Escape' && document.activeElement === q) { q.value = ''; route(); q.blur(); }
 });
-window.addEventListener('hashchange', () => { route(); window.scrollTo(0, 0); });
+window.addEventListener('hashchange', (e) => {
+  if (/^#\/ia\/\d+$/.test(location.hash)) ui.origenTarea = {hash: location.hash, desde: e.oldURL ? new URL(e.oldURL).hash : ''};
+  route(); window.scrollTo(0, 0);
+});
 
 // móvil: con el teclado abierto se esconde la barra de abajo (iOS la deja flotando en mitad de la pantalla, encima del texto)
 const escribe = (el) => !!el && (el.matches('textarea, select, [contenteditable]')

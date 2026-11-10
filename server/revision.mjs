@@ -22,7 +22,7 @@ export function diferencias(actual, nueva, {categorias = {}, funciones = {}, tip
   if (actual.tipo && nueva.tipo) {
     const a = actual.tipo, n = nueva.tipo, verCat = (id) => categorias[id] || id;
     for (const [campo, etiqueta] of Object.entries(CAMPOS_TIPO)) {
-      if (clave(a[campo]) === clave(n[campo])) continue;
+      if (limpio(a[campo]) === limpio(n[campo])) continue; // las mayúsculas cuentan
       if (campo === 'nombre' && !limpio(n.nombre)) continue; // nunca dejar un tipo sin nombre
       poner({id: `tipo.${campo}`, ambito: 'tipo', campo, etiqueta, antes: campo === 'categoria' ? verCat(a[campo]) : limpio(a[campo]),
         despues: campo === 'categoria' ? verCat(n[campo]) : limpio(n[campo]), actual: limpio(a[campo]), nuevo: limpio(n[campo])});
@@ -43,12 +43,20 @@ export function diferencias(actual, nueva, {categorias = {}, funciones = {}, tip
     }
     for (const [k, p] of pinesA) if (!pinesN.has(k))
       poner({id: `tipo.pin.${k}`, ambito: 'tipo', campo: 'pin', etiqueta: `Pin ${limpio(p[0])}`, antes: verPin(p), despues: '', actual: p, nuevo: null, tipoCambio: 'quitado'});
+    // orden y nombre exacto (mayúsculas) de los pines que están en las dos: un cambio aparte, que se aplica al final
+    const comunes = (lista, otros) => (lista || []).filter((p) => otros.has(clave(p[0]))).map((p) => limpio(p[0]));
+    const ordenA = comunes(a.pines, pinesN), ordenN = comunes(n.pines, pinesA);
+    if (ordenA.join('|') !== ordenN.join('|')) {
+      const mismoOrden = ordenA.map(clave).join('|') === ordenN.map(clave).join('|');
+      poner({id: 'tipo.pines.orden', ambito: 'tipo', campo: 'ordenPines', etiqueta: mismoOrden ? 'Nombres de los pines' : 'Orden de los pines',
+        antes: ordenA.join(' · '), despues: ordenN.join(' · '), actual: ordenA, nuevo: ordenN});
+    }
     datosCambios('tipo', 'dato', 'Dato del tipo', a.datos, n.datos, poner);
   }
   if (actual.pieza && nueva.pieza) {
     const a = actual.pieza, n = nueva.pieza;
     for (const [campo, etiqueta] of Object.entries(CAMPOS_PIEZA)) {
-      if (clave(a[campo]) === clave(n[campo]) || (campo === 'nombre' && !limpio(n.nombre))) continue;
+      if (limpio(a[campo]) === limpio(n[campo]) || (campo === 'nombre' && !limpio(n.nombre))) continue; // las mayúsculas cuentan
       poner({id: `pieza.${campo}`, ambito: 'pieza', campo, etiqueta, antes: limpio(a[campo]), despues: limpio(n[campo]), actual: limpio(a[campo]), nuevo: limpio(n[campo])});
     }
     datosCambios('pieza', 'datoPieza', 'Dato de la pieza', a.datos_pieza, n.datos_pieza, poner);
@@ -77,6 +85,17 @@ function datosCambios(ambito, campo, rotulo, actuales = [], nuevos = [], poner) 
     poner({id: `${ambito}.${campo}.${k}`, ambito, campo, etiqueta: `${rotulo}: ${limpio(d[0])}`, antes: limpio(d[1]), despues: '', actual: d, nuevo: null, tipoCambio: 'quitado'});
 }
 
+// pone los pines de «nombres» en ese orden y con ese nombre exacto; los demás (nuevos, o que no estaban) no se mueven
+export function reordenar(pines, nombres) {
+  const pos = new Map(nombres.map((x, i) => [clave(x), i]));
+  const huecos = [], suyos = [];
+  pines.forEach((p, i) => { if (pos.has(clave(p[0]))) { huecos.push(i); suyos.push([nombres[pos.get(clave(p[0]))], ...p.slice(1)]); } });
+  suyos.sort((x, y) => pos.get(clave(x[0])) - pos.get(clave(y[0])));
+  const out = pines.map((p) => [...p]);
+  huecos.forEach((h, i) => (out[h] = suyos[i]));
+  return out;
+}
+
 // lo que hay ahora en la base de datos para el objetivo de una revisión
 export function estadoActual(db, objetivo) {
   const out = {};
@@ -99,8 +118,15 @@ export function aplicarCambios(db, objetivo, cambios, ids) {
   const cambiado = (c) => { throw new ConflictoRevision(`«${c.etiqueta}» ha cambiado desde que lo miró la IA: pide otra corrección para no pisar lo nuevo`); };
   const fila = (filas, k) => filas.find((x) => clave(x[0]) === k);
 
+  // orden de los pines: se comprueba con lo de ahora antes de tocar nada y se aplica al final (después de los demás pines)
+  const orden = elegidos.find((c) => c.campo === 'ordenPines');
+  if (orden) {
+    const enLista = new Set(orden.actual.map(clave));
+    if (ahora.tipo.pines.filter((p) => enLista.has(clave(p[0]))).map((p) => limpio(p[0])).join('|') !== orden.actual.join('|')) cambiado(orden);
+  }
   let nuevoTipo; // id del tipo que pasa a tener la pieza (si se eligió ese cambio)
   for (const c of elegidos) {
+    if (c.campo === 'ordenPines') continue;
     const obj = c.ambito === 'tipo' ? ahora.tipo : ahora.pieza;
     if (c.ambito === 'pieza' && c.campo === 'tipo') {
       if ((ahora.pieza.tipo_id || null) !== (c.actual || null)) cambiado(c);
@@ -132,6 +158,7 @@ export function aplicarCambios(db, objetivo, cambios, ids) {
       obj[c.campo] = c.nuevo;
     }
   }
+  if (orden) ahora.tipo.pines = reordenar(ahora.tipo.pines, orden.nuevo);
   if (elegidos.some((c) => c.ambito === 'tipo')) {
     if (!db.prepare('SELECT 1 FROM categorias WHERE id = ?').get(ahora.tipo.categoria)) ahora.tipo.categoria = 'otro';
     guardarTipo(db, objetivo.tipo_id, ahora.tipo, {origen: 'ia', revisado: 0}); // lo cambió la IA: sin comprobar
