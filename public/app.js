@@ -7,6 +7,15 @@ let FUNC = {};  // id → {nombre, color_claro, color_oscuro, tachado}
 let DIF = {};   // nivel → nombre
 const MUCHOS = 99;
 const TEMAS = {auto: 'Tema: automático', claro: 'Tema: claro', noche: 'Tema: noche'};
+// letras de la app (Ajustes → Letra); la primera es la de por defecto. La familia de cada una está en style.css ([data-fuente])
+const FUENTES = {
+  jetbrains: {nombre: 'JetBrains Mono', sub: 'Monoespaciada, muy legible. La de por defecto.'},
+  'plex-mono': {nombre: 'IBM Plex Mono', sub: 'Monoespaciada, más clásica, de hoja técnica.'},
+  'mono-sistema': {nombre: 'Monoespaciada del sistema', sub: 'No carga nada, pero cambia de un dispositivo a otro.'},
+  'plex-sans': {nombre: 'IBM Plex Sans', sub: 'Sin serifa, de la misma familia que Plex Mono.'},
+  sistema: {nombre: 'Sin serifa del sistema', sub: 'La letra de antes: la del móvil o del ordenador.'},
+};
+const fuenteActual = () => (FUENTES[D.ajustes.fuente] ? D.ajustes.fuente : 'jetbrains');
 
 const D = {componentes: [], tipos: {}, proyectos: [], categorias: [], funciones: [], dificultades: [], ubicaciones: [], ajustes: {}};
 const ui = {cat: '', ubic: '', revisar: false, proFiltro: 'ya', sinComprobar: false, ajTipos: 'todos', ajBuscar: ''};
@@ -90,6 +99,8 @@ function guardarLocal(c) {
 function aplicarTema() {
   const t = TEMAS[D.ajustes.tema] ? D.ajustes.tema : 'auto';
   document.documentElement.dataset.tema = t;
+  document.documentElement.dataset.fuente = fuenteActual();
+  try { localStorage.setItem('ams-fuente', fuenteActual()); } catch {}
   $('#tema').textContent = TEMAS[t];
 }
 async function cambiarTema() {
@@ -737,7 +748,7 @@ function vProyecto(id) {
         <td class="der num ${ok || m.opcional ? '' : 'mal'}">${tiene >= MUCHOS ? 'muchos' : tiene}</td></tr>`;
     }).join('')}</tbody></table>`;
   const con = p.conexiones?.length ? `<h3>Conexiones</h3><table class="t"><thead><tr><th>Desde</th><th>Hasta</th></tr></thead><tbody>
-    ${p.conexiones.map(([a, b, n]) => `<tr><td class="pin">${esc(a)}</td><td class="pin">${esc(b)}${n ? `<div class="sub" style="font-family:var(--sans)">${esc(n)}</div>` : ''}</td></tr>`).join('')}</tbody></table>` : '';
+    ${p.conexiones.map(([a, b, n]) => `<tr><td class="pin">${esc(a)}</td><td class="pin">${esc(b)}${n ? `<div class="sub" style="font-family:var(--letra)">${esc(n)}</div>` : ''}</td></tr>`).join('')}</tbody></table>` : '';
   const pasos = p.pasos?.length ? `<h3 class="sep">Pasos</h3><ol class="pasos">${p.pasos.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : '';
   return `<a class="back" href="#/proyectos">← Proyectos</a>
     <article class="hoja">
@@ -1116,7 +1127,7 @@ async function aplicarIA(form) {
 
 // ---------- Ajustes (fase B): IA, categorías, tipos, sitios, datos y tema ----------
 const plural = (n, uno, varios = `${uno}s`) => `${n} ${n === 1 ? uno : varios}`;
-const SECCIONES = {ia: 'IA', categorias: 'Categorías', tipos: 'Tipos', sitios: 'Sitios', datos: 'Datos'};
+const SECCIONES = {ia: 'IA', categorias: 'Categorías', tipos: 'Tipos', sitios: 'Sitios', datos: 'Datos', letra: 'Letra'};
 
 function vAjustes(sec) {
   if (sec && SECCIONES[sec]) {
@@ -1133,6 +1144,7 @@ function vAjustes(sec) {
       ${fila('#/ajustes/tipos', 'Tipos', `${plural(tipos.length - archivados, 'tipo')}${archivados ? ` · ${archivados} archivado${archivados === 1 ? '' : 's'}` : ''} · archivar, fusionar, borrar`)}
       ${fila('#/ajustes/sitios', 'Sitios', `${plural(ubicaciones().length, 'sitio')} · renombrar, juntar, borrar`)}
       ${fila('#/ajustes/datos', 'Datos', 'Copias de seguridad y exportar')}
+      ${fila('#/ajustes/letra', 'Letra', `${esc(FUENTES[fuenteActual()].nombre)} · elige la letra de toda la app`)}
       <div class="fila"><div class="fila-main"><div><div class="nombre">Tema</div><div class="sub">Claro de día, grafito de noche o según el sistema</div></div></div>
         <div class="cats">${Object.entries({auto: 'Automático', claro: 'Claro', noche: 'Noche'}).map(([k, v]) =>
           `<button class="f ${(D.ajustes.tema || 'auto') === k ? 'on' : ''}" data-poner-tema="${k}">${v}</button>`).join('')}</div></div>
@@ -1149,6 +1161,7 @@ async function ajCargar() {
     if (sec === 'tipos') zona.innerHTML = ajTipos(await api('GET', 'api/tipos'));
     if (sec === 'sitios') zona.innerHTML = ajSitios(await api('GET', 'api/ubicaciones'));
     if (sec === 'datos') zona.innerHTML = ajDatos(await api('GET', 'api/ajustes/resumen'));
+    if (sec === 'letra') zona.innerHTML = ajLetra();
   } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; }
 }
 // tras un cambio en el catálogo: recarga los datos de toda la app y el apartado
@@ -1211,6 +1224,21 @@ function ajTipos(tipos) {
           <button class="btn mini" data-aj-cerrar>Cancelar</button></div>`}</div>
       </div>`;
     }).join('') : vacio('Nada en este filtro.')}</div>`;
+}
+
+// cada letra se enseña con un texto de muestra escrito en ella; se cambia con un toque y se guarda en el servidor
+function ajLetra() {
+  const actual = fuenteActual();
+  return `${cabecera('Letra', '', 'La de toda la app. Se guarda en el servidor, así que sale igual en el móvil y en el ordenador.')}
+    <div class="pad letras" role="radiogroup" aria-label="Letra de la app">${Object.entries(FUENTES).map(([k, f]) => `
+      <label class="letra-op">
+        <input type="radio" name="fuente" value="${k}" ${k === actual ? 'checked' : ''}>
+        <span class="letra-muestra" data-fuente="${k}">
+          <span class="nombre">${esc(f.nombre)}</span>
+          <span class="letra-texto">ESP32-WROOM-32 · 3,3 V · GPIO 21 SDA<br>Pequeño ñandú: 0O 1lI 5S 8B «Ojo» 220 Ω</span>
+        </span>
+        <span class="sub">${esc(f.sub)}</span>
+      </label>`).join('')}</div>`;
 }
 
 function ajSitios(sitios) {
@@ -1622,6 +1650,13 @@ app.addEventListener('change', async (e) => {
   const t = e.target;
   if (t.id === 'ubic') { ui.ubic = t.value; route(); }
   if (t.name === 'ia-modelo') cambiarModeloIA(t);
+  if (t.name === 'fuente') {
+    const antes = fuenteActual();
+    D.ajustes.fuente = t.value;
+    aplicarTema(); // se ve al momento; si el servidor no lo guarda, vuelve la de antes
+    try { await api('PUT', 'api/ajustes/fuente', {valor: t.value}); toast(`Letra: ${FUENTES[t.value].nombre}`); }
+    catch (err) { D.ajustes.fuente = antes; aplicarTema(); ajCargar(); toast(err.message, true); }
+  }
   if (t.dataset.catNombre || t.dataset.sitioNombre) cambioAjustes(t);
   if (t.classList.contains('ia-cambio')) contarCambios();
   if (t.id === 'aj-importar' && t.files[0]) { subirCopia(t.files[0]); t.value = ''; }

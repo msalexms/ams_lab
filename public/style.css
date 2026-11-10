@@ -14,7 +14,9 @@
   --mal: #b3261e;
   --aviso: #7a4f00;
   --sans: -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
-  --mono: ui-monospace, "JetBrains Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+  /* letra de la app (Ajustes → Letra, tabla ajustes «fuente»); por defecto una monoespaciada. --escala: las mono son más anchas */
+  --letra: var(--mono); --escala: .92; --tam: 15px;
   /* escala de espacios */
   --e1: 4px; --e2: 8px; --e3: 12px; --e4: 16px; --e5: 24px; --e6: 32px;
   --pad: 24px;        /* margen interior de la hoja */
@@ -36,8 +38,27 @@
   }
 }
 
+/* letras incluidas en la app (licencia SIL OFL, ver public/fuentes/): iguales en el móvil y en el ordenador */
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('fuentes/jetbrains-mono-400.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 500; font-display: swap; src: url('fuentes/jetbrains-mono-500.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 600; font-display: swap; src: url('fuentes/jetbrains-mono-600.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('fuentes/ibm-plex-mono-400.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 500; font-display: swap; src: url('fuentes/ibm-plex-mono-500.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 600; font-display: swap; src: url('fuentes/ibm-plex-mono-600.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 400; font-display: swap; src: url('fuentes/ibm-plex-sans-400.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 500; font-display: swap; src: url('fuentes/ibm-plex-sans-500.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 600; font-display: swap; src: url('fuentes/ibm-plex-sans-600.woff2') format('woff2'); }
+[data-fuente="jetbrains"] { --letra: "JetBrains Mono", ui-monospace, monospace; --mono: "JetBrains Mono", ui-monospace, monospace; --escala: .92; }
+[data-fuente="plex-mono"] { --letra: "IBM Plex Mono", ui-monospace, monospace; --mono: "IBM Plex Mono", ui-monospace, monospace; --escala: .94; }
+[data-fuente="mono-sistema"] { --letra: ui-monospace, "SF Mono", "Cascadia Code", Consolas, Menlo, "Roboto Mono", monospace; --escala: .94; }
+[data-fuente="plex-sans"] { --letra: "IBM Plex Sans", var(--sans); --escala: 1; }
+[data-fuente="sistema"] { --letra: var(--sans); --escala: 1; }
+[data-fuente] { font-family: var(--letra); }
+
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--bg); color: var(--tinta); font: 15px/1.55 var(--sans); -webkit-text-size-adjust: 100%; }
+html { font-size: calc(var(--tam) * var(--escala)); }
+html, body { margin: 0; background: var(--bg); color: var(--tinta); -webkit-text-size-adjust: 100%; }
+body { font: 1rem/1.55 var(--letra); }
 body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-wrap: break-word; }
 a { color: inherit; }
 p { margin: 0; }
@@ -65,7 +86,7 @@ h2 { margin: var(--e6) 0 var(--e2); }
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2) var(--e5);
   padding: var(--e3) var(--e5); padding-top: max(var(--e3), env(safe-area-inset-top));
 }
-.logo { font-family: var(--mono); font-weight: 600; text-decoration: none; font-size: 1rem; }
+.logo { font-family: var(--mono); font-weight: 600; text-decoration: none; font-size: 1rem; white-space: nowrap; flex: none; }
 .logo span { color: var(--gris); font-weight: 400; }
 nav#nav { display: flex; gap: var(--e5); overflow-x: auto; }
 nav#nav a { text-decoration: none; color: var(--gris); font-size: .92rem; padding: 6px 0 4px; border-bottom: 2px solid transparent; white-space: nowrap; }
@@ -402,7 +423,7 @@ body.arrastrando-fila { cursor: grabbing; -webkit-user-select: none; user-select
 
 @media (max-width: 760px) {
   :root { --pad: 16px; --barra: calc(58px + env(safe-area-inset-bottom)); --alto-btn: 44px; }
-  html, body { font-size: 16px; }
+  :root { --tam: 16px; }
   h1 { font-size: 1.3rem; }
   .top { padding: var(--e2) var(--e4); padding-top: max(var(--e2), env(safe-area-inset-top)); gap: var(--e3); flex-wrap: nowrap; }
   nav#nav, .tema { display: none; }
@@ -547,3 +568,15 @@ table.t td.pin { width: 42%; }
   .lateral > .meta, .lateral > .enlace-peligro { order: 3; }
   .lateral > .meta { margin-top: var(--e2); }
 }
+
+/* Ajustes → Letra: cada opción escrita en su propia letra */
+.letras { display: grid; border-top: 1px solid var(--linea2); padding-top: 0; }
+.letra-op { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: var(--e1) var(--e3); padding: var(--e4) var(--e2); margin: 0 calc(-1 * var(--e2));
+  border-bottom: 1px solid var(--linea2); cursor: pointer; }
+.letra-op:hover { background: var(--sel); }
+.letra-op input { width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--tinta); }
+.letra-op .sub { grid-column: 2; font-size: .82rem; }
+.letra-muestra { display: grid; gap: var(--e1); min-width: 0; font-size: calc(var(--tam) * var(--escala)); } /* cada muestra a su tamaño real */
+.letra-muestra .nombre { font-size: 1.05em; }
+.letra-texto { color: var(--tinta2); line-height: 1.5; overflow-wrap: anywhere; }
+.letra-op:has(input:checked) .nombre { font-weight: 600; }
