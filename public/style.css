@@ -642,3 +642,12 @@ table.t td.pin { width: 42%; }
 /* letra «mixta»: lo que es dato (nombres, cifras, pines, rótulos de la hoja) en mono; los párrafos en sans */
 h1, .nombre, .specs dd, .sec-datos, .stepper .num, .pz-linea, .grupo-t, .titulo-vista, table.t td:not(.gris), .combo-q, .aj-nombre { font-family: var(--titulos); }
 .pz-cuerpo h3 { margin: 0 0 calc(-1 * var(--e2)); }
+
+/* vista previa de una corrección */
+.rev-resumen { display: grid; gap: var(--e2); padding-bottom: 0; }
+.rev-lista { font-size: .9rem; overflow-wrap: anywhere; }
+.ia-previa-hoja .pz-cuerpo h3 { margin-top: var(--e2); }
+
+/* buscador de la cabecera: puede encogerse (a 320 px su ancho mínimo por defecto empujaba la página) */
+.top-der { min-width: 0; }
+#q { min-width: 0; width: 100%; }
