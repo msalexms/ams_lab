@@ -10,6 +10,7 @@ const TEMAS = {auto: 'Tema: automático', claro: 'Tema: claro', noche: 'Tema: no
 // letras de la app (Ajustes → Letra); la primera es la de por defecto. La familia de cada una está en style.css ([data-fuente])
 const FUENTES = {
   jetbrains: {nombre: 'JetBrains Mono', sub: 'Monoespaciada, muy legible. La de por defecto.'},
+  mixta: {nombre: 'Mixta: JetBrains Mono + IBM Plex Sans', sub: 'Mono en nombres, pines y datos; sin serifa en los párrafos. Más fácil de leer.'},
   'plex-mono': {nombre: 'IBM Plex Mono', sub: 'Monoespaciada, más clásica, de hoja técnica.'},
   'mono-sistema': {nombre: 'Monoespaciada del sistema', sub: 'No carga nada, pero cambia de un dispositivo a otro.'},
   'plex-sans': {nombre: 'IBM Plex Sans', sub: 'Sin serifa, de la misma familia que Plex Mono.'},
@@ -59,7 +60,6 @@ const proyectosDe = (tipo) => D.proyectos.filter((p) => (p.material || []).some(
 const voltajeDe = (f) => String(f.voltaje || '').split(' · ')[0];
 
 const fotoUrl = (c) => `fotos/${encodeURIComponent(c.foto)}`;
-const dibujo = (tipo) => (tipo ? `<img class="ref" src="img/tipos/${esc(tipo)}.svg" alt="" loading="lazy" onerror="this.remove()">` : '');
 const vacio = (html) => `<div class="vacio">${html}</div>`;
 
 // aviso abajo; con «accion» ({texto, fn}) lleva un botón (p. ej. «Deshacer») y dura más
@@ -281,10 +281,6 @@ function listaProyectos(ps) {
       <div class="nombre">${esc(p.nombre)}</div><div class="sub">${esc(p.resumen || '')}</div></div></a>
       <div class="der"><div>${estadoProyecto(p)}</div><div class="sub">${esc(dificultad(p))}</div></div></div>`).join('');
 }
-const usadoEn = (tipo) => {
-  const ps = tipo ? proyectosDe(tipo) : [];
-  return ps.length ? `<h2>Se usa en</h2>${listaProyectos(ps)}` : '';
-};
 
 // ---------- vistas ----------
 function filaComp(c) {
@@ -375,58 +371,110 @@ function vBuscar() {
     ${grupo('Proyectos', r.proyectos, listaProyectos(r.proyectos))}`;
 }
 
+// ---------- fichas (pieza y tipo): arriba lo que se consulta con la pieza en la mano (cuántas, dónde, avisos y pines);
+// lo demás, plegado. Las acciones, en una fila de botones pequeños con un menú «⋯» para lo que se usa poco.
+const lineaTecnica = (f) => (voltajeDe(f) || list(f.interfaz).length ? `<p class="sec-datos">${[
+  voltajeDe(f) ? `<span><span class="gris">Tensión</span> ${esc(voltajeDe(f))}</span>` : '',
+  list(f.interfaz).length ? `<span><span class="gris">Interfaces</span> ${esc(list(f.interfaz).join(', '))}</span>` : ''].join('')}</p>` : '');
+const tablaDatos = (pares) => (list(pares).length ? `<table class="t datos"><tbody>${pares.map(([k, v]) =>
+  `<tr><td class="gris">${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>` : '');
+// sección plegada (cerrada al abrir la ficha); no sale si no tiene nada
+const plegable = (titulo, html, n = null) => (html ? `<details class="plegable"><summary>${titulo}${n != null ? `<span class="n">${n}</span>` : ''}</summary>
+  <div class="plegable-cuerpo">${html}</div></details>` : '');
+// menú «⋯»: acciones que se usan poco
+const menuMas = (items) => `<details class="mas"><summary class="btn" aria-label="Más acciones">⋯</summary>
+  <div class="mas-menu" role="menu">${items.filter(Boolean).join('')}</div></details>`;
+// cabecera compacta: imagen pequeña (foto o dibujo), nombre, una línea de datos y, si toca, el contador
+const cabFicha = ({img = '', titulo, linea, extra = ''}) => `<header class="pz-cab${img ? '' : ' sin-img'}">${img}
+  <div class="pz-tit"><h1>${titulo}</h1>${linea ? `<p class="pz-linea">${linea}</p>` : ''}${extra}</div></header>`;
+
 function vComponente(id) {
   const c = comp(id);
   if (!c) return vacio('No existe esa pieza.');
-  const f = g(c.tipo);
-  const delTipo = c.tipo ? D.componentes.filter((x) => x.tipo === c.tipo).length : 0;
-  // arriba, lo de ESTA pieza (cantidad, sitio, sus datos); debajo, la ficha de su TIPO, que comparten todas las piezas iguales
-  const fichaTipo = c.tipo ? `<section class="ficha-tipo">
-      <div class="sec-cab"><h3>Ficha del tipo</h3><a class="btn mini" href="#/g/${esc(c.tipo)}/editar">Editar ficha</a></div>
-      <p class="sec-nombre"><a href="#/g/${esc(c.tipo)}">${esc(f.nombre)}</a>${f.archivado ? ' <span class="gris">(archivado)</span>' : ''}
-        <span class="gris">· ${delTipo > 1 ? `la comparten tus ${delTipo} piezas de este tipo` : 'común a todas las piezas de este tipo'}</span></p>
-      ${f.resumen ? `<p class="resumen">${esc(f.resumen)}</p>` : ''}
-      ${f.revisado === 0 ? avisoIA(c.tipo, true) : ''}
-      ${notaOjo(f)}
-      ${voltajeDe(f) || list(f.interfaz).length ? `<p class="sec-datos">${[voltajeDe(f) ? `<span><span class="gris">Tensión</span> ${esc(voltajeDe(f))}</span>` : '',
-        list(f.interfaz).length ? `<span><span class="gris">Interfaces</span> ${esc(list(f.interfaz).join(', '))}</span>` : ''].join('')}</p>` : ''}
-      ${tablaPines(f) || '<p class="gris">Este tipo no tiene pines.</p>'}
-      ${list(f.datos).length ? `<h3 class="sep">Datos del tipo</h3><table class="t datos"><tbody>${f.datos.map(([k, v]) =>
-        `<tr><td class="gris">${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>` : ''}
-    </section>` : `<section class="ficha-tipo"><div class="sec-cab"><h3>Ficha del tipo</h3></div>
-      <p class="gris">Esta pieza no tiene tipo. Ponle uno en «Editar pieza» y verás aquí sus pines, su tensión y sus datos.</p></section>`;
+  const f = g(c.tipo), conTipo = !!(c.tipo && D.tipos[c.tipo]);
+  const delTipo = conTipo ? D.componentes.filter((x) => x.tipo === c.tipo).length : 0;
+  const ps = conTipo ? proyectosDe(c.tipo) : [];
+  const linea = [esc(c.ubicacion || 'Sin sitio'),
+    conTipo ? `<a href="#/g/${esc(c.tipo)}">${esc(f.nombre)}</a>${f.archivado ? ' (archivado)' : ''}` : 'Sin tipo'].join(' · ');
+  const mas = conTipo ? [`<p class="sec-nombre"><a href="#/g/${esc(c.tipo)}">${esc(f.nombre)}</a>
+      <span class="gris">· ${delTipo > 1 ? `la comparten tus ${delTipo} piezas de este tipo` : 'común a todas las piezas de este tipo'}</span></p>`,
+    f.resumen ? `<p class="resumen">${esc(f.resumen)}</p>` : '',
+    list(f.alias).length ? `<p class="sec-datos"><span><span class="gris">Otros nombres</span> ${esc(list(f.alias).join(', '))}</span></p>` : '',
+    tablaDatos(f.datos),
+    `<p class="meta"><a href="#/g/${esc(c.tipo)}/editar">Editar la ficha del tipo</a> · ${esc(CATS[f.categoria] || '')}</p>`].join('') : '';
   return `<a class="back" href="#/">← Inventario</a>
-    <article class="hoja">
-      ${cabecera(esc(c.nombre) + revisar(c), c.tipo ? `Pieza · ${CATS[f.categoria] || ''}` : 'Pieza', '')}
-      ${c.revisar ? `<div class="nota"><p><span class="nota-t">Pendiente</span> La marcaste para mirar algo de ella más tarde.</p>
-        <button class="btn mini" id="quitar-pendiente" type="button">Hecho: quitar la marca</button></div>` : ''}
-      <p class="sec-etq">Esta pieza</p>
-      ${specs([
-        ['Cantidad', stepper(c, true)],
-        ['Sitio', esc(c.ubicacion || '—')],
-        ['Tipo', c.tipo ? `<a href="#/g/${esc(c.tipo)}">${esc(f.nombre)}</a>` : 'Sin tipo'],
-        ...list(c.datos).map(([k, v]) => [esc(k), esc(v)]),
-      ])}
-      <div class="hoja-cuerpo">
-        <div>${fichaTipo}</div>
-        <aside class="lateral">
-          ${c.foto ? `<a href="${fotoUrl(c)}" target="_blank"><img class="foto" src="${fotoUrl(c)}" alt="${esc(c.nombre)}"></a>` : ''}
-          <div class="acciones apiladas">
-            <a class="btn prim" href="#/editar/${c.id}">Editar pieza</a>
-            <label class="btn">${c.foto ? 'Cambiar foto' : 'Añadir foto'}<input type="file" accept="image/*" id="foto" hidden></label>
-            ${c.foto ? '<button class="btn" id="quitar-foto" type="button">Quitar foto</button>' : ''}
-          </div>
-          ${panelRevisar('pieza', c.id, c.tipo ? 'La IA repasa esta pieza y la ficha de su tipo.' : 'La IA repasa esta pieza.')}
-          ${c.notas ? `<div><h3>Notas</h3><p class="notas">${esc(c.notas)}</p></div>` : ''}
-          <p class="meta">Actualizado ${esc(c.actualizado)}</p>
-          <button class="enlace-peligro" id="borrar" type="button">Borrar esta pieza</button>
-        </aside>
+    <article class="hoja ficha">
+      ${cabFicha({
+        img: c.foto ? `<a class="pz-img" href="${fotoUrl(c)}" target="_blank" aria-label="Ver la foto grande"><img src="${fotoUrl(c)}" alt=""></a>` : '',
+        titulo: esc(c.nombre) + revisar(c), linea, extra: `<div class="pz-cantidad">${stepper(c, true)}</div>`})}
+      <div class="pz-acciones">
+        <a class="btn prim" href="#/editar/${c.id}">Editar</a>
+        <label class="btn">Foto<input type="file" accept="image/*" id="foto" hidden></label>
+        ${D.ia?.activa ? '<button class="btn" type="button" id="ia-abrir" aria-expanded="false">Corregir con IA</button>' : ''}
+        ${menuMas([
+          conTipo ? `<a role="menuitem" href="#/g/${esc(c.tipo)}/editar">Editar la ficha del tipo</a>` : '',
+          `<label role="menuitem">${c.foto ? 'Cambiar la foto' : 'Añadir una foto'}<input type="file" accept="image/*" id="foto2" hidden></label>`,
+          c.foto ? '<button role="menuitem" type="button" id="quitar-foto">Quitar la foto</button>' : '',
+          '<button role="menuitem" type="button" class="peligro" id="borrar">Borrar esta pieza</button>'])}
       </div>
-    </article>
-    ${usadoEn(c.tipo)}`;
+      ${panelRevisar('pieza', c.id, c.tipo ? 'La IA repasa esta pieza y la ficha de su tipo.' : 'La IA repasa esta pieza.')}
+      <div class="pz-cuerpo">
+        ${c.revisar ? `<div class="nota"><p><span class="nota-t">Pendiente</span> La marcaste para mirar algo de ella más tarde.</p>
+          <button class="btn mini" id="quitar-pendiente" type="button">Hecho: quitar la marca</button></div>` : ''}
+        ${conTipo ? notaOjo(f) : ''}
+        ${conTipo && f.revisado === 0 ? avisoIA(c.tipo, true) : ''}
+        ${list(c.datos).length ? specs(c.datos.map(([k, v]) => [esc(k), esc(v)])) : ''}
+        ${conTipo ? `${lineaTecnica(f)}${tablaPines(f) || '<p class="gris">Este tipo no tiene pines.</p>'}`
+          : '<p class="gris">Esta pieza no tiene tipo. Ponle uno en «Editar» y verás aquí sus pines, su tensión y sus datos.</p>'}
+        <div class="plegables">
+          ${plegable('Más sobre este tipo', mas)}
+          ${plegable('Notas', c.notas ? `<p class="notas">${esc(c.notas)}</p>` : '')}
+          ${plegable('Proyectos donde se usa', ps.length ? listaProyectos(ps) : '', ps.length)}
+        </div>
+        <p class="meta">Actualizado ${esc(c.actualizado)}</p>
+      </div>
+    </article>`;
 }
 
 const notaOjo = (f) => (f.ojo ? `<p class="nota nota-ojo"><span class="nota-t">Ojo</span> ${esc(f.ojo)}</p>` : '');
+function vTipo(tipo) {
+  const f = D.tipos[tipo];
+  if (!f) return vacio('Ese tipo no está en el glosario.');
+  const cs = D.componentes.filter((c) => c.tipo === tipo).sort(byName);
+  const ps = proyectosDe(tipo);
+  const tienes = stock(tipo);
+  return `<a class="back" href="#/glosario">← Glosario</a>
+    <article class="hoja ficha">
+      ${cabFicha({
+        img: f.origen === 'seed' ? `<span class="pz-img dibujo"><img src="img/tipos/${esc(tipo)}.svg" alt="" loading="lazy" onerror="this.parentElement.remove()"></span>` : '',
+        titulo: esc(f.nombre), linea: `${esc(CATS[f.categoria] || '')} · ${tienes ? `tienes ${stockText(tipo)}` : 'no tienes ninguna'}`,
+        extra: f.resumen ? `<p class="pz-resumen">${esc(f.resumen)}</p>` : ''})}
+      <div class="pz-acciones">
+        <a class="btn prim" href="#/g/${esc(tipo)}/editar">Editar ficha</a>
+        <a class="btn" href="#/nuevo?tipo=${esc(tipo)}">Añadir pieza</a>
+        ${D.ia?.activa ? '<button class="btn" type="button" id="ia-abrir" aria-expanded="false">Corregir con IA</button>' : ''}
+        ${menuMas([
+          `<button role="menuitem" type="button" data-tipo-archivar="${esc(tipo)}" data-v="${f.archivado ? 0 : 1}">${f.archivado ? 'Recuperar del archivo' : 'Archivar (ocultar)'}</button>`,
+          `<a role="menuitem" href="#/ajustes/tipos?t=${esc(tipo)}">Fusionar o borrar…</a>`])}
+      </div>
+      ${panelRevisar('tipo', tipo, 'La IA repasa la ficha; los cambios valen para todas las piezas de este tipo.')}
+      <div class="pz-cuerpo">
+        ${f.archivado ? `<p class="nota">Archivado: no sale en el glosario ni al elegir tipo. <button class="btn mini" data-tipo-archivar="${esc(tipo)}" data-v="0">Recuperar</button></p>` : ''}
+        ${notaOjo(f)}
+        ${f.revisado === 0 ? avisoIA(tipo, true) : ''}
+        ${lineaTecnica(f)}
+        ${tablaPines(f) || '<p class="gris">Sin pines.</p>'}
+        <div class="plegables">
+          ${plegable('Más datos', [list(f.alias).length ? `<p class="sec-datos"><span><span class="gris">Otros nombres</span> ${esc(list(f.alias).join(', '))}</span></p>` : '',
+            tablaDatos(f.datos)].join(''))}
+          ${plegable('Tus piezas de este tipo', cs.length ? cs.map(filaComp).join('') : '', cs.length)}
+          ${plegable('Proyectos donde se usa', ps.length ? listaProyectos(ps) : '', ps.length)}
+        </div>
+        <p class="meta">Ficha ${{seed: 'del catálogo base', ia: 'de la IA', usuario: 'escrita por ti'}[f.origen] || ''}</p>
+      </div>
+    </article>`;
+}
+
 
 // ---------- selector de tipo con búsqueda (fase D) ----------
 // un campo de texto que filtra los tipos por nombre, alias, interfaz o categoría; el id va en un campo oculto (name="tipo")
@@ -662,36 +710,6 @@ function vGlosario() {
     const ts = tipos.filter((t) => (t.categoria || 'otro') === cat).sort(byName);
     return ts.length ? `<section class="grupo"><h3 class="grupo-t">${CATS[cat]}<span class="n">${ts.length}</span></h3>${ts.map(filaTipo).join('')}</section>` : '';
   }).join('');
-}
-
-function vTipo(tipo) {
-  const f = D.tipos[tipo];
-  if (!f) return vacio('Ese tipo no está en el glosario.');
-  const cs = D.componentes.filter((c) => c.tipo === tipo).sort(byName);
-  const datos = list(f.datos).length ? `<h3 class="sep">Datos</h3><table class="t datos"><tbody>${f.datos.map(([k, v]) =>
-    `<tr><td class="gris">${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>` : '';
-  return `<a class="back" href="#/glosario">← Glosario</a>
-    <article class="hoja">
-      ${cabecera(esc(f.nombre), `Ficha del tipo · ${CATS[f.categoria] || ''}`, f.resumen)}
-      ${f.revisado === 0 ? avisoIA(tipo, true) : ''}
-      ${f.archivado ? `<p class="nota">Archivado: no sale en el glosario ni al elegir tipo. <button class="btn mini" data-tipo-archivar="${esc(tipo)}" data-v="0">Recuperar</button></p>` : ''}
-      ${notaOjo(f)}
-      ${specs([['Tienes', stockText(tipo)], ['Tensión', esc(voltajeDe(f))], ['Interfaces', esc(list(f.interfaz).join(', '))], ['Otros nombres', esc(list(f.alias).join(', '))]])}
-      <div class="hoja-cuerpo">
-        <div>${tablaPines(f) || '<p class="gris">Sin pines.</p>'}${datos}</div>
-        <aside class="lateral">${f.origen === 'seed' ? dibujo(tipo) : ''}
-          <div class="acciones apiladas">
-            <a class="btn prim" href="#/g/${esc(tipo)}/editar">Editar ficha</a>
-            <a class="btn" href="#/nuevo?tipo=${esc(tipo)}">Añadir una pieza de este tipo</a>
-          </div>
-          ${panelRevisar('tipo', tipo, 'La IA repasa la ficha; los cambios valen para todas las piezas de este tipo.')}
-          <div><h3>Tus piezas de este tipo</h3>${cs.length ? cs.map(filaComp).join('') : '<p class="gris">Ninguno.</p>'}</div>
-          <p class="meta">Ficha ${{seed: 'del catálogo base', ia: 'de la IA', usuario: 'escrita por ti'}[f.origen] || ''} ·
-            <a href="#/ajustes/tipos?t=${esc(tipo)}">archivar, fusionar o borrar</a></p>
-        </aside>
-      </div>
-    </article>
-    ${usadoEn(tipo)}`;
 }
 
 // ---------- editar la ficha de un tipo a mano (fase D) ----------
@@ -1598,10 +1616,17 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-vista],.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar]');
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-vista],.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar]');
   if (!t || !app.contains(t)) return; // solo botones de la propia vista (no el <html>, que lleva data-* del tema)
   // sin redibujar la vista: el selector de tipo y las tablas editables viven dentro de formularios a medio rellenar
   if (t.classList.contains('combo-op')) { elegirTipo(t.closest('.combo'), t.dataset.valor); return; }
+  if (t.id === 'ia-abrir') { // el panel de la IA se abre debajo de la fila de acciones
+    const d = $('.ia-revisar');
+    d.open = !d.open;
+    t.setAttribute('aria-expanded', String(d.open));
+    if (d.open) d.querySelector('textarea')?.focus({preventScroll: true});
+    return;
+  }
   if (clicEditor(t)) return;
   try {
     if (t.dataset.vista) {
@@ -1684,7 +1709,7 @@ app.addEventListener('change', async (e) => {
   if (t.id === 'aj-importar' && t.files[0]) { subirCopia(t.files[0]); t.value = ''; }
   if (t.matches('.ed-fn select')) t.closest('.ed-fn').style.cssText = colorFn(t.value); // el punto de color sigue a la función
   if (t.name === 'varios') { const n = t.form.querySelector('[name=cantidad]'); n.disabled = t.checked; if (!t.checked && !n.value) n.value = 1; }
-  if (t.id === 'foto' && t.files[0]) {
+  if ((t.id === 'foto' || t.id === 'foto2') && t.files[0]) {
     try { await subirFoto(Number(location.hash.split('/')[2]), t.files[0]); route(); } catch (err) { toast(err.message, true); }
   }
 });
@@ -1721,6 +1746,10 @@ $('#fab').addEventListener('click', (e) => {
   e.currentTarget.setAttribute('aria-expanded', String(abrir));
 });
 document.addEventListener('click', (e) => { if (!e.target.closest('#fab, #fab-menu')) cerrarMenuFab(); });
+// menú «⋯» de las fichas: se cierra al tocar fuera o al elegir algo
+document.addEventListener('click', (e) => document.querySelectorAll('details.mas[open]').forEach((d) => {
+  if (!d.contains(e.target) || e.target.closest('.mas-menu > a, .mas-menu > button')) d.open = false;
+}));
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarMenuFab(); });
 async function fotoDirectaIA(file) {
   cerrarMenuFab();
