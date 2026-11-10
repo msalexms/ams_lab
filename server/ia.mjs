@@ -435,7 +435,11 @@ async function proponerRevision(db, entrada, foto, sesion) {
   const ctx = contexto(db);
   const datosTexto = JSON.stringify({ficha: actual.tipo ? fichaSalida(actual.tipo) : null,
     pieza: conPieza ? {nombre: actual.pieza.nombre, notas: actual.pieza.notas, datos_pieza: actual.pieza.datos_pieza.map(([dato, valor]) => ({dato, valor}))} : undefined});
-  const contenido = [{type: 'text', text: `${entrada.texto ? `Lo que quiero que revises: ${entrada.texto}\n\n` : 'Revisa la ficha entera.\n\n'}Lo que hay guardado:\n${datosTexto}`}];
+  // vueltas anteriores: lo que preguntó el modelo y lo que contestó el usuario (para rehacer las correcciones con eso)
+  const vueltas = arr(entrada.rondas).map((r) => [...arr(r.respuestas).map((x) => `- Preguntaste «${x.duda}» → ${x.respuesta}`),
+    ...(r.extra ? [`- Además: ${r.extra}`] : [])].join('\n')).filter(Boolean);
+  const respuestas = vueltas.length ? `Respuestas a tus dudas de antes (tenlas en cuenta y no vuelvas a preguntarlas):\n${vueltas.join('\n')}\n\n` : '';
+  const contenido = [{type: 'text', text: `${entrada.texto ? `Lo que quiero que revises: ${entrada.texto}\n\n` : 'Revisa la ficha entera.\n\n'}${respuestas}Lo que hay guardado:\n${datosTexto}`}];
   if (foto) contenido.push({type: 'file', mediaType: 'image/jpeg', data: {type: 'data', data: foto}});
   let error;
   for (let intento = 1; intento <= 2; intento++) {

@@ -1072,16 +1072,16 @@ const costeTexto = (c) => (c && c.dolares != null ? `≈ ${c.dolares < 0.0001 ? 
 // dudas del modelo con un hueco para contestar cada una; «Responder y repensar» le manda las respuestas y lo que hayas
 // corregido en el formulario, y el modelo rehace la propuesta (como mucho 5 vueltas)
 function dudasIA(t, p) {
-  const quedan = (t.rondas || 0) < 5;
+  const quedan = (t.rondas || 0) < 5, correccion = t.clase === 'revisar';
   return `<section class="ia-dudas pad" id="ia-dudas">
     <h3>${p.dudas?.length ? 'Dudas del modelo' : '¿Algo que aclarar?'}</h3>
     ${p.dudas?.length ? `<ol class="ia-preguntas">${p.dudas.map((d) => `<li><p>${esc(d)}</p>
       <input class="ia-resp" data-duda="${esc(d)}" maxlength="500" placeholder="Tu respuesta (opcional)" autocomplete="off"></li>`).join('')}</ol>` : ''}
-    <textarea id="ia-extra" rows="2" maxlength="1000" placeholder="Algo más que deba saber (opcional): «tiene 3 pines», «es la versión en placa»…"></textarea>
+    <textarea id="ia-extra" rows="2" maxlength="1000" placeholder="${correccion ? 'Algo más que deba corregir o saber (opcional): «tiene 16 MB de flash», «añade el consumo»…' : 'Algo más que deba saber (opcional): «tiene 3 pines», «es la versión en placa»…'}"></textarea>
     <div class="acciones">${quedan
       ? `<button class="btn" type="button" id="ia-responder" data-id="${t.id}">Responder y repensar</button>
-         <span class="ayuda">Rehace la propuesta con tus respuestas y con lo que hayas corregido abajo. Gasta otra consulta.</span>`
-      : '<span class="ayuda">Ya van 5 vueltas: corrige a mano lo que falte y guarda.</span>'}</div>
+         <span class="ayuda">${correccion ? 'La IA vuelve a mirar la ficha con tus respuestas y rehace los cambios. Gasta otra consulta.' : 'Rehace la propuesta con tus respuestas y con lo que hayas corregido abajo. Gasta otra consulta.'}</span>`
+      : `<span class="ayuda">Ya van 5 vueltas: ${correccion ? 'aplica lo que te sirva y corrige a mano el resto' : 'corrige a mano lo que falte y guarda'}.</span>`}</div>
   </section>`;
 }
 
@@ -1134,7 +1134,8 @@ async function responderIA(boton) {
   if (!respuestas.length && !extra) throw new Error('Contesta alguna duda o escribe algo más antes de repensar');
   boton.disabled = true;
   toast('Repensando con tus respuestas…');
-  await api('POST', `api/ia/tareas/${boton.dataset.id}/responder`, {respuestas, extra, propuesta: leerFormIA($('#form-ia-ok'))});
+  const form = $('#form-ia-ok'); // solo en un alta: lo que el usuario ya ha corregido de la propuesta
+  await api('POST', `api/ia/tareas/${boton.dataset.id}/responder`, {respuestas, extra, ...(form ? {propuesta: leerFormIA(form)} : {})});
   iaTarea(boton.dataset.id); // vuelve a «Analizando…» y se actualiza sola
 }
 
@@ -1528,8 +1529,7 @@ function vistaCambios(t) {
       : 'La IA no ve nada que cambiar.')}
     ${t.foto ? `<p class="ayuda pad">${t.foto_de_pieza ? 'Ha mirado la foto que ya tenía la pieza.' : 'Ha mirado la foto que adjuntaste.'}</p>` : ''}
     ${specs([['Cambios', String(p.cambios.length)], ['Confianza', esc(p.confianza)], ['Modelo', esc(nombreModelo(t.modelo))], ['Coste', esc(costeTexto(p.coste))]])}
-    ${p.dudas?.length ? `<div class="pad ia-dudas"><h3>Dudas del modelo</h3><ul>${p.dudas.map((d) => `<li>${esc(d)}</li>`).join('')}</ul>
-      <p class="ayuda">Si sabes la respuesta, pide otra corrección desde la ficha y escríbela en «Qué corregir».</p></div>` : ''}
+    ${dudasIA(t, p)}
     ${grupo('tipo', `Ficha del tipo «${esc(nombreTipo)}»`, piezasTipo > 1 ? `La usan ${piezasTipo} piezas: los cambios se verán en todas. La ficha quedará «sin comprobar» hasta que la mires.` : 'La ficha quedará «sin comprobar» hasta que la mires.')}
     ${grupo('pieza', 'Esta pieza', '')}
     ${p.motivos?.length ? `<details class="pad ia-motivos"><summary>Por qué (${p.motivos.length})</summary><ul>${p.motivos.map((m) => `<li><strong>${esc(nombreCampo(m.campo))}</strong>: ${esc(m.motivo)}</li>`).join('')}</ul></details>` : ''}

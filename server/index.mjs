@@ -249,20 +249,24 @@ const tarea = (id) => {
 const MAX_RONDAS = 5;
 function responderAlta(id, b) {
   const t = tarea(id);
-  if (t.clase !== 'alta') throw new HttpError(400, 'Para otra corrección, pídela desde la ficha');
   if (t.estado !== 'propuesta') throw new HttpError(409, `Esta propuesta ya está ${ESTADO[t.estado] || t.estado}: no se puede repensar`);
-  if (t.rondas >= MAX_RONDAS) throw new HttpError(409, `Ya van ${MAX_RONDAS} vueltas: corrige a mano y guarda`);
+  if (t.rondas >= MAX_RONDAS) throw new HttpError(409, `Ya van ${MAX_RONDAS} vueltas: ${t.clase === 'revisar' ? 'aplica lo que te sirva y corrige a mano el resto' : 'corrige a mano y guarda'}`);
   const respuestas = (Array.isArray(b.respuestas) ? b.respuestas : []).slice(0, 12)
     .map((x) => ({duda: texto(x?.duda, 300), respuesta: texto(x?.respuesta, 500)})).filter((x) => x.duda && x.respuesta);
   const extra = texto(b.extra, 1000);
   if (!respuestas.length && !extra) throw new HttpError(400, 'Contesta alguna duda o escribe algo más');
-  // la propuesta tal como la tiene el usuario (con sus correcciones), con el mismo formato y la misma limpieza que al guardar
-  const pb = b.propuesta && typeof b.propuesta === 'object' ? b.propuesta : {};
-  const actual = normalizar(db, {...t.propuesta, ...pb, dudas: t.propuesta.dudas, confianza: t.propuesta.confianza,
-    tipo_existente: pb.tipo === '__nuevo' ? null : pb.tipo ?? t.propuesta.tipo_existente,
-    tipo_nuevo: pb.tipo === '__nuevo' ? pb.tipo_nuevo : pb.tipo ? null : t.propuesta.tipo_nuevo});
   const entrada = JSON.parse(db.prepare('SELECT entrada FROM ia_tareas WHERE id = ?').get(t.id).entrada);
-  entrada.rondas = [...(entrada.rondas || []), {propuesta: actual, respuestas, extra}];
+  if (t.clase === 'revisar') {
+    // corrección: el modelo vuelve a mirar la ficha (tal como está AHORA) con las respuestas; los cambios se recalculan
+    entrada.rondas = [...(entrada.rondas || []), {respuestas, extra}];
+  } else {
+    // alta: la propuesta tal como la tiene el usuario (con sus correcciones), con la misma limpieza que al guardar
+    const pb = b.propuesta && typeof b.propuesta === 'object' ? b.propuesta : {};
+    const actual = normalizar(db, {...t.propuesta, ...pb, dudas: t.propuesta.dudas, confianza: t.propuesta.confianza,
+      tipo_existente: pb.tipo === '__nuevo' ? null : pb.tipo ?? t.propuesta.tipo_existente,
+      tipo_nuevo: pb.tipo === '__nuevo' ? pb.tipo_nuevo : pb.tipo ? null : t.propuesta.tipo_nuevo});
+    entrada.rondas = [...(entrada.rondas || []), {propuesta: actual, respuestas, extra}];
+  }
   db.prepare("UPDATE ia_tareas SET entrada = ?, estado = 'pendiente', error = NULL WHERE id = ? AND estado = 'propuesta'")
     .run(JSON.stringify(entrada), t.id);
   ejecutarAlta(db, FOTOS, t.id); // en segundo plano, como el alta
