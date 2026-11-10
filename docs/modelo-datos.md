@@ -48,7 +48,7 @@ erDiagram
 ## Tres capas
 | Capa | Tablas | Quién la cambia |
 |---|---|---|
-| **Referencia** (configuración) | `categorias`, `funciones_pin` (nombre + **color claro y de noche** + tachado), `dificultades`; `ajustes` (tema: auto, claro, noche; vista_inventario: lista, cuadricula; fuente: jetbrains (por defecto), mixta, plex-mono, mono-sistema, plex-sans, sistema — el valor por defecto viene de seed, el elegido no se pisa; los valores válidos los comprueba el servidor) | `seed/referencia.json`; las categorías también la IA o el usuario |
+| **Referencia** (configuración) | `categorias`, `funciones_pin` (nombre + **color claro y de noche** + tachado), `dificultades`; `ajustes` (tema: auto, claro, noche; vista_inventario: lista, cuadricula; ia_razonar: poco (por defecto), medio, mucho; fuente: jetbrains (por defecto), mixta, plex-mono, mono-sistema, plex-sans, sistema — el valor por defecto viene de seed, el elegido no se pisa; los valores válidos los comprueba el servidor) | `seed/referencia.json`; las categorías también la IA o el usuario |
 | **Catálogo** | `tipos`, `tipo_pines`, `tipo_alias`, `tipo_interfaces`, `tipo_datos`, `proyectos` y sus tablas | `seed/glosario.json`, `seed/proyectos.json`; los tipos también la IA o el usuario |
 | **Inventario** (datos del usuario) | `componentes`, `componente_datos`, `ubicaciones`, `historial` | solo la aplicación |
 | **IA** | `ia_tareas` | la aplicación al llamar al modelo |

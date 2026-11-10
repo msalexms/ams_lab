@@ -75,7 +75,7 @@ export async function modelos({forzar = false} = {}) {
     return {id: m.id, nombre: m.name || m.id, descripcion: txt(m.description, 200), api, base_url: rebase(m.api[api].base_url),
       precio: {entrada: m.cost?.text?.input?.price ?? null, salida: m.cost?.text?.output?.price ?? null},
       // modelos que «piensan» antes de responder: el esfuerzo más bajo que admiten (el catálogo los da de menos a más)
-      razona: m.capabilities?.reasoning?.supported === true, esfuerzo: arr(m.capabilities?.reasoning?.effort)[0] || null,
+      razona: m.capabilities?.reasoning?.supported === true, esfuerzos: arr(m.capabilities?.reasoning?.effort).map(String),
       max_salida: Number(m.limit?.output) || null};
   }).filter(Boolean).sort((a, b) => (a.precio.entrada ?? 99) - (b.precio.entrada ?? 99) || a.nombre.localeCompare(b.nombre));
   cache = {t: Date.now(), lista};
@@ -100,12 +100,36 @@ function crearModelo(m, clave, sesion) {
 // límite de respuesta y razonamiento de cada llamada. Los modelos que razonan gastan tokens pensando antes de escribir
 // la ficha: con el límite justo, se quedaban sin sitio y devolvían una respuesta vacía («No output generated»). A esos se
 // les pide el esfuerzo de razonamiento más bajo que admiten y se les da más margen.
-function opcionesLlamada(m) {
-  const tope = m.razona ? 24000 : 6000;
-  const o = {maxOutputTokens: m.max_salida ? Math.min(tope, m.max_salida) : tope};
-  if (m.razona && m.esfuerzo && m.api === 'chat-completions') o.providerOptions = {openaiCompatible: {reasoningEffort: m.esfuerzo}};
+// Cuánto razona (Ajustes → IA, tabla ajustes «ia_razonar»): poco (por defecto), medio o mucho.
+//   · API chat-completions: el nivel de esfuerzo del catálogo (poco = el más bajo, medio = el de en medio, mucho = el máximo).
+//   · API messages (tipo Claude): poco = sin «pensamiento» (lo más barato); medio y mucho = pensamiento con presupuesto.
+// Más razonamiento: más margen de respuesta y más tiempo de espera.
+export const NIVELES_RAZONAR = ['poco', 'medio', 'mucho'];
+export const nivelRazonar = (db) => {
+  const v = db.prepare("SELECT valor FROM ajustes WHERE clave = 'ia_razonar'").get()?.valor;
+  return NIVELES_RAZONAR.includes(v) ? v : 'poco';
+};
+export function esfuerzoPara(m, nivel) {
+  const l = arr(m.esfuerzos);
+  if (!m.razona || !l.length) return null;
+  if (nivel === 'mucho') return l[l.length - 1];
+  if (nivel === 'medio') return l.includes('medium') ? 'medium' : l[Math.floor((l.length - 1) / 2)];
+  return l[0];
+}
+const PRESUPUESTO = {medio: 4000, mucho: 16000}; // tokens de pensamiento (API messages)
+const ESPERA = {poco: ESPERA_MS, medio: 240_000, mucho: 360_000};
+function opcionesLlamada(m, nivel = 'poco') {
+  const tope = !m.razona ? 6000 : {poco: 24000, medio: 32000, mucho: 64000}[nivel];
+  const o = {maxOutputTokens: m.max_salida ? Math.min(tope, m.max_salida) : tope, abortSignal: AbortSignal.timeout(ESPERA[nivel] || ESPERA_MS)};
+  const esfuerzo = esfuerzoPara(m, nivel);
+  if (m.api === 'chat-completions' && esfuerzo) o.providerOptions = {openaiCompatible: {reasoningEffort: esfuerzo}};
+  if (m.api === 'messages' && m.razona && PRESUPUESTO[nivel])
+    o.providerOptions = {anthropic: {thinking: {type: 'enabled', budgetTokens: Math.min(PRESUPUESTO[nivel], Math.floor(o.maxOutputTokens / 2))},
+      ...(esfuerzo ? {effort: esfuerzo} : {})}}; // los Claude nuevos piensan «adaptativo»: lo que manda es el esfuerzo
   return o;
 }
+// con pensamiento, algunos modelos tipo Claude rechazan la salida con formato fijo (400): se repite en «poco»
+const rechazaPensar = (e, m, nivel) => nivel !== 'poco' && m.api === 'messages' && APICallError.isInstance(e?.lastError ?? e) && (e?.lastError ?? e).statusCode === 400;
 // el modelo respondió pero sin contenido (se le acabó el sitio pensando, o cortó): se reintenta una vez
 export class SinRespuesta extends Error {
   constructor(r) {
@@ -277,17 +301,18 @@ async function proponer(db, entrada, foto, sesion) {
     mensajes.push({role: 'assistant', content: JSON.stringify(aSalida(r.propuesta))});
     mensajes.push({role: 'user', content: textoRonda(r)});
   }
-  let error;
+  let error, nivel = nivelRazonar(db);
   for (let intento = 1; intento <= 2; intento++) {
     try {
       const r = await generateText({
         model: crearModelo(m, clave, sesion), system: instrucciones(ctx), messages: mensajes,
         output: Output.object({schema: esquema(ctx), name: 'pieza', description: 'Propuesta para dar de alta una pieza de electrónica'}),
-        ...opcionesLlamada(m), maxRetries: 1, abortSignal: AbortSignal.timeout(ESPERA_MS),
+        ...opcionesLlamada(m, nivel), maxRetries: 1,
       });
       return {propuesta: {...normalizar(db, salidaDe(r)), coste: coste(m, r.totalUsage ?? r.usage)}, modelo: m.id};
     } catch (e) {
       error = e;
+      if (rechazaPensar(e, m, nivel)) { console.warn(`[ia] ${m.id}: no admite razonar «${nivel}» con formato fijo; se repite en «poco»`); nivel = 'poco'; continue; }
       if (!reintentable(e)) break; // solo se reintenta si el formato no era correcto o no hubo respuesta
       if (e instanceof SinRespuesta) { anotarSinRespuesta(m, e, intento); continue; }
       // diagnóstico: qué devolvió el modelo y por qué no valía (sin la foto ni la clave)
@@ -441,13 +466,13 @@ async function proponerRevision(db, entrada, foto, sesion) {
   const respuestas = vueltas.length ? `Respuestas a tus dudas de antes (tenlas en cuenta y no vuelvas a preguntarlas):\n${vueltas.join('\n')}\n\n` : '';
   const contenido = [{type: 'text', text: `${entrada.texto ? `Lo que quiero que revises: ${entrada.texto}\n\n` : 'Revisa la ficha entera.\n\n'}${respuestas}Lo que hay guardado:\n${datosTexto}`}];
   if (foto) contenido.push({type: 'file', mediaType: 'image/jpeg', data: {type: 'data', data: foto}});
-  let error;
+  let error, nivel = nivelRazonar(db);
   for (let intento = 1; intento <= 2; intento++) {
     try {
       const r = await generateText({
         model: crearModelo(m, clave, sesion), system: instruccionesRevision(ctx, conPieza), messages: [{role: 'user', content: contenido}],
         output: Output.object({schema: esquemaRevision(ctx, conPieza), name: 'revision', description: 'Ficha corregida'}),
-        ...opcionesLlamada(m), maxRetries: 1, abortSignal: AbortSignal.timeout(ESPERA_MS),
+        ...opcionesLlamada(m, nivel), maxRetries: 1,
       });
       const o = salidaDe(r);
       // la ficha propuesta pasa por la misma limpieza que un alta (categorías y funciones válidas, longitudes, «no aplica»…)
@@ -468,6 +493,7 @@ async function proponerRevision(db, entrada, foto, sesion) {
       };
     } catch (e) {
       error = e;
+      if (rechazaPensar(e, m, nivel)) { console.warn(`[ia] ${m.id}: no admite razonar «${nivel}» con formato fijo; se repite en «poco»`); nivel = 'poco'; continue; }
       if (!reintentable(e)) break;
       if (e instanceof SinRespuesta) { anotarSinRespuesta(m, e, intento); continue; }
       console.warn(`[ia] ${m.id}: revisión con formato no válido (intento ${intento}): ${txt(e.cause?.message || e.message, 300)}`);

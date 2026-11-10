@@ -125,6 +125,7 @@
   "ajustes": {
     "tema": "auto",
     "vista_inventario": "lista",
-    "fuente": "jetbrains"
+    "fuente": "jetbrains",
+    "ia_razonar": "poco"
   }
 }

@@ -875,6 +875,32 @@ async function modelosIA(forzar = false) {
   return MODELOS_IA;
 }
 
+// cuánto razona el modelo antes de responder (tabla ajustes «ia_razonar»); con lo que significa para el modelo elegido
+const RAZONAR = {
+  poco: {nombre: 'Poco', sub: 'Rápido y barato. Suficiente para casi todas las piezas.'},
+  medio: {nombre: 'Medio', sub: 'Piensa más: para placas raras o serigrafías difíciles. Tarda y cuesta más.'},
+  mucho: {nombre: 'Mucho', sub: 'Lo máximo que admita el modelo. Lento y bastante más caro: solo si lo demás falla.'},
+};
+// lo que pide la app al modelo con cada nivel (igual que server/ia.mjs → esfuerzoPara)
+function esfuerzoDe(m, nivel) {
+  const l = m?.esfuerzos || [];
+  if (m?.api === 'messages' && nivel === 'poco') return 'sin pensamiento';
+  if (!l.length) return m?.api === 'messages' ? `pensamiento ${nivel === 'medio' ? 'corto' : 'largo'}` : 'lo que decida el modelo';
+  return nivel === 'mucho' ? l[l.length - 1] : nivel === 'medio' ? (l.includes('medium') ? 'medium' : l[Math.floor((l.length - 1) / 2)]) : l[0];
+}
+function bloqueRazonar(m) {
+  const actual = RAZONAR[D.ajustes.ia_razonar] ? D.ajustes.ia_razonar : 'poco';
+  const nota = !m ? '' : !m.razona ? `${esc(m.nombre)} no razona: este ajuste no le cambia nada.`
+    : `Con ${esc(m.nombre)}: ${Object.keys(RAZONAR).map((k) => `${RAZONAR[k].nombre.toLowerCase()} = ${esc(esfuerzoDe(m, k))}`).join(' · ')}.`;
+  return `<h3>Cuánto razona</h3>
+    <p class="ayuda">Antes de responder, el modelo «piensa». Más razonamiento acierta más en piezas difíciles, pero tarda más y cuesta
+      más (lo que piensa se cobra como respuesta). Vale para «Añadir con IA» y «Corregir con IA».</p>
+    <div class="ia-modelos" role="radiogroup" aria-label="Cuánto razona">${Object.entries(RAZONAR).map(([k, v]) => `
+      <label class="ia-modelo"><input type="radio" name="ia-razonar" value="${k}" ${k === actual ? 'checked' : ''}>
+        <span><span class="nombre">${v.nombre}${k === 'poco' ? '<span class="gris"> · recomendado</span>' : ''}</span><span class="sub">${v.sub}</span></span></label>`).join('')}</div>
+    ${nota ? `<p class="ayuda">${nota}</p>` : ''}`;
+}
+
 async function iaAjustes() {
   const zona = $('#ia-ajustes');
   if (!zona) return;
@@ -896,6 +922,7 @@ async function iaAjustes() {
       ${fuera ? `<p class="aviso">El modelo actual («${esc(cfg.modelo)}») ya no está en el catálogo con fotos: elige otro.</p>` : ''}
       <p class="ayuda" id="ia-modelo-estado" role="status"></p>
     </section>
+    <section class="pad ia-bloque" id="ia-razonar-zona">${bloqueRazonar(lista.find((m) => m.id === cfg.modelo))}</section>
     <section class="pad ia-bloque">
       <h3>Clave de OpenCode Go</h3>
       <p>${cfg.clave ? `${esc(cfg.clave)} · ${esc(origen)}` : '<span class="mal">Sin clave: la IA no funciona hasta que pongas una.</span>'}</p>
@@ -923,6 +950,8 @@ async function cambiarModeloIA(radio) {
   estado.textContent = 'Comprobando con OpenCode Go…';
   try {
     D.ia = await api('PUT', 'api/ia/config', {modelo: radio.value});
+    const z = $('#ia-razonar-zona');
+    if (z) z.innerHTML = bloqueRazonar((MODELOS_IA || []).find((m) => m.id === radio.value));
     estado.textContent = `Listo: ${radio.closest('label').querySelector('.nombre').firstChild.textContent} es ahora el modelo de siempre.`;
   } catch (err) {
     estado.className = 'mal';
@@ -1180,7 +1209,7 @@ function vAjustes(sec) {
     <div class="sub">${sub}</div></div></a><span class="gris">→</span></div>`;
   return `<article class="hoja">${cabecera('Ajustes', '', 'Todo lo que se configura de la app. Lo que cambies aquí se ve al momento en el inventario y el glosario.')}
     <div class="pad aj-menu">
-      ${fila('#/ajustes/ia', 'IA', D.ia?.activa ? `Conectada · ${esc(nombreModelo(D.ia.modelo))} · clave ${esc(D.ia.clave)}` : '<span class="mal">Sin clave</span>')}
+      ${fila('#/ajustes/ia', 'IA', D.ia?.activa ? `Conectada · ${esc(nombreModelo(D.ia.modelo))} · razona ${esc((RAZONAR[D.ajustes.ia_razonar] || RAZONAR.poco).nombre.toLowerCase())} · clave ${esc(D.ia.clave)}` : '<span class="mal">Sin clave</span>')}
       ${fila('#/ajustes/categorias', 'Categorías', `${plural(D.categorias.length, 'categoría')} · renombrar, ordenar, añadir, borrar`)}
       ${fila('#/ajustes/tipos', 'Tipos', `${plural(tipos.length - archivados, 'tipo')}${archivados ? ` · ${archivados} archivado${archivados === 1 ? '' : 's'}` : ''} · archivar, fusionar, borrar`)}
       ${fila('#/ajustes/sitios', 'Sitios', `${plural(ubicaciones().length, 'sitio')} · renombrar, juntar, borrar`)}
@@ -1697,6 +1726,11 @@ app.addEventListener('change', async (e) => {
   const t = e.target;
   if (t.id === 'ubic') { ui.ubic = t.value; route(); }
   if (t.name === 'ia-modelo') cambiarModeloIA(t);
+  if (t.name === 'ia-razonar') {
+    const antes = D.ajustes.ia_razonar;
+    try { await api('PUT', 'api/ajustes/ia_razonar', {valor: t.value}); D.ajustes.ia_razonar = t.value; toast(`La IA razonará: ${RAZONAR[t.value].nombre.toLowerCase()}`); }
+    catch (err) { D.ajustes.ia_razonar = antes; toast(err.message, true); iaAjustes(); }
+  }
   if (t.name === 'fuente') {
     const antes = fuenteActual();
     D.ajustes.fuente = t.value;
