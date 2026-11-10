@@ -512,33 +512,69 @@ function clicEditor(t) {
 // arrastrar filas por el asa (dedo o ratón): la fila sigue al dedo y cambia de sitio al pasar la mitad de la vecina;
 // cerca del borde de la pantalla, la página se desplaza sola. Con el teclado, flechas arriba y abajo sobre el asa.
 let arrastre = null;
+// cambia la fila de sitio con su vecina. Se mueve la VECINA, no la fila: si se sacara del documento la que se está
+// arrastrando, el navegador perdería el seguimiento del dedo y la fila se quedaría «enganchada»
 function moverFila(fila, dir) {
   const otra = dir < 0 ? fila.previousElementSibling : fila.nextElementSibling;
   if (!otra) return 0;
   const salto = otra.getBoundingClientRect().height + (parseFloat(getComputedStyle(fila.parentElement).rowGap) || 0);
-  if (dir < 0) otra.before(fila); else otra.after(fila);
+  if (dir < 0) fila.after(otra); else fila.before(otra);
   return dir * salto;
 }
 function seguirArrastre() {
   const a = arrastre;
   if (!a) return;
   let dy = a.y + scrollY - a.y0;
-  // cambia de sitio con la vecina en cuanto la fila pasa su mitad
-  for (;;) {
+  // cambia de sitio con la vecina en cuanto la fila pasa su mitad (con tope: nunca un bucle sin fin)
+  for (let vueltas = 0; vueltas < 100; vueltas++) {
     const prev = a.fila.previousElementSibling, next = a.fila.nextElementSibling;
-    if (prev && dy < -prev.getBoundingClientRect().height / 2) { a.y0 += moverFila(a.fila, -1); dy = a.y + scrollY - a.y0; }
-    else if (next && dy > next.getBoundingClientRect().height / 2) { a.y0 += moverFila(a.fila, 1); dy = a.y + scrollY - a.y0; }
-    else break;
+    const hp = prev?.getBoundingClientRect().height || 0, hn = next?.getBoundingClientRect().height || 0;
+    let salto = 0;
+    if (prev && hp > 0 && dy < -hp / 2) salto = moverFila(a.fila, -1);
+    else if (next && hn > 0 && dy > hn / 2) salto = moverFila(a.fila, 1);
+    if (!salto) break;
+    a.y0 += salto;
+    dy = a.y + scrollY - a.y0;
   }
   a.fila.style.transform = `translateY(${dy}px)`;
 }
+// mientras se arrastra se escucha en toda la ventana (el dedo puede salirse de la app); al soltar, cancelar,
+// perder el seguimiento o cambiar de pestaña, la fila se suelta siempre
+function soltarFila() {
+  const a = arrastre;
+  if (!a) return;
+  arrastre = null;
+  cancelAnimationFrame(a.raf);
+  removeEventListener('pointermove', moverArrastre);
+  removeEventListener('pointerup', alSoltar);
+  removeEventListener('pointercancel', alSoltar);
+  removeEventListener('blur', soltarFila);
+  a.asa.removeEventListener('lostpointercapture', soltarFila);
+  try { a.asa.releasePointerCapture(a.id); } catch {}
+  a.fila.style.transform = '';
+  a.fila.classList.remove('arrastrando');
+  document.body.classList.remove('arrastrando-fila');
+}
+function moverArrastre(e) {
+  if (!arrastre || e.pointerId !== arrastre.id) return;
+  e.preventDefault();
+  arrastre.y = e.clientY;
+  seguirArrastre();
+}
+function alSoltar(e) { if (arrastre && e.pointerId === arrastre.id) soltarFila(); }
 app.addEventListener('pointerdown', (e) => {
   const asa = e.target.closest('.ed-asa');
   if (!asa || e.button > 0) return;
   e.preventDefault();
+  soltarFila(); // por si quedaba otro a medias
   const fila = asa.closest('.ed-fila');
-  try { asa.setPointerCapture(e.pointerId); } catch {}
   arrastre = {fila, asa, id: e.pointerId, y: e.clientY, y0: e.clientY + scrollY};
+  try { asa.setPointerCapture(e.pointerId); } catch {}
+  addEventListener('pointermove', moverArrastre, {passive: false});
+  addEventListener('pointerup', alSoltar);
+  addEventListener('pointercancel', alSoltar);
+  addEventListener('blur', soltarFila);
+  asa.addEventListener('lostpointercapture', soltarFila);
   fila.classList.add('arrastrando');
   document.body.classList.add('arrastrando-fila');
   // desplazamiento automático cerca de los bordes (la barra de abajo del móvil cuenta como borde)
@@ -551,21 +587,7 @@ app.addEventListener('pointerdown', (e) => {
   };
   arrastre.raf = requestAnimationFrame(paso);
 });
-app.addEventListener('pointermove', (e) => {
-  if (!arrastre || e.pointerId !== arrastre.id) return;
-  arrastre.y = e.clientY;
-  seguirArrastre();
-});
-const soltarFila = (e) => {
-  if (!arrastre || e.pointerId !== arrastre.id) return;
-  cancelAnimationFrame(arrastre.raf);
-  arrastre.fila.style.transform = '';
-  arrastre.fila.classList.remove('arrastrando');
-  document.body.classList.remove('arrastrando-fila');
-  arrastre = null;
-};
-app.addEventListener('pointerup', soltarFila);
-app.addEventListener('pointercancel', soltarFila);
+document.addEventListener('visibilitychange', soltarFila);
 app.addEventListener('keydown', (e) => {
   if (!e.target.classList?.contains('ed-asa') || !/^Arrow(Up|Down)$/.test(e.key)) return;
   e.preventDefault();
