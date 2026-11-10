@@ -16,7 +16,7 @@
 // Configuración: desde la web (tabla ia_config). Si no hay nada, variables de entorno IA_CLAVE / IA_MODELO.
 //   IA_BASE  solo para pruebas: sustituye https://opencode.ai/inference/go (catálogo y llamadas) por un servidor simulado.
 import {readFile} from 'node:fs/promises';
-import {generateText, Output, NoObjectGeneratedError, APICallError} from 'ai';
+import {generateText, Output, NoObjectGeneratedError, NoOutputGeneratedError, APICallError} from 'ai';
 import {createOpenAICompatible} from '@ai-sdk/openai-compatible';
 import {createAnthropic} from '@ai-sdk/anthropic';
 import {z} from 'zod';
@@ -73,7 +73,10 @@ export async function modelos({forzar = false} = {}) {
     // fuera: los gratuitos (solo funcionan dentro de OpenCode) y los «contributor» (entrenan con lo que les mandas)
     if (!api || !vision || m.capabilities?.structured_output !== true || m.type !== 'chat' || /free|contributor/.test(m.id)) return null;
     return {id: m.id, nombre: m.name || m.id, descripcion: txt(m.description, 200), api, base_url: rebase(m.api[api].base_url),
-      precio: {entrada: m.cost?.text?.input?.price ?? null, salida: m.cost?.text?.output?.price ?? null}};
+      precio: {entrada: m.cost?.text?.input?.price ?? null, salida: m.cost?.text?.output?.price ?? null},
+      // modelos que «piensan» antes de responder: el esfuerzo más bajo que admiten (el catálogo los da de menos a más)
+      razona: m.capabilities?.reasoning?.supported === true, esfuerzo: arr(m.capabilities?.reasoning?.effort)[0] || null,
+      max_salida: Number(m.limit?.output) || null};
   }).filter(Boolean).sort((a, b) => (a.precio.entrada ?? 99) - (b.precio.entrada ?? 99) || a.nombre.localeCompare(b.nombre));
   cache = {t: Date.now(), lista};
   return lista;
@@ -94,10 +97,39 @@ function crearModelo(m, clave, sesion) {
   return createAnthropic({baseURL: m.base_url, apiKey: clave, fetch: fetchPropio})(m.id);
 }
 
+// límite de respuesta y razonamiento de cada llamada. Los modelos que razonan gastan tokens pensando antes de escribir
+// la ficha: con el límite justo, se quedaban sin sitio y devolvían una respuesta vacía («No output generated»). A esos se
+// les pide el esfuerzo de razonamiento más bajo que admiten y se les da más margen.
+function opcionesLlamada(m) {
+  const tope = m.razona ? 24000 : 6000;
+  const o = {maxOutputTokens: m.max_salida ? Math.min(tope, m.max_salida) : tope};
+  if (m.razona && m.esfuerzo && m.api === 'chat-completions') o.providerOptions = {openaiCompatible: {reasoningEffort: m.esfuerzo}};
+  return o;
+}
+// el modelo respondió pero sin contenido (se le acabó el sitio pensando, o cortó): se reintenta una vez
+export class SinRespuesta extends Error {
+  constructor(r) {
+    super('sin respuesta');
+    this.fin = r?.finishReason || r?.finalStep?.finishReason || '?';
+    this.razonamiento = r?.usage?.reasoningTokens ?? r?.usage?.outputTokenDetails?.reasoningTokens ?? null;
+    this.texto = r?.text || '';
+  }
+}
+// lee la salida estructurada; si el modelo no dio ninguna, SinRespuesta (con el motivo, para el registro)
+function salidaDe(r) {
+  try { return r.output; } catch (e) { if (NoOutputGeneratedError.isInstance(e)) throw new SinRespuesta(r); throw e; }
+}
+const reintentable = (e) => NoObjectGeneratedError.isInstance(e) || e instanceof SinRespuesta || NoOutputGeneratedError.isInstance(e);
+const anotarSinRespuesta = (m, e, intento) => console.warn(`[ia] ${m.id}: sin respuesta (intento ${intento}; fin: ${e.fin ?? '?'}; `
+  + `razonamiento: ${e.razonamiento ?? '?'} tokens; texto: ${(e.texto || '').length} caracteres)`);
+
 // errores en español y sin detalles internos
 function explicar(e) {
   if (e?.lastError) e = e.lastError; // RetryError del SDK («Failed after N attempts»): interesa el último error real
   if (NoObjectGeneratedError.isInstance(e)) return 'El modelo no devolvió una ficha con el formato correcto (2 intentos). Prueba otra vez u otro modelo.';
+  if (e instanceof SinRespuesta || NoOutputGeneratedError.isInstance(e)) return e.fin === 'length'
+    ? 'El modelo se quedó sin espacio pensando y no llegó a escribir la respuesta (2 intentos). Prueba otra vez o elige otro modelo en Ajustes → IA.'
+    : 'El modelo terminó sin dar ninguna respuesta (2 intentos). Prueba otra vez o elige otro modelo en Ajustes → IA.';
   if (APICallError.isInstance(e)) {
     if (e.statusCode === 401 || e.statusCode === 403) return 'OpenCode Go rechaza la clave (o no da acceso a ese modelo). Revísala en la configuración.';
     if (e.statusCode === 429) return 'Has llegado al límite de uso de OpenCode Go por ahora. Prueba más tarde.';
@@ -251,12 +283,13 @@ async function proponer(db, entrada, foto, sesion) {
       const r = await generateText({
         model: crearModelo(m, clave, sesion), system: instrucciones(ctx), messages: mensajes,
         output: Output.object({schema: esquema(ctx), name: 'pieza', description: 'Propuesta para dar de alta una pieza de electrónica'}),
-        maxOutputTokens: 6000, maxRetries: 1, abortSignal: AbortSignal.timeout(ESPERA_MS),
+        ...opcionesLlamada(m), maxRetries: 1, abortSignal: AbortSignal.timeout(ESPERA_MS),
       });
-      return {propuesta: {...normalizar(db, r.output), coste: coste(m, r.totalUsage ?? r.usage)}, modelo: m.id};
+      return {propuesta: {...normalizar(db, salidaDe(r)), coste: coste(m, r.totalUsage ?? r.usage)}, modelo: m.id};
     } catch (e) {
       error = e;
-      if (!NoObjectGeneratedError.isInstance(e)) break; // solo se reintenta si el formato no era correcto
+      if (!reintentable(e)) break; // solo se reintenta si el formato no era correcto o no hubo respuesta
+      if (e instanceof SinRespuesta) { anotarSinRespuesta(m, e, intento); continue; }
       // diagnóstico: qué devolvió el modelo y por qué no valía (sin la foto ni la clave)
       console.warn(`[ia] ${m.id}: formato no válido (intento ${intento}): ${txt(e.cause?.message || e.message, 400)}`);
       console.warn(`[ia] ${m.id}: texto devuelto: ${txt(e.text, 800) || '(vacío)'}`);
@@ -402,7 +435,11 @@ async function proponerRevision(db, entrada, foto, sesion) {
   const ctx = contexto(db);
   const datosTexto = JSON.stringify({ficha: actual.tipo ? fichaSalida(actual.tipo) : null,
     pieza: conPieza ? {nombre: actual.pieza.nombre, notas: actual.pieza.notas, datos_pieza: actual.pieza.datos_pieza.map(([dato, valor]) => ({dato, valor}))} : undefined});
-  const contenido = [{type: 'text', text: `${entrada.texto ? `Lo que quiero que revises: ${entrada.texto}\n\n` : 'Revisa la ficha entera.\n\n'}Lo que hay guardado:\n${datosTexto}`}];
+  // vueltas anteriores: lo que preguntó el modelo y lo que contestó el usuario (para rehacer las correcciones con eso)
+  const vueltas = arr(entrada.rondas).map((r) => [...arr(r.respuestas).map((x) => `- Preguntaste «${x.duda}» → ${x.respuesta}`),
+    ...(r.extra ? [`- Además: ${r.extra}`] : [])].join('\n')).filter(Boolean);
+  const respuestas = vueltas.length ? `Respuestas a tus dudas de antes (tenlas en cuenta y no vuelvas a preguntarlas):\n${vueltas.join('\n')}\n\n` : '';
+  const contenido = [{type: 'text', text: `${entrada.texto ? `Lo que quiero que revises: ${entrada.texto}\n\n` : 'Revisa la ficha entera.\n\n'}${respuestas}Lo que hay guardado:\n${datosTexto}`}];
   if (foto) contenido.push({type: 'file', mediaType: 'image/jpeg', data: {type: 'data', data: foto}});
   let error;
   for (let intento = 1; intento <= 2; intento++) {
@@ -410,9 +447,9 @@ async function proponerRevision(db, entrada, foto, sesion) {
       const r = await generateText({
         model: crearModelo(m, clave, sesion), system: instruccionesRevision(ctx, conPieza), messages: [{role: 'user', content: contenido}],
         output: Output.object({schema: esquemaRevision(ctx, conPieza), name: 'revision', description: 'Ficha corregida'}),
-        maxOutputTokens: 6000, maxRetries: 1, abortSignal: AbortSignal.timeout(ESPERA_MS),
+        ...opcionesLlamada(m), maxRetries: 1, abortSignal: AbortSignal.timeout(ESPERA_MS),
       });
-      const o = r.output;
+      const o = salidaDe(r);
       // la ficha propuesta pasa por la misma limpieza que un alta (categorías y funciones válidas, longitudes, «no aplica»…)
       const limpia = normalizar(db, {nombre: o.tipo.nombre, tipo_nuevo: o.tipo, datos_pieza: o.pieza?.datos_pieza, dudas: o.dudas, confianza: o.confianza});
       const nueva = {
@@ -431,7 +468,8 @@ async function proponerRevision(db, entrada, foto, sesion) {
       };
     } catch (e) {
       error = e;
-      if (!NoObjectGeneratedError.isInstance(e)) break;
+      if (!reintentable(e)) break;
+      if (e instanceof SinRespuesta) { anotarSinRespuesta(m, e, intento); continue; }
       console.warn(`[ia] ${m.id}: revisión con formato no válido (intento ${intento}): ${txt(e.cause?.message || e.message, 300)}`);
       console.warn(`[ia] ${m.id}: texto devuelto: ${txt(e.text, 800) || '(vacío)'}`);
     }
