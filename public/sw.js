@@ -4,12 +4,13 @@
 //   · dibujos del glosario: se sirven de la copia y se actualizan por detrás
 // Solo funciona con HTTPS o en localhost (p. ej. `tailscale serve`), es una regla del navegador.
 'use strict';
-const WEB = 'ams-web-v1';
+const WEB = 'ams-web-v2';
 const FOTOS = 'ams-fotos';
 const BASE = self.registration.scope;
 const u = (p) => new URL(p, BASE).href;
 const DATOS = u('api/datos');
-const PRECARGA = ['./', 'index.html', 'app.js', 'style.css', 'icon.svg', 'manifest.webmanifest'].map(u);
+const LETRAS = ['jetbrains-mono', 'ibm-plex-mono', 'ibm-plex-sans'].flatMap((f) => [400, 500, 600].map((w) => `fuentes/${f}-${w}.woff2`));
+const PRECARGA = ['./', 'index.html', 'app.js', 'style.css', 'icon.svg', 'manifest.webmanifest', ...LETRAS].map(u);
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(WEB).then((c) => c.addAll(PRECARGA)).then(() => self.skipWaiting()));
