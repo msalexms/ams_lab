@@ -119,7 +119,7 @@ main { max-width: 1140px; margin: 0 auto; padding: var(--e5) var(--e5) calc(var(
 .btn.prim:hover { opacity: .9; }
 .btn.peligro { color: var(--mal); }
 .btn.peligro:hover { border-color: var(--mal); }
-.btn.peligro-prim { background: var(--mal); border-color: var(--mal); color: #fff; }
+.btn.peligro-prim { background: var(--mal); border-color: var(--mal); color: var(--hoja); font-weight: 600; } /* de noche, texto oscuro sobre el rojo claro */
 .btn.mini { min-height: 32px; padding: 4px 10px; font-size: .8rem; }
 button:disabled { opacity: .5; cursor: default; }
 .acciones { display: flex; flex-wrap: wrap; gap: var(--e2); margin: var(--e4) 0 0; }
@@ -775,3 +775,38 @@ details.hist > summary:hover { background: var(--sel); }
   .buscar-mini { flex: 1 1 100%; }
   .reg-l { grid-template-columns: 1fr; gap: 0; }
 }
+
+/* ---------- diálogo de confirmación (en vez del del navegador) ---------- */
+.dialogo { width: min(440px, calc(100vw - 2 * var(--e4))); max-width: none; margin: auto; padding: 0; border: 1px solid var(--linea); border-top: 2px solid var(--tinta);
+  border-radius: 2px; background: var(--hoja); color: var(--tinta); box-shadow: 0 12px 40px rgba(0, 0, 0, .25); }
+.dialogo::backdrop { background: rgba(10, 10, 9, .45); }
+.dialogo form { display: grid; gap: var(--e3); padding: var(--e5); }
+.dialogo-t { margin: 0; font-family: var(--titulos); font-weight: 600; font-size: 1rem; line-height: 1.4; overflow-wrap: anywhere; }
+.dialogo-p { margin: 0; color: var(--tinta2); font-size: .9rem; line-height: 1.5; overflow-wrap: anywhere; }
+.dialogo-acc { margin-top: var(--e2); flex-direction: row-reverse; justify-content: flex-start; }
+.dialogo[open] { animation: dialogo-entra .14s ease-out; }
+@keyframes dialogo-entra { from { opacity: 0; transform: translateY(6px); } }
+@media (max-width: 760px) {
+  /* en el móvil, abajo y a todo el ancho: los botones quedan a mano del pulgar */
+  .dialogo { margin: auto 0 0; width: 100vw; border-left: 0; border-right: 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); }
+  .dialogo-acc { display: grid; grid-template-columns: 1fr 1fr; }
+  .dialogo-acc .btn { min-height: 44px; }
+}
+
+/* ---------- campo de foto ---------- */
+.form .campo:has(> .archivo) { min-width: 0; }
+.archivo { position: relative; min-width: 0; display: flex; flex-wrap: nowrap; align-items: center; gap: var(--e2) var(--e3); padding: var(--e2); min-height: 42px;
+  border: 1px dashed var(--linea); border-radius: 2px; background: var(--hoja); font-weight: 400; }
+.archivo:hover { border-color: var(--tinta2); }
+.form .archivo-elegir, .archivo-elegir { display: flex; flex: none; cursor: pointer; }
+.archivo-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; clip-path: inset(50%); }
+.archivo-input:focus-visible + .btn { outline: 2px solid var(--tinta); outline-offset: 2px; }
+.archivo-elegir .btn { cursor: pointer; }
+.archivo-nombre { flex: 1 1 auto; min-width: 0; font-size: .86rem; color: var(--tinta); display: flex; gap: var(--e2); align-items: baseline; }
+.archivo-fichero { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.archivo-peso { flex: none; white-space: nowrap; font-size: .8rem; }
+/* con foto: miniatura y nombre delante, los botones al final */
+.archivo.con .archivo-elegir { order: 2; }
+.archivo.con .archivo-quitar { order: 3; }
+.archivo-nombre.gris { color: var(--gris); }
+.archivo-mini { width: 44px; height: 33px; object-fit: cover; border: 1px solid var(--linea); flex: none; }
