@@ -17,7 +17,7 @@ Pestaña **Ajustes**: IA (modelo y clave), **categorías** (renombrar, ordenar, 
 
 - **Inventario** en lista o en **cuadrícula con las fotos** (se recuerda en la tabla `ajustes`, `vista_inventario`).
 - **Buscar** (arriba, tecla `/`): en una lista la filtra y avisa si hay coincidencias en otras secciones; desde cualquier otro sitio, o con Intro, busca en todo (piezas, tipos —también por pines, alias, interfaces y datos— y proyectos).
-- **Editar ficha** de un tipo a mano: nombre, categoría, resumen, tensión, interfaces, alias, «Ojo» y las **tablas de pines y datos** (añadir, ordenar con ↑ ↓, quitar). Al guardar pasa a ser tuya (`origen = 'usuario'`, comprobada) y `seed/` ya no la toca. Si la ficha cambió mientras la editabas (la IA u otra pestaña), no se pisa: hay que recargar.
+- **Editar ficha** de un tipo a mano: nombre, categoría, resumen, tensión, interfaces, alias, «Ojo» y las **tablas de pines y datos** (añadir, ordenar arrastrando por el asa ⠿, quitar). Al guardar pasa a ser tuya (`origen = 'usuario'`, comprobada) y `seed/` ya no la toca. Si la ficha cambió mientras la editabas (la IA u otra pestaña), no se pisa: hay que recargar.
 - **Datos de cada pieza** («Valor» → «220 Ω») en su formulario, también como tabla. El **tipo** se elige escribiendo (busca por nombre, alias, interfaz o categoría).
 - **Móvil**: barra de abajo (Inventario, Glosario, «+», Proyectos, Ajustes); el «+» abre el menú de añadir. Se esconde mientras escribes. En el iPhone queda mejor como app: Safari → Compartir → «Añadir a pantalla de inicio» (sin las barras de Safari).
 - **Fotos encuadradas**: al hacer o elegir una foto sale un recuadro 4:3 (el formato de las tarjetas); mueve, acerca o gira la foto para que la pieza quepa dentro. «Sin recortar» la sube entera.

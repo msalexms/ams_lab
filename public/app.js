@@ -468,18 +468,19 @@ const COLS = {
   datos: [{k: 'clave', t: 'Dato', max: 60, ph: 'Corriente máx.'}, {k: 'valor', t: 'Valor', max: 200, ph: '20 mA'}],
 };
 const colorFn = (id) => { const x = FUNC[id] || {color_claro: '#888888', color_oscuro: '#888888'}; return `--cc:${esc(x.color_claro)};--co:${esc(x.color_oscuro)}`; };
+// asa para arrastrar la fila (seis puntos, dibujados: nada de emojis)
+const ASA = '<svg viewBox="0 0 10 16" aria-hidden="true"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></svg>';
 function filaEditor(nombre, valores = []) {
-  return `<div class="ed-fila">${COLS[nombre].map((c, i) => c.funcion
+  return `<div class="ed-fila"><button type="button" class="ed-asa" aria-label="Mover la fila: arrástrala, o usa las flechas arriba y abajo">${ASA}</button>${COLS[nombre].map((c, i) => c.funcion
     ? `<label class="ed-celda ed-fn" style="${colorFn(valores[i] || 'otro')}"><span class="ed-et">${c.t}</span><i class="dot"></i>
         <select data-col="${i}">${Object.entries(FUNC).map(([k, f]) => `<option value="${esc(k)}" ${k === (valores[i] || 'otro') ? 'selected' : ''}>${esc(f.nombre)}</option>`).join('')}</select></label>`
     : `<label class="ed-celda"><span class="ed-et">${c.t}</span><input data-col="${i}" class="${c.clase || ''}" maxlength="${c.max}" value="${esc(valores[i] || '')}" placeholder="${esc(c.ph)}"></label>`).join('')}
-    <span class="ed-botones"><button type="button" class="btn mini" data-ed-mover="-1" aria-label="Subir">↑</button><button type="button" class="btn mini" data-ed-mover="1" aria-label="Bajar">↓</button>
-      <button type="button" class="btn mini peligro" data-ed-quitar aria-label="Quitar fila">✕</button></span></div>`;
+    <button type="button" class="btn mini peligro ed-quitar" data-ed-quitar aria-label="Quitar fila">✕</button></div>`;
 }
 function editorFilas(nombre, filas, {etiqueta, boton, ayuda = '', campo = nombre} = {}) {
   return `<fieldset class="ed ed-${nombre}" data-ed="${campo}" data-cols="${nombre}">
     <legend>${etiqueta}</legend>${ayuda ? `<p class="ayuda">${ayuda}</p>` : ''}
-    <div class="ed-cab" aria-hidden="true">${COLS[nombre].map((c) => `<span>${c.t}</span>`).join('')}<span></span></div>
+    <div class="ed-cab" aria-hidden="true"><span></span>${COLS[nombre].map((c) => `<span>${c.t}</span>`).join('')}<span></span></div>
     <div class="ed-filas">${list(filas).map((f) => filaEditor(nombre, f)).join('')}</div>
     <button type="button" class="btn mini" data-ed-anadir>${boton}</button></fieldset>`;
 }
@@ -493,12 +494,73 @@ function clicEditor(t) {
     ed.querySelector('.ed-filas').insertAdjacentHTML('beforeend', filaEditor(ed.dataset.cols));
     ed.querySelector('.ed-fila:last-child input')?.focus();
   } else if ('edQuitar' in t.dataset) fila.remove();
-  else if (t.dataset.edMover) {
-    const otra = t.dataset.edMover === '-1' ? fila.previousElementSibling : fila.nextElementSibling;
-    if (otra) { if (t.dataset.edMover === '-1') otra.before(fila); else otra.after(fila); t.focus(); }
-  } else return false;
+  else return false;
   return true;
 }
+
+// arrastrar filas por el asa (dedo o ratón): la fila sigue al dedo y cambia de sitio al pasar la mitad de la vecina;
+// cerca del borde de la pantalla, la página se desplaza sola. Con el teclado, flechas arriba y abajo sobre el asa.
+let arrastre = null;
+function moverFila(fila, dir) {
+  const otra = dir < 0 ? fila.previousElementSibling : fila.nextElementSibling;
+  if (!otra) return 0;
+  const salto = otra.getBoundingClientRect().height + (parseFloat(getComputedStyle(fila.parentElement).rowGap) || 0);
+  if (dir < 0) otra.before(fila); else otra.after(fila);
+  return dir * salto;
+}
+function seguirArrastre() {
+  const a = arrastre;
+  if (!a) return;
+  let dy = a.y + scrollY - a.y0;
+  // cambia de sitio con la vecina en cuanto la fila pasa su mitad
+  for (;;) {
+    const prev = a.fila.previousElementSibling, next = a.fila.nextElementSibling;
+    if (prev && dy < -prev.getBoundingClientRect().height / 2) { a.y0 += moverFila(a.fila, -1); dy = a.y + scrollY - a.y0; }
+    else if (next && dy > next.getBoundingClientRect().height / 2) { a.y0 += moverFila(a.fila, 1); dy = a.y + scrollY - a.y0; }
+    else break;
+  }
+  a.fila.style.transform = `translateY(${dy}px)`;
+}
+app.addEventListener('pointerdown', (e) => {
+  const asa = e.target.closest('.ed-asa');
+  if (!asa || e.button > 0) return;
+  e.preventDefault();
+  const fila = asa.closest('.ed-fila');
+  try { asa.setPointerCapture(e.pointerId); } catch {}
+  arrastre = {fila, asa, id: e.pointerId, y: e.clientY, y0: e.clientY + scrollY};
+  fila.classList.add('arrastrando');
+  document.body.classList.add('arrastrando-fila');
+  // desplazamiento automático cerca de los bordes (la barra de abajo del móvil cuenta como borde)
+  const bajo = document.querySelector('#barra')?.getBoundingClientRect().height || 0;
+  const paso = () => {
+    if (!arrastre) return;
+    const v = arrastre.y < 90 ? -Math.ceil((90 - arrastre.y) / 6) : arrastre.y > innerHeight - bajo - 90 ? Math.ceil((arrastre.y - innerHeight + bajo + 90) / 6) : 0;
+    if (v) { scrollBy(0, v); seguirArrastre(); }
+    arrastre.raf = requestAnimationFrame(paso);
+  };
+  arrastre.raf = requestAnimationFrame(paso);
+});
+app.addEventListener('pointermove', (e) => {
+  if (!arrastre || e.pointerId !== arrastre.id) return;
+  arrastre.y = e.clientY;
+  seguirArrastre();
+});
+const soltarFila = (e) => {
+  if (!arrastre || e.pointerId !== arrastre.id) return;
+  cancelAnimationFrame(arrastre.raf);
+  arrastre.fila.style.transform = '';
+  arrastre.fila.classList.remove('arrastrando');
+  document.body.classList.remove('arrastrando-fila');
+  arrastre = null;
+};
+app.addEventListener('pointerup', soltarFila);
+app.addEventListener('pointercancel', soltarFila);
+app.addEventListener('keydown', (e) => {
+  if (!e.target.classList?.contains('ed-asa') || !/^Arrow(Up|Down)$/.test(e.key)) return;
+  e.preventDefault();
+  moverFila(e.target.closest('.ed-fila'), e.key === 'ArrowUp' ? -1 : 1);
+  e.target.focus();
+});
 
 function vForm(id, tipoInicial = '') {
   const c = id ? comp(id) : {nombre: '', tipo: D.tipos[tipoInicial] ? tipoInicial : '', cantidad: 1, varios: 0, ubicacion: '', notas: '', revisar: 0, datos: []};
@@ -1486,7 +1548,7 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-vista],.combo-op,[data-ed-anadir],[data-ed-quitar],[data-ed-mover],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar]');
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-vista],.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar]');
   if (!t || !app.contains(t)) return; // solo botones de la propia vista (no el <html>, que lleva data-* del tema)
   // sin redibujar la vista: el selector de tipo y las tablas editables viven dentro de formularios a medio rellenar
   if (t.classList.contains('combo-op')) { elegirTipo(t.closest('.combo'), t.dataset.valor); return; }
