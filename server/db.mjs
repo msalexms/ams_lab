@@ -10,7 +10,7 @@ import {mkdirSync, readFileSync, existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {opcionesCopias} from './copias.mjs';
 
-export const VERSION = 6;
+export const VERSION = 7;
 export const ORIGENES = ['seed', 'ia', 'usuario'];
 const ORIGEN = `TEXT NOT NULL DEFAULT 'seed' CHECK (origen IN ('seed', 'ia', 'usuario'))`;
 const HEX = (col) => `CHECK (${col} GLOB '#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]')`;
@@ -213,6 +213,25 @@ const TABLAS_V5 = `
   ) WITHOUT ROWID;
 `;
 
+// v7: historial de cambios de toda la aplicación (Ajustes → Historial y el de cada pieza o ficha). Lo escribe el
+// servidor (server/auditoria.mjs) al cambiar algo: quién (tú, la IA con su modelo, o el sistema), qué y el detalle
+// (los campos con su antes y su después). Nunca guarda la clave de la IA. «historial» (stock) sigue con sus triggers.
+const TABLAS_V7 = `
+  CREATE TABLE auditoria (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    fecha      TEXT NOT NULL DEFAULT (datetime('now')),
+    quien      TEXT NOT NULL CHECK (quien IN ('usuario', 'ia', 'sistema')),
+    accion     TEXT NOT NULL,                 -- «pieza.editar», «tipo.fusionar», «ia.aplicar», «copia.restaurar»…
+    objeto     TEXT NOT NULL CHECK (objeto IN ('pieza', 'tipo', 'categoria', 'sitio', 'ia', 'copia', 'ajustes')),
+    objeto_id  TEXT,                          -- id de la pieza, del tipo… (puede que ya no exista)
+    nombre     TEXT,                          -- su nombre en ese momento
+    resumen    TEXT NOT NULL,                 -- frase que se lee en la web
+    detalle    TEXT CHECK (detalle IS NULL OR json_valid(detalle)),   -- {cambios: [{campo, antes, despues}], …}
+    modelo     TEXT                           -- si lo hizo la IA: con qué modelo
+  );
+  CREATE INDEX auditoria_objeto ON auditoria(objeto, objeto_id);
+`;
+
 // lo quitado: id → reemplazo (o null). resolver() sigue la cadena de reemplazos (A→B→C) hasta algo que exista.
 const quitados = (db, clase) => new Map(db.prepare('SELECT id, reemplazo FROM catalogo_quitados WHERE clase = ?').all(clase).map((r) => [r.id, r.reemplazo]));
 export function resolver(db, clase, id) {
@@ -368,6 +387,7 @@ export function abrir(dataDir, seedDir) {
     if (version === 3) { migrarDesdeV3(db); version = 4; }
     if (version === 4) { migrarDesdeV4(db); version = 5; }
     if (version === 5) { migrarDesdeV5(db); version = 6; }
+    if (version === 6) { migrarDesdeV6(db); version = 7; }
   }
 
   db.exec('PRAGMA foreign_keys = ON;');
@@ -388,7 +408,7 @@ function copiaAntesDeMigrar(db, dataDir, version) {
 
 function crearNueva(db, seedDir) {
   enTransaccion(db, () => {
-    db.exec(ESQUEMA + TABLAS_V3 + TABLAS_V4 + TABLAS_V5);
+    db.exec(ESQUEMA + TABLAS_V3 + TABLAS_V4 + TABLAS_V5 + TABLAS_V7);
     const ref = leer(seedDir, 'referencia.json'), glosario = leer(seedDir, 'glosario.json') || {}, proyectos = leer(seedDir, 'proyectos.json') || [];
     guardarReferencia(db, ref);
     for (const [id, t] of Object.entries(glosario)) guardarTipo(db, id, t);
@@ -407,7 +427,7 @@ function migrarDesdeV0(db, seedDir) {
   db.exec('PRAGMA foreign_keys = OFF');
   enTransaccion(db, () => {
     for (const t of ['componentes', 'tipos', 'proyectos', 'historial']) db.exec(`ALTER TABLE ${t} RENAME TO v0_${t}`);
-    db.exec(ESQUEMA + TABLAS_V3 + TABLAS_V4 + TABLAS_V5);
+    db.exec(ESQUEMA + TABLAS_V3 + TABLAS_V4 + TABLAS_V5 + TABLAS_V7);
     guardarReferencia(db, leer(seedDir, 'referencia.json'));
     for (const t of db.prepare('SELECT * FROM v0_tipos').all()) guardarTipo(db, t.id, {nombre: t.nombre, categoria: t.categoria, ...JSON.parse(t.ficha)});
     for (const p of db.prepare('SELECT * FROM v0_proyectos').all()) guardarProyecto(db, {id: p.id, ...JSON.parse(p.datos)});
@@ -453,6 +473,39 @@ function migrarDesdeV5(db) {
     db.exec('PRAGMA user_version = 6');
   });
   console.log('Base de datos migrada al modelo v6');
+}
+
+// v6 → v7: tabla auditoria. Se rellena con lo que ya se sabía: altas, cambios de stock y bajas del historial, y las
+// propuestas de la IA que se aplicaron (con su modelo), en orden de fecha.
+function migrarDesdeV6(db) {
+  enTransaccion(db, () => {
+    db.exec(TABLAS_V7);
+    const filas = [];
+    for (const h of db.prepare('SELECT * FROM historial').all()) {
+      const cant = (v) => (v == null ? '—' : String(v));
+      filas.push(h.accion === 'alta' ? [h.fecha, 'usuario', 'pieza.alta', 'pieza', h.componente_id, h.componente_nombre, `Pieza añadida (${cant(h.despues)})`, null, null]
+        : h.accion === 'stock' ? [h.fecha, 'usuario', 'pieza.stock', 'pieza', h.componente_id, h.componente_nombre, `Cantidad: ${cant(h.antes)} → ${cant(h.despues)}`,
+          JSON.stringify({cambios: [{campo: 'Cantidad', antes: cant(h.antes), despues: cant(h.despues)}]}), null]
+        : [h.fecha, 'usuario', 'pieza.borrar', 'pieza', h.componente_id, h.componente_nombre, 'Pieza borrada', null, null]);
+    }
+    for (const t of db.prepare("SELECT * FROM ia_tareas WHERE estado = 'aplicada'").all()) {
+      const e = JSON.parse(t.entrada || '{}'), p = t.propuesta ? JSON.parse(t.propuesta) : {};
+      if (t.clase === 'alta')
+        filas.push([t.actualizada, 'ia', 'ia.alta', 'pieza', t.componente_id, p.nombre || null, 'Pieza añadida con IA', JSON.stringify({tarea: t.id}), t.modelo]);
+      else if (t.clase === 'revisar') {
+        const o = e.objetivo || {};
+        const nombre = o.componente_id ? db.prepare('SELECT nombre FROM componentes WHERE id = ?').get(o.componente_id)?.nombre
+          : o.tipo_id ? db.prepare('SELECT nombre FROM tipos WHERE id = ?').get(o.tipo_id)?.nombre : null;
+        filas.push([t.actualizada, 'ia', 'ia.aplicar', o.componente_id ? 'pieza' : 'tipo', o.componente_id ?? o.tipo_id ?? null, nombre ?? null,
+          'Correcciones de la IA aplicadas', JSON.stringify({tarea: t.id}), t.modelo]);
+      }
+    }
+    filas.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    const ins = db.prepare('INSERT INTO auditoria (fecha, quien, accion, objeto, objeto_id, nombre, resumen, detalle, modelo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const f of filas) ins.run(f[0], f[1], f[2], f[3], f[4] == null ? null : String(f[4]), f[5], f[6], f[7], f[8]);
+    db.exec('PRAGMA user_version = 7');
+  });
+  console.log('Base de datos migrada al modelo v7');
 }
 
 // una ficha tal como está en la base de datos, en el formato de guardarTipo() (para revisarla o reescribirla entera)

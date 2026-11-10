@@ -3,6 +3,7 @@
 //   AMS_LAB_DATA=/ruta   → carpeta de la base de datos y las fotos (por defecto ./data)
 //   AMS_LAB_COPIAS=/ruta → carpeta de las copias diarias (por defecto <datos>/copias) · ver server/copias.mjs
 //   «Añadir con IA» (OpenCode Go): clave y modelo desde la web (o IA_CLAVE / IA_MODELO) · ver server/ia.mjs
+import * as registro from './registro.mjs'; // lo primero: guarda los mensajes desde el arranque
 import {createServer} from 'node:http';
 import {readFile, writeFile, unlink, rename, copyFile} from 'node:fs/promises';
 import {extname, join, normalize, dirname} from 'node:path';
@@ -10,7 +11,8 @@ import {fileURLToPath} from 'node:url';
 import {networkInterfaces} from 'node:os';
 import {randomBytes} from 'node:crypto';
 import {readdirSync, statSync, existsSync, createReadStream, copyFileSync, renameSync, rmSync, mkdirSync} from 'node:fs';
-import {abrir, ubicacionId, sincronizarCatalogo, guardarTipo, VERSION} from './db.mjs';
+import {abrir, ubicacionId, sincronizarCatalogo, guardarTipo, leerFicha, VERSION} from './db.mjs';
+import * as aud from './auditoria.mjs';
 import {programarCopias, opcionesCopias, copiar, copiarFotosNuevas} from './copias.mjs';
 import * as respaldo from './respaldo.mjs';
 import * as cat from './catalogo.mjs';
@@ -42,6 +44,7 @@ programarCopias(() => db, DATA);
 respaldo.limpiarEtapas(DATA); // restauraciones preparadas y no confirmadas
 cat.limpiarPapelera(FOTOS);
 cerrarInterrumpidas(db);
+aud.podar(db);
 { const e = estado(db); console.log(e.activa ? `[ia] activa: ${e.modelo} (clave de ${e.origen_clave})` : '[ia] sin clave: se configura desde la web'); }
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -127,6 +130,21 @@ const todo = () => ({
   componentes: datosDe(db.prepare(`${SQL_COMP} ORDER BY c.nombre COLLATE NOCASE`).all()),
 });
 
+// ---------- historial de cambios (Ajustes → Historial) ----------
+const apuntar = (x) => aud.apuntar(db, x);
+const nombresTipo = () => Object.fromEntries(db.prepare('SELECT id, nombre FROM tipos').all().map((t) => [t.id, t.nombre]));
+const nombresCategoria = () => Object.fromEntries(db.prepare('SELECT id, nombre FROM categorias').all().map((t) => [t.id, t.nombre]));
+const cantidadDe = (c) => (c.varios ? 'muchas' : c.cantidad == null ? 'sin contar' : String(c.cantidad));
+// lo que cambió en una pieza entre dos lecturas (comp()); si no cambió nada, no se apunta
+function apuntarPieza(antes, despues, {accion = 'pieza.editar', sufijo = '', detalle = null} = {}) {
+  const cambios = aud.cambiosPieza(antes, despues, nombresTipo());
+  if (cambios.length) apuntar({accion, objeto: 'pieza', id: despues.id, nombre: despues.nombre, resumen: aud.resumenCambios('Editada', cambios) + sufijo, cambios, detalle});
+}
+function apuntarBorrado(c, detalle = {}) {
+  apuntar({accion: 'pieza.borrar', objeto: 'pieza', id: c.id, nombre: c.nombre, resumen: 'Pieza borrada',
+    detalle: {...detalle, cantidad: cantidadDe(c), sitio: c.ubicacion || null, tipo: c.tipo ? nombresTipo()[c.tipo] || c.tipo : null}});
+}
+
 // ---------- escritura ----------
 function limpiar(b, parcial) {
   const out = {};
@@ -159,6 +177,7 @@ function guardarDatosPieza(id, datos) {
 }
 
 // preferencias que se pueden cambiar desde la web y sus valores válidos (los valores por defecto están en seed/referencia.json)
+const NOMBRE_AJUSTE = {tema: 'Tema', vista_inventario: 'Vista del inventario', fuente: 'Letra', ia_razonar: 'Cuánto razona la IA'};
 const AJUSTES = {tema: ['auto', 'claro', 'noche'], vista_inventario: ['lista', 'cuadricula'], fuente: ['jetbrains', 'mixta', 'plex-mono', 'mono-sistema', 'plex-sans', 'sistema'], ia_razonar: ['poco', 'medio', 'mucho']};
 
 // ---------- restaurar una copia (Ajustes → Datos) ----------
@@ -191,6 +210,8 @@ function restaurar(token) {
   }
   respaldo.limpiarEtapas(DATA);
   console.log(`[copias] restaurada (${r.origen}): ${r.piezas} piezas, +${fotos} fotos · estado anterior en ${antes}`);
+  apuntar({accion: 'copia.restaurar', objeto: 'copia', nombre: r.origen, resumen: `Copia restaurada: ${r.piezas} piezas, ${r.tipos} tipos${fotos ? `, ${fotos} fotos nuevas` : ''}`,
+    detalle: {origen: r.origen, antes: antes.split(/[\\/]/).pop()}});
   return {ok: true, piezas: r.piezas, tipos: r.tipos, fotos, antes: antes.split(/[\\/]/).pop()};
 }
 function listaCopias() {
@@ -327,7 +348,15 @@ function encolarIA(id) {
   if (id != null) colaIA.push(id);
   while (enCurso < 2 && colaIA.length) {
     enCurso++;
-    Promise.resolve(ejecutarAlta(db, FOTOS, colaIA.shift())).catch(() => {}).finally(() => { enCurso--; encolarIA(); });
+    const tid = colaIA.shift(), t0 = Date.now();
+    Promise.resolve(ejecutarAlta(db, FOTOS, tid)).catch(() => {}).finally(() => {
+      enCurso--;
+      try {
+        const t = db.prepare('SELECT clase, estado, modelo, error FROM ia_tareas WHERE id = ?').get(tid);
+        if (t) console[t.estado === 'error' ? 'warn' : 'log'](`[ia] tarea ${tid} (${t.clase === 'revisar' ? 'corrección' : 'alta'}, ${t.modelo || '?'}): ${t.estado === 'propuesta' ? 'propuesta lista' : t.estado}${t.error ? ` · ${t.error}` : ''} · ${Math.round((Date.now() - t0) / 1000)} s`);
+      } catch {}
+      encolarIA();
+    });
   }
 }
 
@@ -345,6 +374,25 @@ async function corregirLote(b) {
   tareas.forEach(encolarIA);
   return {lote, tareas};
 }
+// «IA pendiente»: lo que la IA tiene abierto (pensando, esperando a que lo mires o con error). Los lotes van juntos.
+const ABIERTAS = "estado IN ('pendiente', 'propuesta', 'error')";
+function pendientesIA() {
+  const filas = db.prepare(`SELECT id, json_extract(entrada, '$.lote') AS lote FROM ia_tareas WHERE ${ABIERTAS} ORDER BY id DESC`).all();
+  const lotes = [...new Set(filas.map((f) => f.lote).filter(Boolean))].map((lote) => {
+    const ts = tareasLote(lote), abiertas = ts.filter((t) => ['pendiente', 'propuesta', 'error'].includes(t.estado));
+    const estados = {};
+    for (const t of ts) estados[t.estado] = (estados[t.estado] || 0) + 1;
+    return {lote, creada: ts[0]?.creada, total: ts.length, estados, piezas: abiertas.map((t) => t.objetivo_nombre).filter(Boolean),
+      cambios: abiertas.reduce((n, t) => n + (t.estado === 'propuesta' ? t.propuesta?.cambios?.length || 0 : 0), 0), texto: ts[0]?.texto || ''};
+  });
+  return {lotes, tareas: filas.filter((f) => !f.lote).slice(0, 100).map((f) => tarea(f.id)), total: filas.length};
+}
+// para el aviso del Inventario: cuántas cosas esperan (un lote cuenta como una)
+function cuentaPendientes() {
+  const r = db.prepare(`SELECT COUNT(*) AS tareas, COUNT(DISTINCT json_extract(entrada, '$.lote')) AS lotes,
+    SUM(json_extract(entrada, '$.lote') IS NULL) AS sueltas, SUM(estado = 'pendiente') AS pensando FROM ia_tareas WHERE ${ABIERTAS}`).get();
+  return {tareas: r.tareas, grupos: r.lotes + (r.sueltas || 0), pensando: r.pensando || 0};
+}
 const tareasLote = (lote) => db.prepare("SELECT id FROM ia_tareas WHERE json_extract(entrada, '$.lote') = ? ORDER BY id").all(String(lote)).map((x) => tarea(x.id));
 
 // edición rápida de varias piezas (cada una con sus campos), todo o nada
@@ -352,10 +400,12 @@ const MAX_PIEZAS_LOTE = 300;
 function editarLote(b) {
   const piezas = Array.isArray(b.piezas) ? b.piezas.slice(0, MAX_PIEZAS_LOTE) : [];
   if (!piezas.length) throw new HttpError(400, 'No hay nada que guardar');
+  const antes = [];
   db.exec('BEGIN');
   try {
     for (const p of piezas) {
       const c = comp(p.id);
+      antes.push(c);
       // una cantidad concreta quiere decir que ya están contadas: deja de ser «hay muchas»
       const cambios = limpiar(p.cantidad != null && p.cantidad !== '' && !('varios' in p) ? {...p, varios: false} : p, true);
       if (Object.keys(cambios).length)
@@ -363,6 +413,7 @@ function editarLote(b) {
     }
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
+  for (const a of antes) apuntarPieza(a, comp(a.id), {sufijo: ' (varias a la vez)', detalle: {varias: true}});
   return {ok: true, guardadas: piezas.length, componentes: piezas.map((p) => comp(p.id))};
 }
 
@@ -372,6 +423,8 @@ async function aplicarRevision(id, b) {
   if (t.clase !== 'revisar') throw new HttpError(400, 'Esta tarea no es una corrección');
   if (t.estado !== 'propuesta') throw new HttpError(409, `Estas correcciones ya están ${ESTADO[t.estado] || t.estado}`);
   const ids = (Array.isArray(b.ids) ? b.ids : []).map(String);
+  const o = t.propuesta.objetivo || {};
+  const tipoAntes = o.componente_id ? db.prepare('SELECT tipo_id FROM componentes WHERE id = ?').get(o.componente_id)?.tipo_id : null;
   let n;
   db.exec('BEGIN');
   try {
@@ -384,6 +437,21 @@ async function aplicarRevision(id, b) {
     throw e;
   }
   await borrarFoto(t.foto);
+  // al historial: lo de la pieza y lo de la ficha por separado (cada uno sale en su historial), con el modelo
+  const elegidos = t.propuesta.cambios.filter((c) => ids.includes(c.id));
+  const lote = JSON.parse(db.prepare('SELECT entrada FROM ia_tareas WHERE id = ?').get(t.id).entrada).lote || null;
+  const comun = {quien: 'ia', accion: 'ia.aplicar', modelo: t.modelo, detalle: {tarea: t.id, ...(lote ? {lote} : {})}};
+  const verCambio = (c) => ({campo: c.etiqueta, antes: c.antes, despues: c.despues});
+  const dePieza = elegidos.filter((c) => c.ambito === 'pieza').map(verCambio), deTipo = elegidos.filter((c) => c.ambito === 'tipo').map(verCambio);
+  const nuevoTipo = elegidos.find((c) => c.id === 'pieza.tipo' && c.nuevo?.nuevo) && o.componente_id
+    ? db.prepare('SELECT tipo_id FROM componentes WHERE id = ?').get(o.componente_id)?.tipo_id : null;
+  if (nuevoTipo && nuevoTipo !== tipoAntes)
+    apuntar({...comun, accion: 'tipo.alta', objeto: 'tipo', id: nuevoTipo, nombre: nombresTipo()[nuevoTipo], resumen: 'Ficha nueva creada por la IA (sin comprobar)'});
+  if (dePieza.length && o.componente_id)
+    apuntar({...comun, objeto: 'pieza', id: o.componente_id, nombre: db.prepare('SELECT nombre FROM componentes WHERE id = ?').get(o.componente_id)?.nombre,
+      resumen: aud.resumenCambios('Corregida con IA', dePieza), cambios: dePieza});
+  if (deTipo.length && o.tipo_id)
+    apuntar({...comun, objeto: 'tipo', id: o.tipo_id, nombre: nombresTipo()[o.tipo_id], resumen: aud.resumenCambios('Ficha corregida con IA', deTipo), cambios: deTipo});
   return {ok: true, aplicados: n, objetivo: t.propuesta.objetivo};
 }
 
@@ -449,7 +517,11 @@ async function aplicarAlta(id, b) {
     if (foto) await rename(join(FOTOS, foto), join(FOTOS, t.foto)).catch(() => {}); // la foto vuelve a la tarea
     throw e;
   }
-  return {componente: comp(compId), tipo: tipoId};
+  const nueva = comp(compId), comunIA = {quien: 'ia', modelo: t.modelo, detalle: {tarea: t.id}};
+  if (b.tipo === '__nuevo')
+    apuntar({...comunIA, accion: 'tipo.alta', objeto: 'tipo', id: tipoId, nombre: nombresTipo()[tipoId], resumen: 'Ficha nueva creada por la IA (sin comprobar)'});
+  apuntar({...comunIA, accion: 'ia.alta', objeto: 'pieza', id: compId, nombre: nueva.nombre, resumen: `Pieza añadida con IA (${cantidadDe(nueva)})`});
+  return {componente: nueva, tipo: tipoId};
 }
 
 // ---------- rutas de la API ----------
@@ -472,7 +544,9 @@ async function api(req, res, path) {
       guardarDatosPieza(id, b.datos);
       db.exec('COMMIT');
     } catch (e) { db.exec('ROLLBACK'); throw e; }
-    return send(res, 201, comp(id));
+    const nueva = comp(id);
+    apuntar({accion: 'pieza.alta', objeto: 'pieza', id: nueva.id, nombre: nueva.nombre, resumen: `Pieza añadida (${cantidadDe(nueva)})`});
+    return send(res, 201, nueva);
   }
   if (m === 'POST' && path === '/api/tipos') {
     const b = await leerJson(req);
@@ -481,6 +555,7 @@ async function api(req, res, path) {
     if (!db.prepare('SELECT 1 FROM categorias WHERE id = ?').get(b.categoria)) throw new HttpError(400, 'Esa categoría no existe');
     const id = slug(nombre);
     db.prepare("INSERT INTO tipos (id, nombre, categoria_id, origen) VALUES (?, ?, ?, 'usuario')").run(id, nombre, b.categoria);
+    apuntar({accion: 'tipo.alta', objeto: 'tipo', id, nombre, resumen: `Tipo creado (${nombresCategoria()[b.categoria] || b.categoria})`});
     return send(res, 201, {id, nombre, categoria: b.categoria});
   }
 
@@ -489,8 +564,14 @@ async function api(req, res, path) {
   if (m === 'GET' && path === '/api/ia/config') return send(res, 200, estado(db));
   if (m === 'PUT' && path === '/api/ia/config') {
     const b = await leerJson(req);
-    try { return send(res, 200, await guardarConfig(db, {clave: b.clave, modelo: b.modelo, quitarClave: b.quitarClave === true})); }
+    const antes = estado(db);
+    let e2;
+    try { e2 = await guardarConfig(db, {clave: b.clave, modelo: b.modelo, quitarClave: b.quitarClave === true}); }
     catch (e) { throw new HttpError(400, e.message); }
+    if (b.quitarClave === true) apuntar({accion: 'ia.config', objeto: 'ia', resumen: 'Clave de la IA quitada'});
+    else if (b.clave) apuntar({accion: 'ia.config', objeto: 'ia', resumen: 'Clave de la IA cambiada'});
+    if (e2.modelo !== antes.modelo) apuntar({accion: 'ia.config', objeto: 'ia', resumen: `Modelo de siempre: ${antes.modelo || '—'} → ${e2.modelo || '—'}`});
+    return send(res, 200, e2);
   }
   // modelos de OpenCode Go que entienden fotos y devuelven salida estructurada (del catálogo público de Go)
   if (m === 'GET' && path === '/api/ia/modelos') {
@@ -511,6 +592,10 @@ async function api(req, res, path) {
     return send(res, 200, db.prepare("SELECT id FROM ia_tareas WHERE estado IN ('pendiente', 'propuesta', 'error') ORDER BY id DESC LIMIT 20")
       .all().map((x) => tarea(x.id)));
   if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)$/)) && m === 'GET') return send(res, 200, tarea(r[1]));
+  if (m === 'GET' && path === '/api/ia/pendientes') return send(res, 200, pendientesIA());
+  if (m === 'GET' && path === '/api/ia/pendientes/cuenta') return send(res, 200, cuentaPendientes());
+  if (m === 'GET' && path === '/api/auditoria') return send(res, 200, aud.listar(db, Object.fromEntries(new URL(req.url, 'http://x').searchParams)));
+  if (m === 'GET' && path === '/api/registro') return send(res, 200, registro.leer(Object.fromEntries(new URL(req.url, 'http://x').searchParams)));
   if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)\/aplicar$/)) && m === 'POST') return send(res, 200, await aplicarAlta(r[1], await leerJson(req)));
   if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)\/responder$/)) && m === 'POST') return send(res, 202, responderAlta(r[1], await leerJson(req)));
   if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)\/descartar$/)) && m === 'POST') {
@@ -518,20 +603,36 @@ async function api(req, res, path) {
     if (t.estado === 'aplicada') throw new HttpError(409, 'Eso ya se guardó: no se puede descartar');
     db.prepare("UPDATE ia_tareas SET estado = 'descartada' WHERE id = ?").run(t.id);
     await borrarFoto(t.foto);
+    if (t.estado !== 'descartada') {
+      const o = t.objetivo || {};
+      apuntar({accion: 'ia.descartar', modelo: t.modelo, detalle: {tarea: t.id},
+        ...(t.clase === 'revisar' ? {objeto: o.componente_id ? 'pieza' : 'tipo', id: o.componente_id ?? o.tipo_id, nombre: t.objetivo_nombre, resumen: 'Correcciones de la IA descartadas'}
+          : {objeto: 'ia', id: t.id, nombre: t.propuesta?.nombre || t.texto || null, resumen: 'Propuesta de pieza de la IA descartada'})});
+    }
     return send(res, 200, {ok: true});
   }
   // marcar como revisada una ficha escrita por la IA (sigue siendo de origen 'ia': seed no la pisa)
-  if ((r = path.match(/^\/api\/tipos\/([a-z0-9-]+)$/)) && m === 'PATCH') return send(res, 200, cat.cambiarTipo(db, r[1], await leerJson(req)));
+  if ((r = path.match(/^\/api\/tipos\/([a-z0-9-]+)$/)) && m === 'PATCH') {
+    const antes = db.prepare('SELECT nombre, revisado, archivado FROM tipos WHERE id = ?').get(r[1]);
+    const x = cat.cambiarTipo(db, r[1], await leerJson(req));
+    if (x.revisado !== antes.revisado) apuntar({accion: 'tipo.comprobar', objeto: 'tipo', id: r[1], nombre: antes.nombre, resumen: x.revisado ? 'Ficha marcada como comprobada' : 'Ficha marcada como sin comprobar'});
+    if (x.archivado !== antes.archivado) apuntar({accion: 'tipo.archivar', objeto: 'tipo', id: r[1], nombre: antes.nombre, resumen: x.archivado ? 'Tipo archivado' : 'Tipo sacado del archivo'});
+    return send(res, 200, x);
+  }
 
   // ---- Ajustes: catálogo, sitios y datos (fase B) ----
   if (m === 'GET' && path === '/api/ajustes/resumen') return send(res, 200, resumen());
   if (m === 'POST' && path === '/api/copias') {
     const op = opcionesCopias(DATA);
     const ruta = copiar(db, DATA, {...op, max: op.max || 14}, true);
+    apuntar({accion: 'copia.hacer', objeto: 'copia', nombre: String(ruta).split(/[\\/]/).pop(), resumen: 'Copia de seguridad hecha en el servidor'});
     return send(res, 200, {ok: true, nombre: String(ruta).split(/[\\/]/).pop(), resumen: resumen()});
   }
   // copias completas: exportar (.tar.gz), preparar una restauración (subida o copia del servidor) y confirmarla
-  if (m === 'GET' && path === '/api/copia/exportar') return respaldo.exportar(db, DATA, res);
+  if (m === 'GET' && path === '/api/copia/exportar') {
+    apuntar({accion: 'copia.exportar', objeto: 'copia', resumen: 'Copia completa descargada (base de datos y fotos)'});
+    return respaldo.exportar(db, DATA, res);
+  }
   if (m === 'POST' && path === '/api/copia/preparar') {
     if (Number(req.headers['content-length']) > 2 * 1024 ** 3) throw new HttpError(413, 'El archivo es demasiado grande (máx. 2 GB)');
     return send(res, 200, {...(await respaldo.prepararSubida(req, DATA)), actual: resumen()});
@@ -551,29 +652,82 @@ async function api(req, res, path) {
   // editor de fichas (fase D)
   if ((r = path.match(/^\/api\/tipos\/([a-z0-9-]+)\/ficha$/))) {
     if (m === 'GET') return send(res, 200, cat.fichaEditable(db, r[1]));
-    if (m === 'PUT') return send(res, 200, cat.guardarFicha(db, r[1], await leerJson(req)));
+    if (m === 'PUT') {
+      const antes = leerFicha(db, r[1]);
+      const x = cat.guardarFicha(db, r[1], await leerJson(req));
+      const cambios = aud.cambiosFicha(antes, x, nombresCategoria());
+      if (cambios.length) apuntar({accion: 'tipo.editar', objeto: 'tipo', id: r[1], nombre: x.nombre, resumen: aud.resumenCambios('Ficha editada', cambios), cambios});
+      return send(res, 200, x);
+    }
   }
   if (m === 'GET' && path === '/api/categorias') return send(res, 200, cat.listarCategorias(db));
-  if (m === 'POST' && path === '/api/categorias') return send(res, 201, cat.crearCategoria(db, await leerJson(req)));
-  if (m === 'PUT' && path === '/api/categorias/orden') return send(res, 200, cat.ordenarCategorias(db, (await leerJson(req)).ids));
+  if (m === 'POST' && path === '/api/categorias') {
+    const x = cat.crearCategoria(db, await leerJson(req));
+    apuntar({accion: 'categoria.alta', objeto: 'categoria', id: x.id, nombre: x.nombre, resumen: 'Categoría creada'});
+    return send(res, 201, x);
+  }
+  if (m === 'PUT' && path === '/api/categorias/orden') {
+    const x = cat.ordenarCategorias(db, (await leerJson(req)).ids);
+    apuntar({accion: 'categoria.ordenar', objeto: 'categoria', resumen: 'Categorías reordenadas', detalle: {orden: x.map((c) => c.nombre)}});
+    return send(res, 200, x);
+  }
   if ((r = path.match(/^\/api\/categorias\/([a-z0-9-]+)$/))) {
-    if (m === 'PATCH') return send(res, 200, cat.renombrarCategoria(db, r[1], await leerJson(req)));
-    if (m === 'DELETE') return send(res, 200, cat.borrarCategoria(db, r[1], new URL(req.url, 'http://x').searchParams.get('destino')));
+    const antes = nombresCategoria();
+    if (m === 'PATCH') {
+      const x = cat.renombrarCategoria(db, r[1], await leerJson(req));
+      if (x.nombre !== antes[r[1]]) apuntar({accion: 'categoria.renombrar', objeto: 'categoria', id: r[1], nombre: x.nombre, resumen: `Renombrada: ${antes[r[1]]} → ${x.nombre}`});
+      return send(res, 200, x);
+    }
+    if (m === 'DELETE') {
+      const destino = new URL(req.url, 'http://x').searchParams.get('destino');
+      const x = cat.borrarCategoria(db, r[1], destino);
+      apuntar({accion: 'categoria.borrar', objeto: 'categoria', id: r[1], nombre: antes[r[1]],
+        resumen: `Categoría borrada${x.movidos ? ` (${x.movidos} tipo${x.movidos === 1 ? '' : 's'} pasan a «${antes[destino] || destino}»)` : ''}`});
+      return send(res, 200, x);
+    }
   }
   if (m === 'GET' && path === '/api/tipos') return send(res, 200, cat.listarTipos(db));
-  if ((r = path.match(/^\/api\/tipos\/([a-z0-9-]+)\/fusionar$/)) && m === 'POST') return send(res, 200, cat.fusionarTipo(db, r[1], (await leerJson(req)).destino));
-  if ((r = path.match(/^\/api\/tipos\/([a-z0-9-]+)$/)) && m === 'DELETE') return send(res, 200, cat.borrarTipo(db, r[1]));
+  if ((r = path.match(/^\/api\/tipos\/([a-z0-9-]+)\/fusionar$/)) && m === 'POST') {
+    const antes = nombresTipo();
+    const x = cat.fusionarTipo(db, r[1], (await leerJson(req)).destino);
+    const piezas = `${x.piezas} pieza${x.piezas === 1 ? '' : 's'}`;
+    apuntar({accion: 'tipo.fusionar', objeto: 'tipo', id: r[1], nombre: antes[r[1]], resumen: `Fusionado con «${antes[x.queda]}» (${piezas} pasan a él)`, detalle: {queda: x.queda}});
+    apuntar({accion: 'tipo.fusionar', objeto: 'tipo', id: x.queda, nombre: antes[x.queda], resumen: `Recibe a «${antes[r[1]]}» (${piezas})`, detalle: {quitado: r[1]}});
+    return send(res, 200, x);
+  }
+  if ((r = path.match(/^\/api\/tipos\/([a-z0-9-]+)$/)) && m === 'DELETE') {
+    const nombre = nombresTipo()[r[1]];
+    const x = cat.borrarTipo(db, r[1]);
+    apuntar({accion: 'tipo.borrar', objeto: 'tipo', id: r[1], nombre, resumen: 'Tipo borrado'});
+    return send(res, 200, x);
+  }
   if (m === 'GET' && path === '/api/ubicaciones') return send(res, 200, cat.listarSitios(db));
   if ((r = path.match(/^\/api\/ubicaciones\/(\d+)$/))) {
-    if (m === 'PATCH') return send(res, 200, cat.renombrarSitio(db, r[1], await leerJson(req)));
-    if (m === 'DELETE') return send(res, 200, cat.borrarSitio(db, r[1]));
+    const antes = db.prepare('SELECT nombre FROM ubicaciones WHERE id = ?').get(Number(r[1]))?.nombre;
+    if (m === 'PATCH') {
+      const x = cat.renombrarSitio(db, r[1], await leerJson(req));
+      if (x.fusionado) apuntar({accion: 'sitio.juntar', objeto: 'sitio', id: x.id, nombre: x.nombre, resumen: `«${antes}» juntado con «${x.nombre}» (${x.piezas} pieza${x.piezas === 1 ? '' : 's'})`});
+      else if (x.nombre !== antes) apuntar({accion: 'sitio.renombrar', objeto: 'sitio', id: x.id, nombre: x.nombre, resumen: `Renombrado: ${antes} → ${x.nombre}`});
+      return send(res, 200, x);
+    }
+    if (m === 'DELETE') {
+      const x = cat.borrarSitio(db, r[1]);
+      apuntar({accion: 'sitio.borrar', objeto: 'sitio', id: r[1], nombre: antes, resumen: `Sitio borrado${x.piezas ? ` (${x.piezas} pieza${x.piezas === 1 ? '' : 's'} se quedan sin sitio)` : ''}`});
+      return send(res, 200, x);
+    }
   }
   if (m === 'POST' && path === '/api/componentes/restaurar') {
     const b = await leerJson(req);
-    if (!Array.isArray(b.tokens)) return send(res, 200, await cat.restaurarPieza(db, FOTOS, b.token));
+    const deshecha = (id) => { const c = comp(id); apuntar({accion: 'pieza.restaurar', objeto: 'pieza', id, nombre: c.nombre, resumen: 'Borrado deshecho'}); };
+    if (!Array.isArray(b.tokens)) {
+      const x = await cat.restaurarPieza(db, FOTOS, b.token);
+      deshecha(x.id);
+      return send(res, 200, x);
+    }
     const ids = []; // deshacer el borrado de varias: las que aún se puedan
     for (const t of b.tokens.slice(0, MAX_PIEZAS_LOTE)) { try { ids.push((await cat.restaurarPieza(db, FOTOS, t)).id); } catch {} }
     if (!ids.length) throw new HttpError(410, 'Ya no se puede deshacer');
+    ids.forEach(deshecha);
     return send(res, 200, {ok: true, ids});
   }
   if (m === 'POST' && path === '/api/componentes/lote') return send(res, 200, editarLote(await leerJson(req)));
@@ -581,7 +735,11 @@ async function api(req, res, path) {
     const ids = [...new Set(((await leerJson(req)).ids || []).map(Number).filter(Number.isInteger))].slice(0, MAX_PIEZAS_LOTE);
     if (!ids.length) throw new HttpError(400, 'Elige alguna pieza');
     const deshacer = [];
-    for (const id of ids) { comp(id); deshacer.push((await cat.borrarPieza(db, FOTOS, id)).deshacer); } // se puede deshacer 2 minutos
+    for (const id of ids) { // se puede deshacer 2 minutos
+      const c = comp(id);
+      deshacer.push((await cat.borrarPieza(db, FOTOS, id)).deshacer);
+      apuntarBorrado(c, {varias: true});
+    }
     return send(res, 200, {ok: true, borradas: ids.length, deshacer});
   }
 
@@ -589,7 +747,9 @@ async function api(req, res, path) {
     const valor = texto((await leerJson(req)).valor, 200);
     if (!AJUSTES[r[1]] || !db.prepare('SELECT 1 FROM ajustes WHERE clave = ?').get(r[1])) throw new HttpError(404, 'Ese ajuste no existe');
     if (!AJUSTES[r[1]].includes(valor)) throw new HttpError(400, `Valor no válido para «${r[1]}»`);
+    const antes = db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(r[1]).valor;
     db.prepare('UPDATE ajustes SET valor = ? WHERE clave = ?').run(valor, r[1]);
+    if (antes !== valor) apuntar({accion: 'ajustes.cambiar', objeto: 'ajustes', id: r[1], nombre: NOMBRE_AJUSTE[r[1]] || r[1], resumen: `${NOMBRE_AJUSTE[r[1]] || r[1]}: ${antes} → ${valor}`});
     return send(res, 200, {clave: r[1], valor});
   }
   if ((r = path.match(/^\/api\/componentes\/(\d+)$/))) {
@@ -603,15 +763,23 @@ async function api(req, res, path) {
         guardarDatosPieza(c.id, b.datos);
         db.exec('COMMIT');
       } catch (e) { db.exec('ROLLBACK'); throw e; }
-      return send(res, 200, comp(c.id));
+      const despues = comp(c.id);
+      apuntarPieza(c, despues);
+      return send(res, 200, despues);
     }
-    if (m === 'DELETE') return send(res, 200, await cat.borrarPieza(db, FOTOS, c.id)); // se puede deshacer durante 2 minutos
+    if (m === 'DELETE') { // se puede deshacer durante 2 minutos
+      const x = await cat.borrarPieza(db, FOTOS, c.id);
+      apuntarBorrado(c);
+      return send(res, 200, x);
+    }
   }
   if ((r = path.match(/^\/api\/componentes\/(\d+)\/ajuste$/)) && m === 'POST') {
     const c = comp(r[1]);
     const delta = Math.round(Number((await leerJson(req)).delta) || 0);
     db.prepare('UPDATE componentes SET cantidad = MAX(0, COALESCE(cantidad, 0) + ?), varios = 0 WHERE id = ?').run(delta, c.id);
-    return send(res, 200, comp(c.id));
+    const despues = comp(c.id);
+    apuntarPieza(c, despues, {accion: 'pieza.stock'});
+    return send(res, 200, despues);
   }
   if ((r = path.match(/^\/api\/componentes\/(\d+)\/foto$/))) {
     const c = comp(r[1]);
@@ -624,11 +792,13 @@ async function api(req, res, path) {
       await writeFile(join(FOTOS, nombre), buf);
       db.prepare('UPDATE componentes SET foto = ? WHERE id = ?').run(nombre, c.id);
       await borrarFoto(c.foto);
+      apuntar({accion: 'pieza.foto', objeto: 'pieza', id: c.id, nombre: c.nombre, resumen: c.foto ? 'Foto cambiada' : 'Foto puesta'});
       return send(res, 200, comp(c.id));
     }
     if (m === 'DELETE') {
       db.prepare('UPDATE componentes SET foto = NULL WHERE id = ?').run(c.id);
       await borrarFoto(c.foto);
+      if (c.foto) apuntar({accion: 'pieza.foto', objeto: 'pieza', id: c.id, nombre: c.nombre, resumen: 'Foto quitada'});
       return send(res, 200, comp(c.id));
     }
   }
@@ -648,6 +818,13 @@ async function estatico(res, base, path, cache) {
 }
 
 const server = createServer(async (req, res) => {
+  const t0 = Date.now();
+  res.on('finish', () => {
+    const ruta = String(req.url || '').split('?')[0];
+    if (!ruta.startsWith('/api/') || (req.method === 'GET' && res.statusCode < 400)) return; // las consultas normales no (la web pregunta mucho)
+    const nivel = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'log';
+    console[nivel](`[http] ${req.method} ${ruta} → ${res.statusCode} · ${Date.now() - t0} ms${res.motivo ? ` · ${res.motivo}` : ''}`);
+  });
   try {
     if (req.url === '/salud') return send(res, 200, 'ok', 'text/plain'); // para el HEALTHCHECK de Docker (no da datos)
     const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
@@ -658,6 +835,7 @@ const server = createServer(async (req, res) => {
     let code = e instanceof HttpError || e instanceof cat.ErrorCatalogo || e instanceof respaldo.ErrorRespaldo ? e.code : 500;
     if (/constraint failed/i.test(e.message)) code = 400; // reglas de la base de datos (CHECK, FOREIGN KEY, UNIQUE)
     if (code === 500) console.error(e);
+    res.motivo = String(e.message || '').slice(0, 200);
     if (!res.headersSent) send(res, code, {error: e.message || 'Error', ...(e instanceof cat.ErrorCatalogo ? {tipos: e.tipos, piezas: e.piezas, proyectos: e.proyectos} : {})});
   }
 }).listen(PORT, '0.0.0.0', () => {

@@ -1,4 +1,4 @@
-# Modelo de datos (v6) — `data/lab.db`
+# Modelo de datos (v7) — `data/lab.db`
 
 SQLite (`node:sqlite`). Esquema y migraciones en `server/db.mjs`; versión en `PRAGMA user_version`.
 
@@ -38,6 +38,7 @@ erDiagram
   ubicaciones { int id PK; text nombre UK }
   componentes { int id PK; text nombre; text tipo_id FK; int cantidad "NULL=sin contar"; int varios; int ubicacion_id FK; text notas; int revisar; text foto UK; text creado; text actualizado }
   historial { int id PK; int componente_id FK; text componente_nombre; text accion "alta|stock|baja"; text antes; text despues; text fecha }
+  auditoria { int id PK; text fecha; text quien "usuario|ia|sistema"; text accion; text objeto; text objeto_id; text nombre; text resumen; text detalle "JSON"; text modelo }
   proyectos { text id PK; text nombre; int dificultad FK; text tiempo; text resumen }
   proyecto_material { int id PK; text proyecto_id FK; int orden; int cantidad; int opcional; text nota }
   material_opciones { int material_id PK,FK; text tipo_id PK,FK }
@@ -78,6 +79,18 @@ Desde una pieza (revisa la pieza y la ficha de su tipo) o desde un tipo. La tare
 ## Varias piezas y cambio de tipo con la IA (11/11/2026)
 Sin cambio de esquema. Una corrección hecha desde una pieza puede proponer el cambio `pieza.tipo`: `{existente: id}` o `{nuevo: ficha}`; al aplicarlo se comprueba que la pieza sigue con el tipo de antes (si no, 409) y, si es nuevo, se crea la ficha (`origen = 'ia'`, `revisado = 0`) con un id libre. Las correcciones en lote son tareas `revisar` normales con `entrada.lote` en común.
 
+## Historial de cambios (`auditoria`, v7)
+Lo escribe el servidor (`server/auditoria.mjs`) cada vez que algo cambia, y se ve en Ajustes → Historial y en el desplegable «Historial» de cada pieza y de cada ficha (el de una pieza incluye también los cambios de la ficha de su tipo).
+- `quien`: `usuario` (desde la web), `ia` (cambios de la IA que el usuario confirmó; `modelo` dice con cuál) o `sistema`.
+- `accion`: `pieza.alta|editar|stock|foto|borrar|restaurar`, `tipo.alta|editar|comprobar|archivar|fusionar|borrar`, `categoria.*`, `sitio.*`, `ia.aplicar|alta|descartar|config`, `copia.hacer|exportar|restaurar`, `ajustes.cambiar`.
+- `objeto` + `objeto_id`: a qué afecta (puede que ya no exista); `nombre`: cómo se llamaba entonces; `resumen`: la frase que se lee; `detalle`: `{cambios: [{campo, antes, despues}], …}` (más lo que tenía una pieza borrada, el lote de la IA, la copia guardada antes de restaurar…).
+- Nunca guarda la clave de la IA. Se quedan las 20 000 últimas (las más antiguas se borran al arrancar). `historial` (stock, con *triggers*) sigue igual.
+- API: `GET /api/auditoria?grupo=piezas|fichas|ia|catalogo|sistema&objeto=&id=&tipo=&q=&antes=<id>&limite=` → `{filas, mas}`.
+
+## Registro del servidor e «IA pendiente» (sin tablas)
+- **Registro** (`server/registro.mjs`): los últimos 1000 mensajes de la consola en memoria (arranque, copias, la IA, cada petición que cambia algo y los errores; las consultas GET normales no). Se pierde al reiniciar; `docker logs` sigue teniendo lo mismo. `GET /api/registro?nivel=todo|avisos|errores&q=&desde=`.
+- **IA pendiente**: `ia_tareas` en `pendiente`, `propuesta` o `error`, con los lotes juntos. `GET /api/ia/pendientes` (`{lotes, tareas, total}`) y `GET /api/ia/pendientes/cuenta` (para el aviso del Inventario).
+
 ## Editar una ficha a mano (fase D)
 `GET /api/tipos/:id/ficha` da la ficha entera (formato de `guardarTipo`) y su **huella** (resumen de nombre, categoría, textos, alias, interfaces, pines y datos). `PUT` con la ficha nueva y esa huella: si la de ahora no coincide (la cambió la IA u otra pestaña), 409 y no se guarda nada. Se valida (nombre, categoría existente, función de pin existente, sin pines ni datos repetidos) y se guarda con `origen = 'usuario'`, `revisado = 1`. Los datos de una pieza llegan como `datos: [[clave, valor], …]` en el alta y la edición y se reescriben enteros.
 
@@ -96,14 +109,15 @@ Cada llamada al modelo se guarda: qué se le pidió (`entrada`, JSON), qué prop
 ## Reglas en la base de datos
 - `cantidad ≥ 0`; `varios = 1` (muchos) obliga a `cantidad = NULL`; nombres no vacíos; colores `#RRGGBB`; booleanos 0/1.
 - Claves foráneas activas: borrar un tipo deja sus piezas «sin tipo» (`SET NULL`); borrar un proyecto borra su material, conexiones y pasos (`CASCADE`); renombrar ids se propaga (`ON UPDATE CASCADE`).
-- *Triggers*: `actualizado` se pone solo; `historial` registra altas, cambios de stock y bajas, aunque el cambio no venga de la web.
+- *Triggers*: `actualizado` se pone solo; `historial` registra altas, cambios de stock y bajas, aunque el cambio no venga de la web. El historial completo (`auditoria`) lo escribe el servidor.
 - Ubicaciones únicas sin distinguir mayúsculas («Cajita 3» = «cajita 3»).
 
 ## Migraciones
 - v1 → v2 (03/11/2026): `funciones_pin.color` pasa a `color_oscuro` y se añade `color_claro`; nueva tabla `ajustes`.
 - v2 → v3 (06/11/2026): `origen` en `categorias` y `tipos`, `revisado` en `tipos`; tablas `tipo_datos`, `componente_datos` e `ia_tareas`. Los tipos que no están en `seed/glosario.json` (creados desde la web) quedan con origen `usuario`.
+- v6 → v7 (11/11/2026): tabla `auditoria` (historial de cambios). Se rellena con lo que ya se sabía: las altas, cambios de stock y bajas de `historial` y las propuestas de la IA ya aplicadas (con su modelo), por orden de fecha.
 - v5 → v6 (09/11/2026): `ia_tareas.clase` admite `revisar` («Revisar con IA»). SQLite no deja cambiar un CHECK: se rehace la tabla copiando las filas, el índice y el trigger.
 - v4 → v5 (09/11/2026): `tipos.archivado` y tabla `catalogo_quitados` (lo borrado o fusionado desde Ajustes).
 - v3 → v4 (06/11/2026): tabla `ia_config` (una fila): clave y modelo de la IA puestos desde la web. La clave nunca sale por la API (ni en `/api/datos` ni en `/api/exportar`), pero sí está en las copias de seguridad de la base de datos.
 
-`abrir()` mira `PRAGMA user_version`: 0 sin tablas → crea y siembra desde `seed/`; si es más antigua que la actual, **primero hace una copia completa** (`VACUUM INTO`) en la carpeta de copias como `lab-antes-vX-a-vY-<fecha>.db` (fuera de la rotación: no se borra sola) y después migra paso a paso (v0 → v6 directo, v1 → v2 → … → v6).
+`abrir()` mira `PRAGMA user_version`: 0 sin tablas → crea y siembra desde `seed/`; si es más antigua que la actual, **primero hace una copia completa** (`VACUUM INTO`) en la carpeta de copias como `lab-antes-vX-a-vY-<fecha>.db` (fuera de la rotación: no se borra sola) y después migra paso a paso (v0 → v7 directo, v1 → v2 → … → v7).
