@@ -402,10 +402,10 @@ export async function guardarConfig(db, {clave, modelo, quitarClave} = {}) {
 }
 
 // ---------- «Corregir con IA»: el modelo corrige una ficha existente (y la pieza, si se revisa desde una pieza) ----------
-function instruccionesRevision(ctx, conPieza) {
-  return `Eres el asistente de un almacén personal de componentes de electrónica. Te paso la FICHA de un tipo de componente
-${conPieza ? 'y los datos de UNA pieza concreta de ese tipo ' : ''}tal como están guardados, y quizá una foto y lo que el usuario quiere que revises.
-Devuelve la ficha${conPieza ? ' y la pieza' : ''} COMPLETA y corregida. Todo en español de España.
+function instruccionesRevision(ctx, conPieza, conTipo = true) {
+  return `Eres el asistente de un almacén personal de componentes de electrónica. Te paso ${conTipo ? 'la FICHA de un tipo de componente' : ''}
+${conPieza ? `${conTipo ? 'y ' : ''}los datos de UNA pieza concreta${conTipo ? ' de ese tipo' : ' (todavía sin tipo)'} ` : ''}tal como están guardados, y quizá una foto y lo que el usuario quiere que revises.
+Devuelve ${conTipo ? 'la ficha' : ''}${conPieza ? `${conTipo ? ' y ' : ''}la pieza` : ''} COMPLETA y corregida. Todo en español de España.
 
 Reglas:
 - Corrige errores y completa lo que falte, pero NO cambies lo que ya está bien ni reescribas por estilo: cada cambio
@@ -419,29 +419,39 @@ Reglas:
   descripciones de la pieza o de la foto. Solo puedes quitar lo que esta revisión deja resuelto (una duda como
   «confírmalo»), manteniendo el resto con sus palabras; si no queda nada útil, déjalas vacías. Lo que averigües va
   a la ficha o a "datos_pieza", no a las notas.` : ''}
-- Escribe como una hoja de datos: nunca hables de «la foto» ni de lo que se ve en ella en los textos que se guardan.
+- Escribe como una hoja de datos: nunca hables de «la foto» ni de lo que se ve en ella en los textos que se guardan.${conPieza ? `
+- Nombre de la pieza: si no la identifica bien (falta el modelo o la variante, o es erróneo), corrígelo: corto y concreto.
+- Tipo de la pieza (pieza.tipo_existente / pieza.tipo_nuevo): si el tipo que tiene es el correcto, repite su id en
+  tipo_existente y deja tipo_nuevo a null. Si es de OTRO tipo de la lista (o no tiene ninguno), pon ese id en
+  tipo_existente. Si no encaja ninguno, pon tipo_existente a null y describe el tipo nuevo en tipo_nuevo con su ficha
+  completa (mismas reglas que la ficha: no inventes pines ni tensiones). Si cambias el tipo, deja la ficha del tipo
+  actual tal cual: no es la de esta pieza.
+- Tipos que ya existen (id = nombre): ${ctx.tipos.map((t) => `${t.id} = ${t.nombre}`).join(' · ')}` : ''}
 - En "motivos", "campo" es uno de: ficha.nombre, ficha.categoria, ficha.resumen, ficha.voltaje, ficha.interfaz,
-  ficha.alias, ficha.pines, ficha.datos, ficha.ojo${conPieza ? ', pieza.nombre, pieza.notas, pieza.datos' : ''}.
+  ficha.alias, ficha.pines, ficha.datos, ficha.ojo${conPieza ? ', pieza.nombre, pieza.tipo, pieza.notas, pieza.datos' : ''}.
 - NO INVENTES: si no estás seguro de un pinout, una tensión o un dato, déjalo como está y pregúntalo en "dudas"
   (preguntas cortas que el usuario pueda contestar). Un pinout o una tensión inventados pueden quemar una placa.
 - Categorías: ${ctx.categorias.map((c) => `${c.id} = ${c.nombre}`).join(' · ')}
 - Textos cortos y llanos, sin emojis.`;
 }
 
-function esquemaRevision(ctx, conPieza) {
+function esquemaRevision(ctx, conPieza, conTipo = true) {
   const dato = z.object({dato: z.string(), valor: z.string()});
+  const ficha = z.object({
+    nombre: z.string(), categoria: z.enum(ctx.categorias.map((c) => c.id)), resumen: z.string(), voltaje: z.string(),
+    interfaz: z.array(z.string()), alias: z.array(z.string()),
+    pines: z.array(z.object({pin: z.string(), uso: z.string(), funcion: z.enum(ctx.funciones.map((f) => f.id))})),
+    datos: z.array(dato), ojo: z.string(),
+  });
   const forma = {
-    tipo: z.object({
-      nombre: z.string(), categoria: z.enum(ctx.categorias.map((c) => c.id)), resumen: z.string(), voltaje: z.string(),
-      interfaz: z.array(z.string()), alias: z.array(z.string()),
-      pines: z.array(z.object({pin: z.string(), uso: z.string(), funcion: z.enum(ctx.funciones.map((f) => f.id))})),
-      datos: z.array(dato), ojo: z.string(),
-    }),
     motivos: z.array(z.object({campo: z.string(), motivo: z.string()})),
     dudas: z.array(z.string()),
     confianza: z.enum(['alta', 'media', 'baja']),
   };
-  if (conPieza) forma.pieza = z.object({nombre: z.string(), notas: z.string(), datos_pieza: z.array(dato)});
+  if (conTipo) forma.tipo = ficha;
+  if (conPieza) forma.pieza = z.object({nombre: z.string(), notas: z.string(), datos_pieza: z.array(dato),
+    tipo_existente: (ctx.tipos.length ? z.enum(ctx.tipos.map((t) => t.id)) : z.string()).nullable().describe('id del tipo correcto de la lista, o null'),
+    tipo_nuevo: ficha.nullable().describe('ficha del tipo nuevo si no encaja ninguno, o null')});
   return z.object(forma);
 }
 
@@ -456,10 +466,11 @@ async function proponerRevision(db, entrada, foto, sesion) {
   const obj = entrada.objetivo;
   const actual = estadoActual(db, obj);
   if (!actual.tipo && !actual.pieza) throw new Error('Lo que había que corregir ya no existe');
-  const conPieza = !!actual.pieza;
+  const conPieza = !!actual.pieza, conTipo = !!actual.tipo;
   const ctx = contexto(db);
   const datosTexto = JSON.stringify({ficha: actual.tipo ? fichaSalida(actual.tipo) : null,
-    pieza: conPieza ? {nombre: actual.pieza.nombre, notas: actual.pieza.notas, datos_pieza: actual.pieza.datos_pieza.map(([dato, valor]) => ({dato, valor}))} : undefined});
+    pieza: conPieza ? {nombre: actual.pieza.nombre, tipo_actual: actual.pieza.tipo_id || null, notas: actual.pieza.notas,
+      datos_pieza: actual.pieza.datos_pieza.map(([dato, valor]) => ({dato, valor}))} : undefined});
   // vueltas anteriores: lo que preguntó el modelo y lo que contestó el usuario (para rehacer las correcciones con eso)
   const vueltas = arr(entrada.rondas).map((r) => [...arr(r.respuestas).map((x) => `- Preguntaste «${x.duda}» → ${x.respuesta}`),
     ...(r.extra ? [`- Además: ${r.extra}`] : [])].join('\n')).filter(Boolean);
@@ -470,23 +481,32 @@ async function proponerRevision(db, entrada, foto, sesion) {
   for (let intento = 1; intento <= 2; intento++) {
     try {
       const r = await generateText({
-        model: crearModelo(m, clave, sesion), system: instruccionesRevision(ctx, conPieza), messages: [{role: 'user', content: contenido}],
-        output: Output.object({schema: esquemaRevision(ctx, conPieza), name: 'revision', description: 'Ficha corregida'}),
+        model: crearModelo(m, clave, sesion), system: instruccionesRevision(ctx, conPieza, conTipo), messages: [{role: 'user', content: contenido}],
+        output: Output.object({schema: esquemaRevision(ctx, conPieza, conTipo), name: 'revision', description: 'Ficha corregida'}),
         ...opcionesLlamada(m, nivel), maxRetries: 1,
       });
       const o = salidaDe(r);
       // la ficha propuesta pasa por la misma limpieza que un alta (categorías y funciones válidas, longitudes, «no aplica»…)
-      const limpia = normalizar(db, {nombre: o.tipo.nombre, tipo_nuevo: o.tipo, datos_pieza: o.pieza?.datos_pieza, dudas: o.dudas, confianza: o.confianza});
+      const limpia = normalizar(db, {nombre: o.tipo?.nombre || 'x', tipo_nuevo: o.tipo || null, datos_pieza: o.pieza?.datos_pieza, dudas: o.dudas, confianza: o.confianza});
+      // tipo de la pieza: a otro que ya existe, o uno nuevo (que se crea al aplicar); null = se queda como está
+      let tipoPieza = null;
+      if (conPieza) {
+        const tp = normalizar(db, {nombre: 'x', tipo_existente: o.pieza?.tipo_existente || null, tipo_nuevo: o.pieza?.tipo_existente ? null : o.pieza?.tipo_nuevo || null});
+        limpia.dudas.push(...tp.dudas.filter((d) => !limpia.dudas.includes(d)));
+        if (tp.tipo_existente && tp.tipo_existente !== (actual.pieza.tipo_id || null)) tipoPieza = {existente: tp.tipo_existente};
+        else if (!tp.tipo_existente && tp.tipo_nuevo) tipoPieza = {nuevo: tp.tipo_nuevo};
+      }
       const nueva = {
-        tipo: actual.tipo && limpia.tipo_nuevo ? {...actual.tipo, ...limpia.tipo_nuevo} : actual.tipo,
-        pieza: conPieza ? {nombre: txt(o.pieza?.nombre, 200) || actual.pieza.nombre, notas: String(o.pieza?.notas ?? actual.pieza.notas).slice(0, 2000), datos_pieza: limpia.datos_pieza} : undefined,
+        tipo: actual.tipo && o.tipo && limpia.tipo_nuevo ? {...actual.tipo, ...limpia.tipo_nuevo} : actual.tipo,
+        pieza: conPieza ? {nombre: txt(o.pieza?.nombre, 200) || actual.pieza.nombre, notas: String(o.pieza?.notas ?? actual.pieza.notas).slice(0, 2000),
+          datos_pieza: limpia.datos_pieza, tipo: tipoPieza} : undefined,
       };
       const categorias = Object.fromEntries(ctx.categorias.map((c) => [c.id, c.nombre]));
       const funciones = Object.fromEntries(ctx.funciones.map((f) => [f.id, f.nombre]));
       return {
         modelo: m.id,
         propuesta: {
-          objetivo: obj, cambios: diferencias(actual, nueva, {categorias, funciones}),
+          objetivo: obj, cambios: diferencias(actual, nueva, {categorias, funciones, tipos: Object.fromEntries(ctx.tipos.map((t) => [t.id, t.nombre]))}),
           motivos: arr(o.motivos).map((x) => ({campo: txt(x.campo, 60), motivo: txt(x.motivo, 300)})).filter((x) => x.motivo).slice(0, 20),
           dudas: limpia.dudas, confianza: limpia.confianza, coste: coste(m, r.totalUsage ?? r.usage),
         },
