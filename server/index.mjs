@@ -9,8 +9,8 @@ import {readFile, writeFile, unlink, rename, copyFile} from 'node:fs/promises';
 import {extname, join, normalize, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {networkInterfaces} from 'node:os';
-import {randomBytes} from 'node:crypto';
-import {readdirSync, statSync, existsSync, createReadStream, copyFileSync, renameSync, rmSync, mkdirSync} from 'node:fs';
+import {randomBytes, createHash} from 'node:crypto';
+import {readdirSync, readFileSync, statSync, existsSync, createReadStream, copyFileSync, renameSync, rmSync, mkdirSync} from 'node:fs';
 import {abrir, ubicacionId, sincronizarCatalogo, guardarTipo, leerFicha, VERSION} from './db.mjs';
 import * as aud from './auditoria.mjs';
 import {programarCopias, opcionesCopias, copiar, copiarFotosNuevas} from './copias.mjs';
@@ -806,6 +806,28 @@ async function api(req, res, path) {
 }
 
 // ---------- ficheros ----------
+// huella de la web: cambia cuando cambian app.js, style.css o sw.js. index.html los pide con «?v=<huella>», así que un
+// proxy que guarde los .js y .css (Nginx Proxy Manager con «Cache Assets») o el navegador nunca sirven una versión vieja.
+const WEB_HUELLA = ['app.js', 'style.css', 'sw.js'];
+let huellaWeb = {clave: '', valor: ''};
+function huella() {
+  const rutas = WEB_HUELLA.map((f) => join(PUB, f));
+  const clave = rutas.map((f) => statSync(f).mtimeMs).join(); // se recalcula solo si alguno cambió (npm run dev)
+  if (clave !== huellaWeb.clave) {
+    const h = createHash('sha1');
+    for (const f of rutas) h.update(readFileSync(f));
+    huellaWeb = {clave, valor: h.digest('hex').slice(0, 10)};
+  }
+  return huellaWeb.valor;
+}
+async function paginaPrincipal(res) {
+  const v = huella();
+  const html = (await readFile(join(PUB, 'index.html'), 'utf8'))
+    .replace('href="style.css"', `href="style.css?v=${v}"`).replace('src="app.js"', `src="app.js?v=${v}"`)
+    .replace('</head>', `  <meta name="version-web" content="${v}">\n</head>`);
+  send(res, 200, html, TYPES['.html'], {'cache-control': 'no-cache'});
+}
+
 async function estatico(res, base, path, cache) {
   const rel = normalize(path).replace(/^([/\\])+/, '');
   if (rel.startsWith('..')) throw new HttpError(403, 'No');
@@ -830,7 +852,8 @@ const server = createServer(async (req, res) => {
     const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (path.startsWith('/api/')) return await api(req, res, path);
     if (path.startsWith('/fotos/')) return await estatico(res, FOTOS, path.slice(7), 'public, max-age=31536000, immutable');
-    return await estatico(res, PUB, path === '/' ? 'index.html' : path, 'no-cache');
+    if (path === '/' || path === '/index.html') return await paginaPrincipal(res);
+    return await estatico(res, PUB, path, 'no-cache');
   } catch (e) {
     let code = e instanceof HttpError || e instanceof cat.ErrorCatalogo || e instanceof respaldo.ErrorRespaldo ? e.code : 500;
     if (/constraint failed/i.test(e.message)) code = 400; // reglas de la base de datos (CHECK, FOREIGN KEY, UNIQUE)

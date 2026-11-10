@@ -2502,7 +2502,9 @@ async function recargar() {
 }
 $('#sin-red-btn').addEventListener('click', recargar);
 window.addEventListener('online', () => { if (!$('#sin-red').hidden) recargar(); });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {}); // solo con HTTPS o localhost
+// con la huella de esta versión (la pone el servidor en index.html): un sw.js nuevo por versión, sin copias viejas de proxies
+const VERSION_WEB = document.querySelector('meta[name=version-web]')?.content || '';
+if ('serviceWorker' in navigator) navigator.serviceWorker.register(`sw.js${VERSION_WEB ? `?v=${VERSION_WEB}` : ''}`).catch(() => {}); // solo con HTTPS o localhost
 
 (async function init() {
   try {
