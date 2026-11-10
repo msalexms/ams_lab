@@ -45,7 +45,7 @@ cerrarInterrumpidas(db);
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
-  '.webp': 'image/webp', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json',
+  '.webp': 'image/webp', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8',
 };
 const FOTO_EXT = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'};
 
@@ -158,7 +158,7 @@ function guardarDatosPieza(id, datos) {
 }
 
 // preferencias que se pueden cambiar desde la web y sus valores válidos (los valores por defecto están en seed/referencia.json)
-const AJUSTES = {tema: ['auto', 'claro', 'noche'], vista_inventario: ['lista', 'cuadricula']};
+const AJUSTES = {tema: ['auto', 'claro', 'noche'], vista_inventario: ['lista', 'cuadricula'], fuente: ['jetbrains', 'plex-mono', 'mono-sistema', 'plex-sans', 'sistema']};
 
 // ---------- restaurar una copia (Ajustes → Datos) ----------
 // antes de nada, copia completa del estado actual (base de datos + fotos) en la carpeta de copias, fuera de la rotación.
