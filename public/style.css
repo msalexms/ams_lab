@@ -193,7 +193,7 @@ table.t { width: 100%; border-collapse: collapse; font-size: .92rem; }
 table.t th { text-align: left; padding: 0 var(--e3) var(--e2) 0; border-bottom: 1px solid var(--tinta); }
 table.t td { padding: 9px var(--e3) 9px 0; border-bottom: 1px solid var(--linea2); vertical-align: top; }
 table.t .n { width: 2.4em; color: var(--gris); font-variant-numeric: tabular-nums; }
-table.t .pin { font-family: var(--mono); font-size: .88rem; white-space: nowrap; }
+table.t .pin { font-family: var(--mono); font-size: .88rem; min-width: 6em; overflow-wrap: anywhere; } /* los pines largos («GPIO 4 · 5 · 18 · …») saltan de línea */
 table.t .der { text-align: right; padding-right: 0; }
 table.t tr.tachado td { color: var(--gris); }
 table.t tr.tachado .pin { text-decoration: line-through; }
@@ -417,7 +417,7 @@ ol.pasos li { padding: var(--e1) 0; }
   .tarjeta-pie .stepper { width: 100%; justify-content: space-between; }
   .hoja { margin: 0 calc(-1 * var(--e4)); border-left: 0; border-right: 0; }
   .hoja-cab { flex-wrap: wrap; gap: var(--e1) var(--e3); }
-  .hoja-cuerpo { grid-template-columns: 1fr; gap: var(--e5); }
+  .hoja-cuerpo { grid-template-columns: minmax(0, 1fr); gap: var(--e5); }
   .lateral { order: -1; }
   .specs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .form .dos { grid-template-columns: 1fr; }
@@ -509,3 +509,8 @@ body.con-encuadre { overflow: hidden; }
 .enc-pie .btn { flex: 1; }
 .encuadre .btn { background: #1c1c1b; color: #ecebe5; border-color: #3a3935; }
 .encuadre .btn.prim { background: #ecebe5; color: #111110; border-color: #ecebe5; }
+
+/* nada dentro de la hoja puede ensanchar la página (en el móvil se veía todo desplazado) */
+.hoja-cuerpo > *, .ficha-tipo > *, .lateral > * { min-width: 0; }
+.sec-datos > span { min-width: 0; overflow-wrap: anywhere; }
+.resumen, .nota, .notas, .specs dd { overflow-wrap: anywhere; }
