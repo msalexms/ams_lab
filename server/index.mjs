@@ -158,7 +158,7 @@ function guardarDatosPieza(id, datos) {
 }
 
 // preferencias que se pueden cambiar desde la web y sus valores válidos (los valores por defecto están en seed/referencia.json)
-const AJUSTES = {tema: ['auto', 'claro', 'noche'], vista_inventario: ['lista', 'cuadricula'], fuente: ['jetbrains', 'plex-mono', 'mono-sistema', 'plex-sans', 'sistema']};
+const AJUSTES = {tema: ['auto', 'claro', 'noche'], vista_inventario: ['lista', 'cuadricula'], fuente: ['jetbrains', 'mixta', 'plex-mono', 'mono-sistema', 'plex-sans', 'sistema']};
 
 // ---------- restaurar una copia (Ajustes → Datos) ----------
 // antes de nada, copia completa del estado actual (base de datos + fotos) en la carpeta de copias, fuera de la rotación.
