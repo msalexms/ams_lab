@@ -19,7 +19,7 @@ const FUENTES = {
 const fuenteActual = () => (FUENTES[D.ajustes.fuente] ? D.ajustes.fuente : 'jetbrains');
 
 const D = {componentes: [], tipos: {}, proyectos: [], categorias: [], funciones: [], dificultades: [], ubicaciones: [], ajustes: {}};
-const ui = {cat: '', ubic: '', revisar: false, proFiltro: 'ya', sinComprobar: false, ajTipos: 'todos', ajBuscar: ''};
+const ui = {sel: new Set(), seleccionando: false, selIA: false, visibles: [], cat: '', ubic: '', revisar: false, proFiltro: 'ya', sinComprobar: false, ajTipos: 'todos', ajBuscar: ''};
 const $ = (s) => document.querySelector(s);
 const app = $('#app');
 const q = $('#q');
@@ -331,6 +331,7 @@ function vInventario() {
         ${ubicaciones().map((u) => `<option ${ui.ubic === u ? 'selected' : ''}>${esc(u)}</option>`).join('')}
         <option value="∅" ${ui.ubic === '∅' ? 'selected' : ''}>Sin sitio</option></select>
       ${nRevisar ? `<button class="f ${ui.revisar ? 'on' : ''}" id="rev">Pendientes<span class="n">${nRevisar}</span></button>` : ''}
+      <button class="f ${ui.seleccionando ? 'on' : ''}" id="sel-modo" type="button">${ui.seleccionando ? 'Terminar' : 'Seleccionar'}</button>
       <span class="conmuta" role="group" aria-label="Vista">${[['lista', 'Lista'], ['cuadricula', 'Cuadrícula']].map(([k, v]) =>
         `<button class="f ${vistaInv() === k ? 'on' : ''}" data-vista="${k}" aria-pressed="${vistaInv() === k}">${v}</button>`).join('')}</span>
       <a class="btn solo-escritorio" href="#/ia">Añadir con IA</a>
@@ -339,13 +340,245 @@ function vInventario() {
 
   if (!D.componentes.length) return filtros + vacio('Aún no hay piezas. Pulsa + para añadir la primera.');
   if (!cs.length) return filtros + tambien(query, 'piezas') + vacio('Nada coincide con el filtro.');
-  const rejilla = vistaInv() === 'cuadricula';
-  return filtros + tambien(query, 'piezas') + Object.keys(CATS).map((k) => {
+  const rejilla = vistaInv() === 'cuadricula', sel = ui.seleccionando;
+  ui.visibles = cs.map((c) => c.id);
+  const cabSel = sel ? `<div class="sel-cab"><span class="gris">Elige las piezas:</span>
+    <button class="f" type="button" data-sel="visibles">Todas las que se ven (${cs.length})</button>
+    <button class="f" type="button" data-sel="ninguna">Ninguna</button></div>` : '';
+  return filtros + tambien(query, 'piezas') + cabSel + Object.keys(CATS).map((k) => {
     const items = cs.filter((c) => catOf(c) === k).sort(byName);
     return items.length ? `<section class="grupo"><h3 class="grupo-t">${CATS[k]}<span class="n">${items.length}</span></h3>${rejilla
-      ? `<div class="rejilla">${items.map(tarjetaComp).join('')}</div>` : items.map(filaComp).join('')}</section>` : '';
+      ? `<div class="rejilla">${items.map(sel ? tarjetaSel : tarjetaComp).join('')}</div>` : items.map(sel ? filaSel : filaComp).join('')}</section>` : '';
+  }).join('') + (sel ? `<div class="sel-hueco"></div>${barraSel()}` : '');
+}
+
+// ---------- varias piezas a la vez: elegir en el Inventario, editarlas juntas y corregirlas con la IA ----------
+// ui.sel: ids elegidos (se mantienen al ir a «Editar juntas»); ui.seleccionando: el Inventario está en modo elegir
+const MAX_LOTE_IA = 30;
+const selIds = () => [...ui.sel].filter((id) => comp(id));
+const piezasTxt = (n) => `${n} pieza${n === 1 ? '' : 's'}`;
+function filaSel(c) {
+  const marcada = ui.sel.has(c.id);
+  return `<label class="fila fila-sel${marcada ? ' marcada' : ''}"><input type="checkbox" class="sel-pieza" value="${c.id}" ${marcada ? 'checked' : ''} aria-label="Elegir ${esc(c.nombre)}">
+    ${c.foto ? `<img class="thumb" src="${fotoUrl(c)}" alt="" loading="lazy">` : ''}
+    <span class="fila-sel-txt"><span class="nombre">${esc(c.nombre)}${revisar(c)}</span>
+      <span class="sub">${[c.tipo ? g(c.tipo).nombre : '', c.ubicacion].filter(Boolean).map(esc).join(' · ')}</span></span>
+    <span class="der num">${esc(qtyText(c))}</span></label>`;
+}
+function tarjetaSel(c) {
+  const marcada = ui.sel.has(c.id);
+  return `<label class="tarjeta tarjeta-sel${c.foto ? '' : ' sin-foto'}${marcada ? ' marcada' : ''}">
+    <input type="checkbox" class="sel-pieza" value="${c.id}" ${marcada ? 'checked' : ''} aria-label="Elegir ${esc(c.nombre)}">
+    ${c.foto ? `<img class="tarjeta-foto" src="${fotoUrl(c)}" alt="" loading="lazy">` : ''}
+    <span class="tarjeta-txt"><span class="nombre">${esc(c.nombre)}${revisar(c)}</span>
+      <span class="sub">${[c.tipo ? g(c.tipo).nombre : '', c.ubicacion].filter(Boolean).map(esc).join(' · ')}</span></span></label>`;
+}
+// barra fija abajo con lo que se puede hacer con las elegidas
+function barraSel() {
+  const n = selIds().length, ia = D.ia?.activa;
+  if (ui.selIA) {
+    const m = (MODELOS_IA || []).find((x) => x.id === D.ia?.modelo);
+    const coste = m?.coste_medio?.dolares ?? (m ? ((m.precio.entrada ?? 0) * 6000 + (m.precio.salida ?? 0) * 900) / 1e6 : null);
+    return `<div class="sel-barra sel-barra-ia" id="sel-barra" role="region" aria-label="Corregir con IA las elegidas">
+      <p><strong>Corregir ${piezasTxt(n)} con IA.</strong> ${n > MAX_LOTE_IA ? `<span class="mal">Como mucho ${MAX_LOTE_IA} a la vez.</span>`
+        : `Una consulta por pieza${coste != null ? ` (≈ ${dolares(coste * n)} en total)` : ''}; después revisas los cambios de todas en una pantalla.`}</p>
+      <textarea id="sel-ia-texto" rows="2" maxlength="1000" placeholder="Qué corregir (opcional, vale para todas): «revisa los pines», «pon el nombre con el modelo»…"></textarea>
+      <div class="sel-botones"><button class="btn prim" type="button" data-sel-acc="ia-enviar" ${n && n <= MAX_LOTE_IA ? '' : 'disabled'}>Pedir ${n} correcci${n === 1 ? 'ón' : 'ones'}</button>
+        <button class="btn" type="button" data-sel-acc="ia-cancelar">Cancelar</button></div></div>`;
+  }
+  return `<div class="sel-barra" id="sel-barra" role="region" aria-label="Piezas elegidas">
+    <span class="sel-n">${n ? `<strong>${n}</strong> elegida${n === 1 ? '' : 's'}` : 'Toca las piezas para elegirlas'}</span>
+    <div class="sel-botones">
+      <button class="btn prim" type="button" data-sel-acc="editar" ${n ? '' : 'disabled'}>Editar juntas</button>
+      ${ia ? `<button class="btn" type="button" data-sel-acc="ia" ${n ? '' : 'disabled'}>Corregir con IA</button>` : ''}
+      ${menuMas([
+        `<button role="menuitem" type="button" data-sel-acc="pendiente" ${n ? '' : 'disabled'}>Marcar como pendientes</button>`,
+        `<button role="menuitem" type="button" data-sel-acc="sin-pendiente" ${n ? '' : 'disabled'}>Quitar la marca de pendiente</button>`,
+        `<button role="menuitem" type="button" class="peligro" data-sel-acc="borrar" ${n ? '' : 'disabled'}>Borrar las elegidas</button>`])}
+    </div></div>`;
+}
+const refrescarBarraSel = () => { const b = $('#sel-barra'); if (b) b.outerHTML = barraSel(); };
+
+async function accionSel(acc) {
+  const ids = selIds();
+  if (acc === 'editar') { location.hash = '#/lote'; return; }
+  if (acc === 'ia') { ui.selIA = true; if (!MODELOS_IA && D.ia?.activa) modelosIA().then(refrescarBarraSel).catch(() => {}); refrescarBarraSel(); $('#sel-ia-texto')?.focus(); return; }
+  if (acc === 'ia-cancelar') { ui.selIA = false; refrescarBarraSel(); return; }
+  if (acc === 'ia-enviar') {
+    const r = await api('POST', 'api/ia/revisar-lote', {ids, texto: $('#sel-ia-texto')?.value || ''});
+    salirSeleccion();
+    location.hash = `#/ia/lote/${r.lote}`;
+    return;
+  }
+  if (acc === 'pendiente' || acc === 'sin-pendiente') {
+    await api('POST', 'api/componentes/lote', {piezas: ids.map((id) => ({id, revisar: acc === 'pendiente'}))});
+    await cargar(); contadores();
+    toast(acc === 'pendiente' ? `${piezasTxt(ids.length)} marcadas como pendientes` : `Marca quitada a ${piezasTxt(ids.length)}`);
+    route();
+    return;
+  }
+  if (acc === 'borrar') {
+    if (!confirm(`¿Borrar ${piezasTxt(ids.length)}? Podrás deshacerlo durante 2 minutos.`)) return;
+    const r = await api('POST', 'api/componentes/lote/borrar', {ids});
+    D.componentes = D.componentes.filter((c) => !ids.includes(c.id));
+    salirSeleccion(); contadores(); route();
+    toast(`${piezasTxt(r.borradas)} borradas`, false, {texto: 'Deshacer', fn: async () => {
+      try { await api('POST', 'api/componentes/restaurar', {tokens: r.deshacer}); await cargar(); contadores(); route(); toast('Recuperadas'); }
+      catch (err) { toast(err.message, true); }
+    }});
+  }
+}
+function salirSeleccion() { ui.seleccionando = false; ui.sel.clear(); ui.selIA = false; }
+
+// ---- «Editar juntas»: una tabla con las elegidas; arriba, «A todas» para poner lo mismo a todas ----
+function opcionesTiposLista(sel) {
+  return '<option value="">Sin tipo</option>' + Object.keys(CATS).map((cat) => {
+    const ts = Object.entries(D.tipos).filter(([k, t]) => t.categoria === cat && (!t.archivado || k === sel)).sort((a, b) => a[1].nombre.localeCompare(b[1].nombre, 'es'));
+    return ts.length ? `<optgroup label="${esc(CATS[cat])}">${ts.map(([k, t]) => `<option value="${esc(k)}" ${k === sel ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</optgroup>` : '';
   }).join('');
 }
+function vLote() {
+  const cs = selIds().map(comp).sort(byName);
+  if (!cs.length) return `<a class="back" href="#/">← Inventario</a>${vacio('No hay piezas elegidas. En el Inventario, pulsa «Seleccionar» y toca las que quieras.')}`;
+  return `<a class="back" href="#/">← Inventario</a>
+    <article class="hoja">
+      ${cabecera(`Editar ${piezasTxt(cs.length)}`, '', 'Cambia lo que quieras: solo se guarda lo que cambies. Con «A todas» les pones lo mismo a todas de una vez.')}
+      <section class="pad lote-todas">
+        <h3>A todas</h3>
+        <div class="lote-todas-filas">
+          <label>Sitio<input id="lt-sitio" list="ubics" maxlength="120" placeholder="Cajita 3"></label>
+          <button class="btn mini" type="button" data-lote-todas="sitio">Poner</button>
+          <label>Tipo<select id="lt-tipo">${opcionesTiposLista('')}</select></label>
+          <button class="btn mini" type="button" data-lote-todas="tipo">Poner</button>
+          <span class="lote-todas-pend">Pendiente</span>
+          <span class="lote-todas-botones"><button class="btn mini" type="button" data-lote-todas="pend-si">Marcar</button>
+            <button class="btn mini" type="button" data-lote-todas="pend-no">Quitar</button></span>
+        </div>
+      </section>
+      <form id="form-lote" class="lote" autocomplete="off">
+        <div class="lote-cab" aria-hidden="true"><span>Nombre</span><span>Cantidad</span><span>Sitio</span><span>Tipo</span><span>Pendiente</span></div>
+        ${cs.map((c) => `<div class="lote-fila" data-id="${c.id}">
+          <label class="lote-celda lc-nombre"><span class="ed-et">Nombre</span><input name="nombre" maxlength="200" required value="${esc(c.nombre)}"></label>
+          <label class="lote-celda lc-cantidad"><span class="ed-et">Cantidad</span><input name="cantidad" type="number" min="0" inputmode="numeric"
+            value="${c.varios ? '' : esc(c.cantidad ?? '')}" placeholder="${c.varios ? 'muchas' : 'Cantidad'}"></label>
+          <label class="lote-celda lc-sitio"><span class="ed-et">Sitio</span><input name="ubicacion" list="ubics" maxlength="120" value="${esc(c.ubicacion)}" placeholder="Sitio"></label>
+          <label class="lote-celda lc-tipo"><span class="ed-et">Tipo</span><select name="tipo">${opcionesTiposLista(c.tipo || '')}</select></label>
+          <label class="lote-celda lc-pend"><input type="checkbox" name="revisar" ${c.revisar ? 'checked' : ''}><span class="ed-et">Pendiente</span></label>
+        </div>`).join('')}
+        <datalist id="ubics">${ubicaciones().map((u) => `<option value="${esc(u)}">`).join('')}</datalist>
+        <div class="acciones"><button class="btn prim" type="submit">Guardar cambios</button><a class="btn" href="#/">Cancelar</a></div>
+      </form>
+    </article>`;
+}
+function ponerATodas(que) {
+  const filas = document.querySelectorAll('#form-lote .lote-fila');
+  if (que === 'sitio') { const v = $('#lt-sitio').value.trim(); filas.forEach((f) => (f.querySelector('[name=ubicacion]').value = v)); toast(v ? `Sitio «${v}» puesto a todas (falta guardar)` : 'Sitio vaciado en todas (falta guardar)'); }
+  if (que === 'tipo') { const v = $('#lt-tipo').value; filas.forEach((f) => (f.querySelector('[name=tipo]').value = v)); toast(`Tipo «${v ? g(v).nombre : 'Sin tipo'}» puesto a todas (falta guardar)`); }
+  if (que === 'pend-si' || que === 'pend-no') { filas.forEach((f) => (f.querySelector('[name=revisar]').checked = que === 'pend-si')); toast('Hecho en todas (falta guardar)'); }
+}
+async function guardarLote(form) {
+  const piezas = [];
+  for (const f of form.querySelectorAll('.lote-fila')) {
+    const c = comp(f.dataset.id), v = (n) => f.querySelector(`[name=${n}]`);
+    if (!c) continue;
+    const p = {id: c.id};
+    const nombre = v('nombre').value.trim();
+    if (nombre && nombre !== c.nombre) p.nombre = nombre;
+    const cant = v('cantidad').value.trim();
+    if (c.varios ? cant !== '' : cant !== String(c.cantidad ?? '')) p.cantidad = cant === '' ? null : cant;
+    if (v('ubicacion').value.trim() !== (c.ubicacion || '')) p.ubicacion = v('ubicacion').value.trim();
+    if (v('tipo').value !== (c.tipo || '')) p.tipo = v('tipo').value || null;
+    if (v('revisar').checked !== !!c.revisar) p.revisar = v('revisar').checked;
+    if (Object.keys(p).length > 1) piezas.push(p);
+  }
+  if (!piezas.length) { toast('No has cambiado nada'); return; }
+  await api('POST', 'api/componentes/lote', {piezas});
+  await cargar(); contadores();
+  salirSeleccion();
+  location.hash = '#/';
+  toast(`${piezasTxt(piezas.length)} guardada${piezas.length === 1 ? '' : 's'}`);
+}
+
+// ---- correcciones de varias piezas: todas en una pantalla; se aplica lo marcado de todas a la vez ----
+const LOTE = {id: null, desmarcados: new Set()};
+function filaCambio(c, extra = '') {
+  return `<span class="nombre">${esc(c.etiqueta)}${c.tipoCambio === 'nuevo' ? ' <span class="gris">· nuevo</span>' : c.tipoCambio === 'quitado' ? ' <span class="gris">· se quita</span>' : ''}</span>
+    ${c.antes ? `<span class="ia-antes">${esc(c.antes)}</span>` : ''}
+    ${c.despues ? `<span class="ia-ahora">${esc(c.despues)}</span>` : ''}${extra}`;
+}
+function vLoteIA(id) {
+  return `<a class="back" href="#/">← Inventario</a><article class="hoja" id="lote-zona" data-lote="${esc(id)}"><p class="gris pad">Cargando…</p></article>`;
+}
+function htmlLote(ts) {
+  const listas = ts.filter((t) => t.estado !== 'pendiente').length;
+  const tarea = (t) => {
+    const c = comp(t.objetivo?.componente_id), cambios = t.propuesta?.cambios || [];
+    const estado = {pendiente: 'pensando…', propuesta: cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'}` : 'nada que cambiar',
+      aplicada: 'aplicada', descartada: 'descartada', error: 'error'}[t.estado] || t.estado;
+    const cuerpo = t.estado === 'error' ? `<p class="mal">${esc(t.error || 'Error')}</p>`
+      : t.estado === 'propuesta' ? `${cambios.map((x) => `<label class="ia-cambio-fila"><input type="checkbox" class="lote-cambio" data-tarea="${t.id}" value="${esc(x.id)}"
+          ${LOTE.desmarcados.has(`${t.id}:${x.id}`) ? '' : 'checked'}><span>${filaCambio(x)}</span></label>`).join('')}
+        ${t.propuesta.dudas?.length ? `<p class="ayuda">La IA tiene ${t.propuesta.dudas.length === 1 ? 'una duda' : `${t.propuesta.dudas.length} dudas`}: <a href="#/ia/${t.id}">ábrela para contestar</a> (o para ver la vista previa).</p>` : ''}` : '';
+    return `<section class="pad lote-tarea lote-${t.estado}">
+      <div class="lote-t"><a class="nombre" href="${c ? `#/c/${c.id}` : '#/'}">${esc(t.objetivo_nombre || c?.nombre || '¿?')}</a>
+        <span class="gris">· ${esc(estado)}</span>${t.estado === 'propuesta' ? `<a class="lote-abrir" href="#/ia/${t.id}">Abrir</a>` : ''}</div>${cuerpo}</section>`;
+  };
+  const quedan = ts.some((t) => t.estado === 'propuesta' || t.estado === 'error');
+  return `${cabecera(`Correcciones de ${piezasTxt(ts.length)}`, '', listas < ts.length
+      ? `Pensando… ${listas} de ${ts.length} listas. Puedes ir mirando las que ya han llegado.`
+      : 'Marca lo que quieras aplicar. Lo que no marques se queda como está.')}
+    ${listas < ts.length ? '<div class="ia-progreso" role="progressbar" aria-label="La IA está pensando"><span></span></div>' : ''}
+    ${ts.map(tarea).join('')}
+    ${quedan ? `<div class="acciones pad lote-acciones">
+      <button class="btn prim" type="button" id="lote-aplicar">Aplicar lo marcado</button>
+      <button class="btn" type="button" data-lote-marcar="todo">Marcar todo</button>
+      <button class="btn" type="button" data-lote-marcar="nada">Ninguno</button>
+      <button class="btn peligro" type="button" id="lote-descartar">Descartar lo que quede</button></div>` : '<p class="pad gris">Ya no queda nada por revisar en este lote.</p>'}`;
+}
+function contarLote() {
+  const b = $('#lote-aplicar');
+  if (!b) return;
+  const marcados = document.querySelectorAll('.lote-cambio:checked'), piezas = new Set([...marcados].map((x) => x.dataset.tarea)).size;
+  b.textContent = marcados.length ? `Aplicar ${marcados.length} cambio${marcados.length === 1 ? '' : 's'} en ${piezasTxt(piezas)}` : 'Marca algún cambio';
+  b.disabled = !marcados.length;
+}
+async function iaLote(id) {
+  const zona = $('#lote-zona');
+  if (!zona || zona.dataset.lote !== id) return;
+  if (LOTE.id !== id) { LOTE.id = id; LOTE.desmarcados = new Set(); }
+  let ts;
+  try { ts = await api('GET', `api/ia/lotes/${encodeURIComponent(id)}`); } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; return; }
+  if (!ts.length) { zona.innerHTML = `<p class="gris pad">Ese lote no existe.</p>`; return; }
+  zona.innerHTML = htmlLote(ts);
+  contarLote();
+  if (ts.some((t) => t.estado === 'pendiente')) { const h = location.hash; setTimeout(() => { if (location.hash === h) iaLote(id); }, 3000); }
+}
+async function aplicarLote(boton) {
+  const porTarea = {};
+  document.querySelectorAll('.lote-cambio:checked').forEach((x) => (porTarea[x.dataset.tarea] ||= []).push(x.value));
+  const tareas = Object.keys(porTarea);
+  if (!tareas.length) throw new Error('Marca algún cambio');
+  boton.disabled = true;
+  boton.textContent = 'Aplicando…';
+  let bien = 0, cambios = 0;
+  const mal = [];
+  for (const t of tareas) { // una a una: si dos piezas comparten tipo, la segunda ve la ficha ya cambiada
+    try { const r = await api('POST', `api/ia/tareas/${t}/aplicar-cambios`, {ids: porTarea[t]}); bien++; cambios += r.aplicados; }
+    catch (err) { mal.push(err.message); }
+  }
+  await cargar(); contadores();
+  await iaLote(LOTE.id);
+  toast(`${cambios} cambio${cambios === 1 ? '' : 's'} aplicado${cambios === 1 ? '' : 's'} en ${piezasTxt(bien)}${mal.length ? `; ${mal.length} no (ábrelas: ${mal[0]})` : ''}`, mal.length > 0);
+}
+async function descartarLote() {
+  const ts = await api('GET', `api/ia/lotes/${encodeURIComponent(LOTE.id)}`);
+  const quedan = ts.filter((t) => t.estado === 'propuesta' || t.estado === 'error');
+  if (!quedan.length || !confirm(`¿Descartar las ${quedan.length} correcciones que quedan? No se cambia nada.`)) return;
+  for (const t of quedan) await api('POST', `api/ia/tareas/${t.id}/descartar`).catch(() => {});
+  await iaLote(LOTE.id);
+  toast('Descartadas');
+}
+
 
 // ---------- búsqueda en todo (piezas, tipos y proyectos) ----------
 function buscarTodo(query) {
@@ -1525,7 +1758,7 @@ async function cambioAjustes(input) {
 const CAMPOS_FICHA = {nombre: 'Nombre del tipo', categoria: 'Categoría', resumen: 'Resumen', voltaje: 'Tensión', tension: 'Tensión',
   interfaz: 'Interfaces', interfaces: 'Interfaces', alias: 'Otros nombres', pines: 'Pines', pin: 'Pines', datos: 'Datos del tipo',
   ojo: 'Advertencia («Ojo»)', advertencias: 'Advertencia («Ojo»)'};
-const CAMPOS_PIEZA = {nombre: 'Nombre de la pieza', notas: 'Notas de la pieza', datos: 'Datos de la pieza', datos_pieza: 'Datos de la pieza'};
+const CAMPOS_PIEZA = {nombre: 'Nombre de la pieza', tipo: 'Tipo de la pieza', notas: 'Notas de la pieza', datos: 'Datos de la pieza', datos_pieza: 'Datos de la pieza'};
 function nombreCampo(campo) {
   const m = norm(campo).match(/^(ficha|tipo|pieza)[.:s]+([a-z_]+)/) || [null, 'ficha', norm(campo).match(/^[a-z_]+/)?.[0]];
   const nombre = (m[1] === 'pieza' ? CAMPOS_PIEZA : CAMPOS_FICHA)[m[2]];
@@ -1569,9 +1802,16 @@ function aplicarEnLocal(t, ids) {
   const pc = o.componente_id ? comp(o.componente_id) : null;
   const pieza = pc ? {nombre: pc.nombre, notas: pc.notas || '', datos_pieza: list(pc.datos).map((x) => [...x])} : null;
   const marcados = p.cambios.filter((c) => ids.includes(c.id));
+  let otroTipo = null; // la pieza pasa a otro tipo (uno que ya existe o uno nuevo)
   for (const c of marcados) {
     const obj = c.ambito === 'tipo' ? tipo : pieza;
     if (!obj) continue;
+    if (c.ambito === 'pieza' && c.campo === 'tipo') {
+      const f = c.nuevo?.existente ? D.tipos[c.nuevo.existente] : c.nuevo?.nuevo;
+      if (f) otroTipo = {...f, revisado: c.nuevo?.nuevo ? 0 : f.revisado, alias: [...list(f.alias)], interfaz: [...list(f.interfaz)],
+        pines: list(f.pines).map((x) => [...x]), datos: list(f.datos).map((x) => [...x])};
+      continue;
+    }
     if (c.campo === 'pin' || c.campo === 'dato' || c.campo === 'datoPieza') {
       const prop = c.campo === 'pin' ? 'pines' : c.campo === 'dato' ? 'datos' : 'datos_pieza', k = c.id.split('.').slice(2).join('.');
       const i = obj[prop].findIndex((x) => claveTxt(x[0]) === k);
@@ -1579,7 +1819,7 @@ function aplicarEnLocal(t, ids) {
     } else obj[c.campo] = Array.isArray(c.nuevo) ? [...c.nuevo] : c.nuevo;
   }
   if (tipo && marcados.some((c) => c.ambito === 'tipo')) tipo.revisado = 0; // lo cambia la IA: «sin comprobar»
-  return {tipo, pieza, pc, marcados};
+  return {tipo: otroTipo || tipo, pieza, pc, marcados};
 }
 function previaRevision(t, ids) {
   const {tipo, pieza, pc, marcados} = aplicarEnLocal(t, ids);
@@ -1682,7 +1922,8 @@ function route() {
     nuevo: ['inventario', () => vForm(null, new URLSearchParams(qs).get('tipo') || '')], editar: ['inventario', () => vForm(arg)],
     proyectos: ['proyectos', vProyectos], p: ['proyectos', () => vProyecto(arg)],
     glosario: ['glosario', vGlosario], g: ['glosario', () => (sub === 'editar' ? vEditarTipo(arg) : vTipo(arg))],
-    ia: ['inventario', () => vIA(arg)],
+    ia: ['inventario', () => (arg === 'lote' ? vLoteIA(sub) : vIA(arg))],
+    lote: ['inventario', vLote],
     ajustes: ['ajustes', () => vAjustes(arg)],
     buscar: ['buscar', vBuscar],
   };
@@ -1692,7 +1933,8 @@ function route() {
   app.innerHTML = fn();
   document.title = `[AMS] lab · ${tab}`;
   if (v === 'g' && sub === 'editar') editarTipoCargar();
-  if (v === 'ia') { if (arg === 'ajustes') iaAjustes(); else if (arg) iaTarea(arg); else { iaAbiertas(); llenarModelosAlta(); } }
+  if (v === 'ia') { if (arg === 'ajustes') iaAjustes(); else if (arg === 'lote') iaLote(sub); else if (arg) iaTarea(arg); else { iaAbiertas(); llenarModelosAlta(); } }
+  if (v !== '' && v !== 'lote' && ui.seleccionando) salirSeleccion(); // la selección vive en el Inventario y en «Editar juntas»
   if (v === 'ajustes') {
     const t = new URLSearchParams(qs).get('t');
     if (arg === 'tipos' && t) { ui.ajBuscar = D.tipos[t]?.nombre || t; ui.ajTipos = D.tipos[t]?.archivado ? 'archivados' : 'todos'; }
@@ -1710,7 +1952,7 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-rev-vista],[data-vista],.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar]');
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-rev-vista],[data-vista],#sel-modo,[data-sel],[data-sel-acc],[data-lote-todas],[data-lote-marcar],#lote-aplicar,#lote-descartar,.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar]');
   if (!t || !app.contains(t)) return; // solo botones de la propia vista (no el <html>, que lleva data-* del tema)
   // sin redibujar la vista: el selector de tipo y las tablas editables viven dentro de formularios a medio rellenar
   if (t.classList.contains('combo-op')) { elegirTipo(t.closest('.combo'), t.dataset.valor); return; }
@@ -1723,6 +1965,16 @@ app.addEventListener('click', async (e) => {
   }
   if (clicEditor(t)) return;
   try {
+    if (t.id === 'sel-modo') { if (ui.seleccionando) salirSeleccion(); else ui.seleccionando = true; route(); return; }
+    if (t.dataset.sel) { if (t.dataset.sel === 'visibles') ui.visibles.forEach((id) => ui.sel.add(id)); else ui.sel.clear(); route(); return; }
+    if (t.dataset.selAcc) { if (!t.disabled) await accionSel(t.dataset.selAcc); return; }
+    if (t.dataset.loteTodas) { ponerATodas(t.dataset.loteTodas); return; }
+    if (t.dataset.loteMarcar) {
+      document.querySelectorAll('.lote-cambio').forEach((x) => { x.checked = t.dataset.loteMarcar === 'todo'; LOTE.desmarcados[x.checked ? 'delete' : 'add'](`${x.dataset.tarea}:${x.value}`); });
+      contarLote(); return;
+    }
+    if (t.id === 'lote-aplicar') { try { await aplicarLote(t); } catch (err) { toast(err.message, true); contarLote(); } return; }
+    if (t.id === 'lote-descartar') { await descartarLote(); return; }
     if (t.dataset.vista) {
       await api('PUT', 'api/ajustes/vista_inventario', {valor: t.dataset.vista});
       D.ajustes.vista_inventario = t.dataset.vista;
@@ -1806,6 +2058,13 @@ app.addEventListener('change', async (e) => {
   }
   if (t.dataset.catNombre || t.dataset.sitioNombre) cambioAjustes(t);
   if (t.classList.contains('ia-cambio')) contarCambios();
+  if (t.classList.contains('sel-pieza')) {
+    const id = Number(t.value);
+    if (t.checked) ui.sel.add(id); else ui.sel.delete(id);
+    t.closest('.fila-sel, .tarjeta-sel')?.classList.toggle('marcada', t.checked);
+    if (!ui.selIA) refrescarBarraSel();
+  }
+  if (t.classList.contains('lote-cambio')) { LOTE.desmarcados[t.checked ? 'delete' : 'add'](`${t.dataset.tarea}:${t.value}`); contarLote(); }
   if (t.id === 'aj-importar' && t.files[0]) { subirCopia(t.files[0]); t.value = ''; }
   if (t.matches('.ed-fn select')) t.closest('.ed-fn').style.cssText = colorFn(t.value); // el punto de color sigue a la función
   if (t.name === 'varios') { const n = t.form.querySelector('[name=cantidad]'); n.disabled = t.checked; if (!t.checked && !n.value) n.value = 1; }
@@ -1831,6 +2090,7 @@ app.addEventListener('submit', async (e) => {
     }
     else if (e.target.id === 'form-ia-ok') await aplicarIA(e.target);
     else if (e.target.id === 'form-ficha') await guardarFicha(e.target);
+    else if (e.target.id === 'form-lote') { await guardarLote(e.target); b.disabled = false; }
     else await guardarForm(e.target, location.hash.startsWith('#/editar/') ? location.hash.split('/')[2] : null);
   } catch (err) { toast(err.message, true); b.disabled = false; b.textContent = b.dataset.texto; }
 });
