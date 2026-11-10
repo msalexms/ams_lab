@@ -2,6 +2,7 @@
 // y se sacan los cambios campo a campo, para que el usuario marque cuáles aplicar. Al aplicar se comprueba que lo de
 // «antes» sigue igual (si alguien editó la ficha entretanto, no se pisa: hay que pedir otra revisión).
 import {leerFicha, guardarTipo} from './db.mjs';
+import {idLibre} from './catalogo.mjs';
 
 const limpio = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
 const clave = (v) => limpio(v).toLowerCase();
@@ -15,7 +16,7 @@ const LISTAS_TIPO = {interfaz: 'Interfaces', alias: 'También se llama'};
 const CAMPOS_PIEZA = {nombre: 'Nombre de la pieza', notas: 'Notas'};
 
 // cambios entre la ficha actual y la propuesta; nombres de categoría y de función de pin para que se lean bien
-export function diferencias(actual, nueva, {categorias = {}, funciones = {}} = {}) {
+export function diferencias(actual, nueva, {categorias = {}, funciones = {}, tipos = {}} = {}) {
   const cambios = [];
   const poner = (c) => cambios.push(c);
   if (actual.tipo && nueva.tipo) {
@@ -51,6 +52,15 @@ export function diferencias(actual, nueva, {categorias = {}, funciones = {}} = {
       poner({id: `pieza.${campo}`, ambito: 'pieza', campo, etiqueta, antes: limpio(a[campo]), despues: limpio(n[campo]), actual: limpio(a[campo]), nuevo: limpio(n[campo])});
     }
     datosCambios('pieza', 'datoPieza', 'Dato de la pieza', a.datos_pieza, n.datos_pieza, poner);
+    // tipo de la pieza: a otro que ya existe o a uno nuevo (la ficha nueva se crea al aplicar, «sin comprobar»)
+    if (n.tipo?.existente || n.tipo?.nuevo) {
+      const f = n.tipo.nuevo;
+      poner({id: 'pieza.tipo', ambito: 'pieza', campo: 'tipo', etiqueta: 'Tipo de la pieza', tipoCambio: f ? 'nuevo' : 'cambio',
+        antes: a.tipo_id ? tipos[a.tipo_id] || a.tipo_id : 'Sin tipo',
+        despues: f ? `${limpio(f.nombre)} (tipo nuevo: ${[categorias[f.categoria] || f.categoria, limpio(f.voltaje), `${(f.pines || []).length} pines`].filter(Boolean).join(' · ')})`
+          : tipos[n.tipo.existente] || n.tipo.existente,
+        actual: a.tipo_id || null, nuevo: f ? {nuevo: f} : {existente: n.tipo.existente}});
+    }
   }
   return cambios;
 }
@@ -72,8 +82,8 @@ export function estadoActual(db, objetivo) {
   const out = {};
   if (objetivo.tipo_id) out.tipo = leerFicha(db, objetivo.tipo_id);
   if (objetivo.componente_id) {
-    const c = db.prepare('SELECT nombre, notas FROM componentes WHERE id = ?').get(objetivo.componente_id);
-    if (c) out.pieza = {nombre: c.nombre, notas: c.notas || '',
+    const c = db.prepare('SELECT nombre, notas, tipo_id FROM componentes WHERE id = ?').get(objetivo.componente_id);
+    if (c) out.pieza = {nombre: c.nombre, notas: c.notas || '', tipo_id: c.tipo_id || null,
       datos_pieza: db.prepare('SELECT clave, valor FROM componente_datos WHERE componente_id = ? ORDER BY orden').all(objetivo.componente_id).map((r) => [r.clave, r.valor])};
   }
   return out;
@@ -89,8 +99,22 @@ export function aplicarCambios(db, objetivo, cambios, ids) {
   const cambiado = (c) => { throw new ConflictoRevision(`«${c.etiqueta}» ha cambiado desde que lo miró la IA: pide otra corrección para no pisar lo nuevo`); };
   const fila = (filas, k) => filas.find((x) => clave(x[0]) === k);
 
+  let nuevoTipo; // id del tipo que pasa a tener la pieza (si se eligió ese cambio)
   for (const c of elegidos) {
     const obj = c.ambito === 'tipo' ? ahora.tipo : ahora.pieza;
+    if (c.ambito === 'pieza' && c.campo === 'tipo') {
+      if ((ahora.pieza.tipo_id || null) !== (c.actual || null)) cambiado(c);
+      if (c.nuevo?.existente) {
+        if (!db.prepare('SELECT 1 FROM tipos WHERE id = ?').get(c.nuevo.existente)) throw new ConflictoRevision('Ese tipo ya no existe: pide otra corrección');
+        nuevoTipo = c.nuevo.existente;
+      } else if (c.nuevo?.nuevo) {
+        const f = {...c.nuevo.nuevo};
+        if (!db.prepare('SELECT 1 FROM categorias WHERE id = ?').get(f.categoria)) f.categoria = 'otro';
+        nuevoTipo = idLibre(db, 'tipos', f.nombre, 'tipo');
+        guardarTipo(db, nuevoTipo, f, {origen: 'ia', revisado: 0}); // ficha nueva de la IA: «sin comprobar»
+      }
+      continue;
+    }
     if (c.campo === 'pin' || c.campo === 'dato' || c.campo === 'datoPieza') {
       const filas = c.campo === 'pin' ? obj.pines : c.campo === 'dato' ? obj.datos : obj.datos_pieza;
       const k = c.id.split('.').slice(2).join('.');
@@ -115,6 +139,7 @@ export function aplicarCambios(db, objetivo, cambios, ids) {
   if (elegidos.some((c) => c.ambito === 'pieza')) {
     const p = ahora.pieza;
     db.prepare('UPDATE componentes SET nombre = ?, notas = ? WHERE id = ?').run(limpio(p.nombre).slice(0, 200) || 'Pieza', String(p.notas ?? '').slice(0, 2000), objetivo.componente_id);
+    if (nuevoTipo) db.prepare('UPDATE componentes SET tipo_id = ? WHERE id = ?').run(nuevoTipo, objetivo.componente_id);
     db.prepare('DELETE FROM componente_datos WHERE componente_id = ?').run(objetivo.componente_id);
     p.datos_pieza.forEach(([k, v], n) => db.prepare('INSERT OR IGNORE INTO componente_datos (componente_id, orden, clave, valor) VALUES (?, ?, ?, ?)')
       .run(objetivo.componente_id, n + 1, limpio(k).slice(0, 60), limpio(v).slice(0, 200)));
