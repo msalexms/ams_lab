@@ -263,7 +263,7 @@ const tarea = (id) => {
     propuesta: t.propuesta ? JSON.parse(t.propuesta) : null, error: t.error, modelo: t.modelo,
     componente_id: t.componente_id, creada: t.creada, rondas: (entrada.rondas || []).length,
     actualizada: t.actualizada, ahora: db.prepare("SELECT datetime('now') AS t").get().t, // para el contador de segundos
-    modelo_pedido: entrada.modelo || null, objetivo: entrada.objetivo || null, objetivo_nombre: nombreObjetivo(entrada.objetivo)};
+    modelo_pedido: entrada.modelo || null, objetivo: entrada.objetivo || null, objetivo_nombre: nombreObjetivo(entrada.objetivo), lote: entrada.lote || null};
 };
 
 // el usuario contesta las dudas (y/o añade información) sobre la propuesta que tiene en pantalla, quizá ya corregida:
