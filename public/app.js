@@ -875,6 +875,32 @@ async function modelosIA(forzar = false) {
   return MODELOS_IA;
 }
 
+// cuánto razona el modelo antes de responder (tabla ajustes «ia_razonar»); con lo que significa para el modelo elegido
+const RAZONAR = {
+  poco: {nombre: 'Poco', sub: 'Rápido y barato. Suficiente para casi todas las piezas.'},
+  medio: {nombre: 'Medio', sub: 'Piensa más: para placas raras o serigrafías difíciles. Tarda y cuesta más.'},
+  mucho: {nombre: 'Mucho', sub: 'Lo máximo que admita el modelo. Lento y bastante más caro: solo si lo demás falla.'},
+};
+// lo que pide la app al modelo con cada nivel (igual que server/ia.mjs → esfuerzoPara)
+function esfuerzoDe(m, nivel) {
+  const l = m?.esfuerzos || [];
+  if (m?.api === 'messages' && nivel === 'poco') return 'sin pensamiento';
+  if (!l.length) return m?.api === 'messages' ? `pensamiento ${nivel === 'medio' ? 'corto' : 'largo'}` : 'lo que decida el modelo';
+  return nivel === 'mucho' ? l[l.length - 1] : nivel === 'medio' ? (l.includes('medium') ? 'medium' : l[Math.floor((l.length - 1) / 2)]) : l[0];
+}
+function bloqueRazonar(m) {
+  const actual = RAZONAR[D.ajustes.ia_razonar] ? D.ajustes.ia_razonar : 'poco';
+  const nota = !m ? '' : !m.razona ? `${esc(m.nombre)} no razona: este ajuste no le cambia nada.`
+    : `Con ${esc(m.nombre)}: ${Object.keys(RAZONAR).map((k) => `${RAZONAR[k].nombre.toLowerCase()} = ${esc(esfuerzoDe(m, k))}`).join(' · ')}.`;
+  return `<h3>Cuánto razona</h3>
+    <p class="ayuda">Antes de responder, el modelo «piensa». Más razonamiento acierta más en piezas difíciles, pero tarda más y cuesta
+      más (lo que piensa se cobra como respuesta). Vale para «Añadir con IA» y «Corregir con IA».</p>
+    <div class="ia-modelos" role="radiogroup" aria-label="Cuánto razona">${Object.entries(RAZONAR).map(([k, v]) => `
+      <label class="ia-modelo"><input type="radio" name="ia-razonar" value="${k}" ${k === actual ? 'checked' : ''}>
+        <span><span class="nombre">${v.nombre}${k === 'poco' ? '<span class="gris"> · recomendado</span>' : ''}</span><span class="sub">${v.sub}</span></span></label>`).join('')}</div>
+    ${nota ? `<p class="ayuda">${nota}</p>` : ''}`;
+}
+
 async function iaAjustes() {
   const zona = $('#ia-ajustes');
   if (!zona) return;
@@ -896,6 +922,7 @@ async function iaAjustes() {
       ${fuera ? `<p class="aviso">El modelo actual («${esc(cfg.modelo)}») ya no está en el catálogo con fotos: elige otro.</p>` : ''}
       <p class="ayuda" id="ia-modelo-estado" role="status"></p>
     </section>
+    <section class="pad ia-bloque" id="ia-razonar-zona">${bloqueRazonar(lista.find((m) => m.id === cfg.modelo))}</section>
     <section class="pad ia-bloque">
       <h3>Clave de OpenCode Go</h3>
       <p>${cfg.clave ? `${esc(cfg.clave)} · ${esc(origen)}` : '<span class="mal">Sin clave: la IA no funciona hasta que pongas una.</span>'}</p>
@@ -923,6 +950,8 @@ async function cambiarModeloIA(radio) {
   estado.textContent = 'Comprobando con OpenCode Go…';
   try {
     D.ia = await api('PUT', 'api/ia/config', {modelo: radio.value});
+    const z = $('#ia-razonar-zona');
+    if (z) z.innerHTML = bloqueRazonar((MODELOS_IA || []).find((m) => m.id === radio.value));
     estado.textContent = `Listo: ${radio.closest('label').querySelector('.nombre').firstChild.textContent} es ahora el modelo de siempre.`;
   } catch (err) {
     estado.className = 'mal';
@@ -1180,7 +1209,7 @@ function vAjustes(sec) {
     <div class="sub">${sub}</div></div></a><span class="gris">→</span></div>`;
   return `<article class="hoja">${cabecera('Ajustes', '', 'Todo lo que se configura de la app. Lo que cambies aquí se ve al momento en el inventario y el glosario.')}
     <div class="pad aj-menu">
-      ${fila('#/ajustes/ia', 'IA', D.ia?.activa ? `Conectada · ${esc(nombreModelo(D.ia.modelo))} · clave ${esc(D.ia.clave)}` : '<span class="mal">Sin clave</span>')}
+      ${fila('#/ajustes/ia', 'IA', D.ia?.activa ? `Conectada · ${esc(nombreModelo(D.ia.modelo))} · razona ${esc((RAZONAR[D.ajustes.ia_razonar] || RAZONAR.poco).nombre.toLowerCase())} · clave ${esc(D.ia.clave)}` : '<span class="mal">Sin clave</span>')}
       ${fila('#/ajustes/categorias', 'Categorías', `${plural(D.categorias.length, 'categoría')} · renombrar, ordenar, añadir, borrar`)}
       ${fila('#/ajustes/tipos', 'Tipos', `${plural(tipos.length - archivados, 'tipo')}${archivados ? ` · ${archivados} archivado${archivados === 1 ? '' : 's'}` : ''} · archivar, fusionar, borrar`)}
       ${fila('#/ajustes/sitios', 'Sitios', `${plural(ubicaciones().length, 'sitio')} · renombrar, juntar, borrar`)}
@@ -1530,7 +1559,66 @@ async function enviarRevision(form) {
 }
 
 // los cambios propuestos: cada uno con su casilla (marcados al empezar), antes tachado y ahora en claro
+// vista previa de una corrección: la ficha tal como quedaría con SOLO los cambios marcados, aplicados aquí (sin guardar
+// nada) con la misma regla que el servidor (server/revision.mjs → aplicarCambios): pines y datos emparejados por su nombre
+const claveTxt = (v) => String(v ?? '').replace(/s+/g, ' ').trim().toLowerCase();
+function aplicarEnLocal(t, ids) {
+  const p = t.propuesta, o = p.objetivo || {};
+  const base = o.tipo_id && D.tipos[o.tipo_id];
+  const tipo = base ? {...base, alias: [...list(base.alias)], interfaz: [...list(base.interfaz)], pines: list(base.pines).map((x) => [...x]), datos: list(base.datos).map((x) => [...x])} : null;
+  const pc = o.componente_id ? comp(o.componente_id) : null;
+  const pieza = pc ? {nombre: pc.nombre, notas: pc.notas || '', datos_pieza: list(pc.datos).map((x) => [...x])} : null;
+  const marcados = p.cambios.filter((c) => ids.includes(c.id));
+  for (const c of marcados) {
+    const obj = c.ambito === 'tipo' ? tipo : pieza;
+    if (!obj) continue;
+    if (c.campo === 'pin' || c.campo === 'dato' || c.campo === 'datoPieza') {
+      const prop = c.campo === 'pin' ? 'pines' : c.campo === 'dato' ? 'datos' : 'datos_pieza', k = c.id.split('.').slice(2).join('.');
+      const i = obj[prop].findIndex((x) => claveTxt(x[0]) === k);
+      if (c.nuevo) { if (i >= 0) obj[prop][i] = [...c.nuevo]; else obj[prop].push([...c.nuevo]); } else if (i >= 0) obj[prop].splice(i, 1);
+    } else obj[c.campo] = Array.isArray(c.nuevo) ? [...c.nuevo] : c.nuevo;
+  }
+  if (tipo && marcados.some((c) => c.ambito === 'tipo')) tipo.revisado = 0; // lo cambia la IA: «sin comprobar»
+  return {tipo, pieza, pc, marcados};
+}
+function previaRevision(t, ids) {
+  const {tipo, pieza, pc, marcados} = aplicarEnLocal(t, ids);
+  const datosTxt = (pares) => `<p class="sec-datos">${pares.map(([k, v]) => `<span><span class="gris">${esc(k)}</span> ${esc(v)}</span>`).join('')}</p>`;
+  return `<div class="pad rev-resumen">${marcados.length
+      ? `<p class="ayuda">Así quedaría con ${marcados.length === 1 ? 'el cambio marcado' : `los ${marcados.length} cambios marcados`}. Aún no se ha guardado nada.</p>
+        <p class="rev-lista"><span class="gris">Cambia:</span> ${marcados.map((c) => esc(c.etiqueta)).join(' · ')}</p>`
+      : '<p class="ayuda">No hay ningún cambio marcado: la ficha se quedaría como está.</p>'}</div>
+    <article class="hoja ficha ia-previa-hoja">
+      ${cabFicha({
+        img: pc?.foto ? `<span class="pz-img"><img src="${fotoUrl(pc)}" alt=""></span>` : '',
+        titulo: esc(pieza ? pieza.nombre : tipo?.nombre || ''),
+        linea: pieza ? [esc(pc.ubicacion || 'Sin sitio'), esc(tipo ? tipo.nombre : 'Sin tipo')].join(' · ') : esc(CATS[tipo?.categoria] || ''),
+        extra: !pieza && tipo?.resumen ? `<p class="pz-resumen">${esc(tipo.resumen)}</p>` : ''})}
+      <div class="pz-cuerpo">
+        ${tipo ? notaOjo(tipo) : ''}
+        ${tipo && tipo.revisado === 0 ? avisoIA('') : ''}
+        ${pieza && pieza.datos_pieza.length ? specs(pieza.datos_pieza.map(([k, v]) => [esc(k), esc(v)])) : ''}
+        ${tipo ? `${lineaTecnica(tipo)}${tablaPines(tipo) || '<p class="gris">Sin pines.</p>'}` : ''}
+        ${pieza && tipo ? `<h3>${esc(tipo.nombre)} · ${esc(CATS[tipo.categoria] || '')}</h3>${tipo.resumen ? `<p class="resumen">${esc(tipo.resumen)}</p>` : ''}` : ''}
+        ${tipo && list(tipo.alias).length ? datosTxt([['Otros nombres', list(tipo.alias).join(', ')]]) : ''}
+        ${tipo && list(tipo.datos).length ? `<h3>Datos del tipo</h3>${tablaDatos(tipo.datos)}` : ''}
+        ${pieza?.notas ? `<h3>Notas</h3><p class="notas">${esc(pieza.notas)}</p>` : ''}
+      </div>
+    </article>`;
+}
+function verVistaRevision(vista, t) {
+  const previa = $('#rev-previa'), cambios = $('#rev-cambios');
+  if (!previa || !cambios || !t) return;
+  const ver = vista === 'previa';
+  if (ver) previa.innerHTML = previaRevision(t, [...document.querySelectorAll('.ia-cambio:checked')].map((x) => x.value));
+  previa.hidden = !ver;
+  cambios.hidden = ver;
+  document.querySelectorAll('[data-rev-vista]').forEach((b) => b.classList.toggle('on', b.dataset.revVista === vista));
+}
+let REVISION = null; // la corrección que está en pantalla (para la vista previa)
+
 function vistaCambios(t) {
+  REVISION = t;
   const p = t.propuesta, volver = volverRevision(t), tipoId = p.objetivo?.tipo_id;
   const piezasTipo = tipoId ? D.componentes.filter((c) => c.tipo === tipoId).length : 0;
   const fila = (c) => `<label class="ia-cambio-fila"><input type="checkbox" class="ia-cambio" value="${esc(c.id)}" checked>
@@ -1548,9 +1636,15 @@ function vistaCambios(t) {
     ${t.foto ? `<p class="ayuda pad">${t.foto_de_pieza ? 'Ha mirado la foto que ya tenía la pieza.' : 'Ha mirado la foto que adjuntaste.'}</p>` : ''}
     ${specs([['Cambios', String(p.cambios.length)], ['Confianza', esc(p.confianza)], ['Modelo', esc(nombreModelo(t.modelo))], ['Coste', esc(costeTexto(p.coste))]])}
     ${dudasIA(t, p)}
+    ${p.cambios.length ? `<div class="filtros ia-pestanas"><div class="cats">
+      <button class="f on" type="button" data-rev-vista="cambios">Cambios</button>
+      <button class="f" type="button" data-rev-vista="previa">Vista previa</button></div></div>` : ''}
+    <div id="rev-previa" hidden></div>
+    <div id="rev-cambios">
     ${grupo('tipo', `Ficha del tipo «${esc(nombreTipo)}»`, piezasTipo > 1 ? `La usan ${piezasTipo} piezas: los cambios se verán en todas. La ficha quedará «sin comprobar» hasta que la mires.` : 'La ficha quedará «sin comprobar» hasta que la mires.')}
     ${grupo('pieza', 'Esta pieza', '')}
     ${p.motivos?.length ? `<details class="pad ia-motivos"><summary>Por qué (${p.motivos.length})</summary><ul>${p.motivos.map((m) => `<li><strong>${esc(nombreCampo(m.campo))}</strong>: ${esc(m.motivo)}</li>`).join('')}</ul></details>` : ''}
+    </div>
     <div class="acciones pad">
       ${p.cambios.length ? `<button class="btn prim" type="button" id="ia-aplicar-cambios" data-id="${t.id}" data-volver="${volver}">Aplicar ${p.cambios.length} cambio${p.cambios.length === 1 ? '' : 's'}</button>
         <button class="btn" type="button" data-ia-marcar="todo">Marcar todo</button>
@@ -1616,7 +1710,7 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-vista],.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar]');
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-rev-vista],[data-vista],.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar]');
   if (!t || !app.contains(t)) return; // solo botones de la propia vista (no el <html>, que lleva data-* del tema)
   // sin redibujar la vista: el selector de tipo y las tablas editables viven dentro de formularios a medio rellenar
   if (t.classList.contains('combo-op')) { elegirTipo(t.closest('.combo'), t.dataset.valor); return; }
@@ -1641,6 +1735,7 @@ app.addEventListener('click', async (e) => {
     if (t.dataset.iaMarcar) { document.querySelectorAll('.ia-cambio').forEach((x) => (x.checked = t.dataset.iaMarcar === 'todo')); contarCambios(); return; }
     if (t.id === 'ia-aplicar-cambios') { try { await aplicarRevisionIA(t); } catch (err) { t.disabled = false; toast(err.message, true); } return; }
     if (t.dataset.iaVista) { verVistaIA(t.dataset.iaVista); return; }
+    if (t.dataset.revVista) { verVistaRevision(t.dataset.revVista, REVISION); return; }
     if (t.id === 'ia-guardar-previa') { verVistaIA('editar'); $('#form-ia-ok').requestSubmit(); return; }
     if (t.id === 'ia-responder') { try { await responderIA(t); } catch (err) { t.disabled = false; toast(err.message, true); } return; } // sin redibujar: no se pierde lo editado
     if (t.id === 'ia-quitar') {
@@ -1697,6 +1792,11 @@ app.addEventListener('change', async (e) => {
   const t = e.target;
   if (t.id === 'ubic') { ui.ubic = t.value; route(); }
   if (t.name === 'ia-modelo') cambiarModeloIA(t);
+  if (t.name === 'ia-razonar') {
+    const antes = D.ajustes.ia_razonar;
+    try { await api('PUT', 'api/ajustes/ia_razonar', {valor: t.value}); D.ajustes.ia_razonar = t.value; toast(`La IA razonará: ${RAZONAR[t.value].nombre.toLowerCase()}`); }
+    catch (err) { D.ajustes.ia_razonar = antes; toast(err.message, true); iaAjustes(); }
+  }
   if (t.name === 'fuente') {
     const antes = fuenteActual();
     D.ajustes.fuente = t.value;
