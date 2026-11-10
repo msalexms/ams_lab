@@ -63,6 +63,68 @@ const fotoUrl = (c) => `fotos/${encodeURIComponent(c.foto)}`;
 const vacio = (html) => `<div class="vacio">${html}</div>`;
 
 // aviso abajo; con «accion» ({texto, fn}) lleva un botón (p. ej. «Deshacer») y dura más
+
+// ---------- diálogo de confirmación propio (en vez del confirm() del navegador) ----------
+// confirmar('¿Borrar X?\n\nNo se puede deshacer.', {si: 'Borrar', peligro: true}) → promesa con true o false.
+// La primera línea es la pregunta; lo demás, la explicación. Esc o «Cancelar» = no.
+function confirmar(texto, {si = 'Aceptar', no = 'Cancelar', peligro = false} = {}) {
+  return new Promise((resolver) => {
+    const [titulo, ...resto] = String(texto).split(/\n\s*\n|\n/);
+    const d = document.createElement('dialog');
+    d.className = 'dialogo';
+    d.setAttribute('aria-labelledby', 'dialogo-t');
+    d.innerHTML = `<form method="dialog">
+      <p class="dialogo-t" id="dialogo-t">${esc(titulo)}</p>
+      ${resto.filter((x) => x.trim()).map((x) => `<p class="dialogo-p">${esc(x.trim())}</p>`).join('')}
+      <div class="acciones dialogo-acc">
+        <button class="btn ${peligro ? 'peligro-prim' : 'prim'}" value="si">${esc(si)}</button>
+        <button class="btn" value="no">${esc(no)}</button>
+      </div></form>`;
+    document.body.append(d);
+    d.addEventListener('close', () => { resolver(d.returnValue === 'si'); d.remove(); }, {once: true});
+    d.addEventListener('click', (e) => { if (e.target === d) d.close('no'); }); // tocar fuera = cancelar
+    d.showModal();
+    d.querySelector(peligro ? 'button[value=no]' : 'button[value=si]').focus(); // si es peligroso, el foco en «Cancelar»
+  });
+}
+
+// ---------- campo de foto con el aspecto de la app ----------
+// el <input type=file> sigue ahí (FormData lo lee igual) pero oculto; se ve un botón, el nombre y una miniatura
+const campoFoto = (etiqueta, ayuda = '') => `<div class="campo">${etiqueta}
+  <div class="archivo">
+    <label class="archivo-elegir"><input type="file" name="foto" accept="image/*" class="archivo-input"><span class="btn">Elegir foto</span></label>
+    <span class="archivo-nombre gris">Ninguna</span>
+    <button class="btn mini archivo-quitar" type="button" hidden>Quitar</button>
+  </div>${ayuda ? `<span class="ayuda">${ayuda}</span>` : ''}</div>`;
+function pintarArchivo(input) {
+  const caja = input.closest('.archivo'), f = input.files?.[0];
+  const nombre = caja.querySelector('.archivo-nombre'), quitar = caja.querySelector('.archivo-quitar'), boton = caja.querySelector('.archivo-elegir .btn');
+  caja.querySelector('.archivo-mini')?.remove();
+  caja.classList.toggle('con', !!f);
+  if (!f) { nombre.textContent = 'Ninguna'; nombre.classList.add('gris'); quitar.hidden = true; boton.textContent = 'Elegir foto'; return; }
+  const kb = f.size / 1024;
+  nombre.innerHTML = `<span class="archivo-fichero" title="${esc(f.name)}">${esc(f.name)}</span><span class="archivo-peso gris">${kb < 1024 ? `${Math.max(1, Math.round(kb))} KB` : `${(kb / 1024).toFixed(1).replace('.', ',')} MB`}</span>`;
+  nombre.classList.remove('gris');
+  quitar.hidden = false;
+  boton.textContent = 'Cambiar';
+  if (f.type.startsWith('image/')) {
+    const img = document.createElement('img');
+    img.className = 'archivo-mini';
+    img.alt = '';
+    img.src = URL.createObjectURL(f);
+    img.onload = () => URL.revokeObjectURL(img.src);
+    caja.prepend(img);
+  }
+}
+document.addEventListener('change', (e) => { if (e.target.classList?.contains('archivo-input')) pintarArchivo(e.target); });
+document.addEventListener('click', (e) => {
+  const q = e.target.closest?.('.archivo-quitar');
+  if (!q) return;
+  const input = q.closest('.archivo').querySelector('.archivo-input');
+  input.value = '';
+  pintarArchivo(input);
+});
+
 function toast(msg, mal = false, accion = null) {
   const t = $('#toast');
   t.textContent = msg;
@@ -418,7 +480,7 @@ async function accionSel(acc) {
     return;
   }
   if (acc === 'borrar') {
-    if (!confirm(`¿Borrar ${piezasTxt(ids.length)}? Podrás deshacerlo durante 2 minutos.`)) return;
+    if (!(await confirmar(`¿Borrar ${piezasTxt(ids.length)}?\nPodrás deshacerlo durante 2 minutos.`, {si: 'Borrar', peligro: true}))) return;
     const r = await api('POST', 'api/componentes/lote/borrar', {ids});
     D.componentes = D.componentes.filter((c) => !ids.includes(c.id));
     salirSeleccion(); contadores(); route();
@@ -573,7 +635,7 @@ async function aplicarLote(boton) {
 async function descartarLote() {
   const ts = await api('GET', `api/ia/lotes/${encodeURIComponent(LOTE.id)}`);
   const quedan = ts.filter((t) => t.estado === 'propuesta' || t.estado === 'error');
-  if (!quedan.length || !confirm(`¿Descartar las ${quedan.length} correcciones que quedan? No se cambia nada.`)) return;
+  if (!quedan.length || !(await confirmar(`¿Descartar las ${quedan.length} correcciones que quedan?\nNo se cambia nada de tus piezas ni de sus fichas.`, {si: 'Descartar', peligro: true}))) return;
   for (const t of quedan) await api('POST', `api/ia/tareas/${t.id}/descartar`).catch(() => {});
   await iaLote(LOTE.id);
   toast('Descartadas');
@@ -901,7 +963,7 @@ function vForm(id, tipoInicial = '') {
         <label>Notas<textarea name="notas" rows="3" maxlength="2000">${esc(c.notas)}</textarea></label>
         ${editorFilas('datos', c.datos, {campo: 'datos_pieza', etiqueta: 'Datos de esta pieza', boton: 'Añadir dato',
           ayuda: 'Lo que cambia de una pieza a otra del mismo tipo: «Valor» → «220 Ω», «Color» → «rojo».'})}
-        ${id ? '' : '<label>Foto (opcional)<input type="file" name="foto" accept="image/*"></label>'}
+        ${id ? '' : campoFoto('Foto (opcional)')}
         <label class="check"><input type="checkbox" name="revisar" ${c.revisar ? 'checked' : ''}> Pendiente: quiero mirar algo de esta pieza más tarde</label>
         <div class="acciones">
           <button class="btn prim" type="submit">Guardar</button>
@@ -1083,7 +1145,7 @@ function vIA(id) {
       ${cabecera('Añadir con IA', '', 'Haz una foto de la pieza (mejor si se lee la serigrafía) y añade lo que sepas. La IA propone el nombre, el tipo y la ficha; tú lo miras y corriges antes de guardar.')}
       <p class="ia-atajo">Modelo de siempre: <span id="ia-modelo-siempre">${esc(nombreModelo(D.ia.modelo))}</span> · <a href="#/ia/ajustes">Cambiar modelo o clave</a></p>
       <form id="form-ia" class="form" autocomplete="off">
-        <label>Foto<input type="file" name="foto" accept="image/*"></label>
+        ${campoFoto('Foto', 'Mejor si se lee la serigrafía.')}
         <label>Lo que sepas (opcional)<textarea name="texto" rows="3" maxlength="1000" placeholder="Sensor de humedad del kit de Freenove, 3 pines"></textarea></label>
         <label>Modelo para esta pieza<select name="modelo" id="ia-modelo-alta"><option value="">El de siempre (${esc(nombreModelo(D.ia.modelo))})</option></select>
           <span class="ayuda">Por si una pieza difícil merece otro modelo. No cambia el de siempre.</span></label>
@@ -1502,8 +1564,8 @@ async function descartarPendiente(valor) {
   let ids = [Number(id)];
   if (clase === 'lote') {
     ids = (await api('GET', `api/ia/lotes/${encodeURIComponent(id)}`)).filter((t) => t.estado === 'propuesta' || t.estado === 'error').map((t) => t.id);
-    if (!ids.length || !confirm(`¿Descartar las ${ids.length} correcciones que quedan en este lote? No se cambia nada.`)) return;
-  } else if (!confirm('¿Descartar esta propuesta de la IA? No se cambia nada.')) return;
+    if (!ids.length || !(await confirmar(`¿Descartar las ${ids.length} correcciones que quedan en este lote?\nNo se cambia nada de tus piezas ni de sus fichas.`, {si: 'Descartar', peligro: true}))) return;
+  } else if (!(await confirmar('¿Descartar esta propuesta de la IA?\nNo se cambia nada.', {si: 'Descartar', peligro: true}))) return;
   for (const t of ids) await api('POST', `api/ia/tareas/${t}/descartar`).catch(() => {});
   CUENTA_PEND = null;
   await cargarPendientes();
@@ -1840,7 +1902,7 @@ function subirCopia(file) {
 }
 
 async function restaurarCopia(boton) {
-  if (!confirm('¿Restaurar esta copia? Se sustituye todo lo de ahora (antes se guarda una copia del estado actual en el servidor).')) return;
+  if (!(await confirmar('¿Restaurar esta copia?\nSe sustituye todo lo de ahora. Antes se guarda una copia del estado actual en el servidor.', {si: 'Restaurar', peligro: true}))) return;
   boton.disabled = true;
   boton.textContent = 'Restaurando…';
   try {
@@ -1890,7 +1952,7 @@ async function clicAjustes(t) {
   if (d.catBorrar) {
     const n = Number(d.tipos), nombre = fila.querySelector('.aj-nombre').value;
     if (!n) {
-      if (!confirm(`¿Borrar la categoría «${nombre}»?`)) return true;
+      if (!(await confirmar(`¿Borrar la categoría «${nombre}»?`, {si: 'Borrar', peligro: true}))) return true;
       await api('DELETE', `api/categorias/${d.catBorrar}`);
       await ajRefrescar(`Categoría «${nombre}» borrada`);
       return true;
@@ -1920,21 +1982,21 @@ async function clicAjustes(t) {
     const destino = panel.querySelector('[data-fusion-destino]').value;
     if (!destino) { toast('Elige el tipo que se queda', true); return true; }
     const a = D.tipos[d.tipoFusionarOk]?.nombre, b = D.tipos[destino]?.nombre;
-    if (!confirm(`¿Fusionar «${a}» en «${b}»?\n\nSus piezas y proyectos pasan a «${b}» y «${a}» desaparece. No se puede deshacer.`)) return true;
+    if (!(await confirmar(`¿Fusionar «${a}» en «${b}»?\nSus piezas y proyectos pasan a «${b}» y «${a}» desaparece. No se puede deshacer.`, {si: 'Fusionar', peligro: true}))) return true;
     const r = await api('POST', `api/tipos/${d.tipoFusionarOk}/fusionar`, {destino});
     await ajRefrescar(`Fusionado: ${plural(r.piezas, 'pieza')} ${r.piezas === 1 ? 'pasa' : 'pasan'} a «${b}»`);
     return true;
   }
   if (d.tipoBorrar) {
     const nombre = D.tipos[d.tipoBorrar]?.nombre;
-    if (!confirm(`¿Borrar el tipo «${nombre}»? No se puede deshacer.`)) return true;
+    if (!(await confirmar(`¿Borrar el tipo «${nombre}»?\nNo se puede deshacer.`, {si: 'Borrar', peligro: true}))) return true;
     await api('DELETE', `api/tipos/${d.tipoBorrar}`);
     await ajRefrescar(`Tipo «${nombre}» borrado`);
     return true;
   }
   if (d.sitioBorrar) {
     const n = Number(d.piezas);
-    if (!confirm(n ? `¿Borrar «${d.nombre}»? Sus ${plural(n, 'pieza')} se quedan sin sitio.` : `¿Borrar «${d.nombre}»?`)) return true;
+    if (!(await confirmar(n ? `¿Borrar el sitio «${d.nombre}»?\nSus ${plural(n, 'pieza')} se quedan sin sitio.` : `¿Borrar el sitio «${d.nombre}»?`, {si: 'Borrar', peligro: true}))) return true;
     await api('DELETE', `api/ubicaciones/${d.sitioBorrar}`);
     await ajRefrescar('Sitio borrado');
     return true;
@@ -1952,7 +2014,7 @@ async function cambioAjustes(input) {
       await ajRefrescar('Guardado');
     } else {
       const otro = [...document.querySelectorAll('[data-sitio-nombre]')].find((x) => x !== input && x.defaultValue.toLowerCase() === nuevo.toLowerCase());
-      if (otro && !confirm(`Ya hay un sitio «${otro.defaultValue}». ¿Juntar los dos? Sus piezas pasan a ese.`)) { input.value = input.defaultValue; return; }
+      if (otro && !(await confirmar(`¿Juntar con «${otro.defaultValue}»?\nYa hay un sitio con ese nombre: las piezas de este pasan a ese.`, {si: 'Juntar'}))) { input.value = input.defaultValue; return; }
       const r = await api('PATCH', `api/ubicaciones/${input.dataset.sitioNombre}`, {nombre: nuevo});
       await ajRefrescar(r.fusionado ? `Juntados: ${plural(r.piezas, 'pieza')} en «${r.nombre}»` : 'Guardado');
     }
@@ -1979,8 +2041,7 @@ function panelRevisar(objetivo, id, ayuda) {
     <form id="form-revisar" class="form sin-pad" autocomplete="off" data-objetivo="${objetivo}" data-id="${esc(id)}">
       <p class="ayuda">${esc(ayuda)} Te enseña solo lo que cambiaría y tú eliges qué aplicar.</p>
       <label>Qué corregir (opcional)<textarea name="texto" rows="2" maxlength="1000" placeholder="Los pines están al revés · Añade el consumo"></textarea></label>
-      <label>Foto (opcional)<input type="file" name="foto" accept="image/*">
-        <span class="ayuda">Si no pones ninguna, la IA mira la foto que ya tiene la pieza.</span></label>
+      ${campoFoto('Foto (opcional)', 'Si no pones ninguna, la IA mira la foto que ya tiene la pieza.')}
       <div class="acciones"><button class="btn prim" type="submit">Pedir correcciones</button></div>
     </form></details>`;
 }
@@ -2210,14 +2271,14 @@ app.addEventListener('click', async (e) => {
     if (t.id === 'ia-guardar-previa') { verVistaIA('editar'); $('#form-ia-ok').requestSubmit(); return; }
     if (t.id === 'ia-responder') { try { await responderIA(t); } catch (err) { t.disabled = false; toast(err.message, true); } return; } // sin redibujar: no se pierde lo editado
     if (t.id === 'ia-quitar') {
-      if (!confirm('¿Quitar la clave de OpenCode Go? La IA dejará de funcionar hasta que pongas otra.')) return;
+      if (!(await confirmar('¿Quitar la clave de OpenCode Go?\nLa IA dejará de funcionar hasta que pongas otra.', {si: 'Quitar la clave', peligro: true}))) return;
       D.ia = await api('PUT', 'api/ia/config', {quitarClave: true});
       toast('Clave quitada');
       location.hash = '#/ia';
       return;
     }
     if (t.id === 'ia-descartar') {
-      if (!confirm('¿Descartar esta propuesta? No se guarda nada.')) return;
+      if (!(await confirmar('¿Descartar esta propuesta?\nNo se guarda nada.', {si: 'Descartar', peligro: true}))) return;
       await api('POST', `api/ia/tareas/${t.dataset.id}/descartar`);
       toast('Descartada');
       location.hash = t.dataset.volver || '#/ia';
@@ -2238,7 +2299,7 @@ app.addEventListener('click', async (e) => {
       guardarLocal(await api('PATCH', `api/componentes/${location.hash.split('/')[2]}`, {revisar: false}));
       toast('Marca quitada');
     } else if (t.id === 'quitar-foto') {
-      if (!confirm('¿Quitar la foto?')) return;
+      if (!(await confirmar('¿Quitar la foto de esta pieza?', {si: 'Quitar', peligro: true}))) return;
       guardarLocal(await api('DELETE', `api/componentes/${location.hash.split('/')[2]}/foto`));
     } else if (t.id === 'borrar') {
       const id = location.hash.split('/')[2], nombre = comp(id)?.nombre || 'la pieza';
