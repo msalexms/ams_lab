@@ -8,6 +8,7 @@ import {readFile, writeFile, unlink, rename, copyFile} from 'node:fs/promises';
 import {extname, join, normalize, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {networkInterfaces} from 'node:os';
+import {randomBytes} from 'node:crypto';
 import {readdirSync, statSync, existsSync, createReadStream, copyFileSync, renameSync, rmSync, mkdirSync} from 'node:fs';
 import {abrir, ubicacionId, sincronizarCatalogo, guardarTipo, VERSION} from './db.mjs';
 import {programarCopias, opcionesCopias, copiar, copiarFotosNuevas} from './copias.mjs';
@@ -269,7 +270,7 @@ function responderAlta(id, b) {
   }
   db.prepare("UPDATE ia_tareas SET entrada = ?, estado = 'pendiente', error = NULL WHERE id = ? AND estado = 'propuesta'")
     .run(JSON.stringify(entrada), t.id);
-  ejecutarAlta(db, FOTOS, t.id); // en segundo plano, como el alta
+  encolarIA(t.id); // en segundo plano, como el alta
   return tarea(t.id);
 }
 
@@ -281,6 +282,13 @@ async function crearRevision(req) {
     if (e instanceof HttpError) throw e;
     throw new HttpError(400, 'JSON no válido');
   }
+  const id = await nuevaRevision(b);
+  encolarIA(id);
+  return tarea(id);
+}
+
+// crea una tarea de corrección (sin lanzarla). b: {objetivo: 'pieza' | 'tipo', id, texto, modelo, foto (base64), lote}
+async function nuevaRevision(b) {
   const objetivo = {};
   if (b.objetivo === 'pieza') {
     const c = db.prepare('SELECT id, tipo_id FROM componentes WHERE id = ?').get(Number(b.id));
@@ -291,7 +299,7 @@ async function crearRevision(req) {
     if (!db.prepare('SELECT 1 FROM tipos WHERE id = ?').get(String(b.id))) throw new HttpError(404, 'Ese tipo no existe');
     objetivo.tipo_id = String(b.id);
   } else throw new HttpError(400, 'Di qué hay que corregir (una pieza o un tipo)');
-  const entrada = {texto: texto(b.texto, 1000), objetivo};
+  const entrada = {texto: texto(b.texto, 1000), objetivo, ...(b.lote ? {lote: String(b.lote)} : {})};
   if (b.modelo) {
     if (!(await modeloValido(String(b.modelo)))) throw new HttpError(400, 'Ese modelo no está disponible para fotos');
     entrada.modelo = String(b.modelo);
@@ -309,8 +317,53 @@ async function crearRevision(req) {
     else { await copyFile(join(FOTOS, suya), join(FOTOS, entrada.foto)); entrada.foto_de_pieza = true; }
     db.prepare('UPDATE ia_tareas SET entrada = ? WHERE id = ?').run(JSON.stringify(entrada), id);
   }
-  ejecutarAlta(db, FOTOS, Number(id)); // en segundo plano, igual que un alta
-  return tarea(id);
+  return Number(id);
+}
+
+// cola de llamadas al modelo: como mucho 2 a la vez (un lote de 20 piezas no lanza 20 peticiones juntas)
+const colaIA = [];
+let enCurso = 0;
+function encolarIA(id) {
+  if (id != null) colaIA.push(id);
+  while (enCurso < 2 && colaIA.length) {
+    enCurso++;
+    Promise.resolve(ejecutarAlta(db, FOTOS, colaIA.shift())).catch(() => {}).finally(() => { enCurso--; encolarIA(); });
+  }
+}
+
+// «Corregir con IA» de varias piezas a la vez: una tarea por pieza, todas con el mismo «lote»
+const MAX_LOTE = 30;
+async function corregirLote(b) {
+  if (!estado(db).activa) throw new HttpError(503, 'Falta la clave de OpenCode Go: ponla en Ajustes → IA');
+  const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(Number).filter(Number.isInteger))];
+  if (!ids.length) throw new HttpError(400, 'Elige alguna pieza');
+  if (ids.length > MAX_LOTE) throw new HttpError(400, `Como mucho ${MAX_LOTE} piezas a la vez`);
+  const faltan = ids.filter((id) => !db.prepare('SELECT 1 FROM componentes WHERE id = ?').get(id));
+  if (faltan.length) throw new HttpError(404, `No existe${faltan.length > 1 ? 'n' : ''} ${faltan.length > 1 ? 'algunas piezas' : 'esa pieza'}`);
+  const lote = randomBytes(6).toString('hex'), tareas = [];
+  for (const id of ids) tareas.push(await nuevaRevision({objetivo: 'pieza', id, texto: b.texto, lote}));
+  tareas.forEach(encolarIA);
+  return {lote, tareas};
+}
+const tareasLote = (lote) => db.prepare("SELECT id FROM ia_tareas WHERE json_extract(entrada, '$.lote') = ? ORDER BY id").all(String(lote)).map((x) => tarea(x.id));
+
+// edición rápida de varias piezas (cada una con sus campos), todo o nada
+const MAX_PIEZAS_LOTE = 300;
+function editarLote(b) {
+  const piezas = Array.isArray(b.piezas) ? b.piezas.slice(0, MAX_PIEZAS_LOTE) : [];
+  if (!piezas.length) throw new HttpError(400, 'No hay nada que guardar');
+  db.exec('BEGIN');
+  try {
+    for (const p of piezas) {
+      const c = comp(p.id);
+      // una cantidad concreta quiere decir que ya están contadas: deja de ser «hay muchas»
+      const cambios = limpiar(p.cantidad != null && p.cantidad !== '' && !('varios' in p) ? {...p, varios: false} : p, true);
+      if (Object.keys(cambios).length)
+        db.prepare(`UPDATE componentes SET ${Object.keys(cambios).map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(cambios), c.id);
+    }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  return {ok: true, guardadas: piezas.length, componentes: piezas.map((p) => comp(p.id))};
 }
 
 // aplica los cambios marcados de una revisión, todos o ninguno, comprobando que nada ha cambiado desde entonces
@@ -358,7 +411,7 @@ async function crearAlta(req) {
     await writeFile(join(FOTOS, entrada.foto), foto);
     db.prepare('UPDATE ia_tareas SET entrada = ? WHERE id = ?').run(JSON.stringify(entrada), id);
   }
-  ejecutarAlta(db, FOTOS, Number(id)); // en segundo plano: la web va preguntando el estado
+  encolarIA(Number(id)); // en segundo plano: la web va preguntando el estado
   return tarea(id);
 }
 
@@ -451,6 +504,8 @@ async function api(req, res, path) {
   }
   if (m === 'POST' && path === '/api/ia/alta') return send(res, 202, await crearAlta(req));
   if (m === 'POST' && path === '/api/ia/revisar') return send(res, 202, await crearRevision(req));
+  if (m === 'POST' && path === '/api/ia/revisar-lote') return send(res, 202, await corregirLote(await leerJson(req)));
+  if ((r = path.match(/^\/api\/ia\/lotes\/([a-f0-9]{12})$/)) && m === 'GET') return send(res, 200, tareasLote(r[1]));
   if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)\/aplicar-cambios$/)) && m === 'POST') return send(res, 200, await aplicarRevision(r[1], await leerJson(req)));
   if (m === 'GET' && path === '/api/ia/tareas') // las que siguen abiertas (pensando, propuesta sin confirmar o con error)
     return send(res, 200, db.prepare("SELECT id FROM ia_tareas WHERE estado IN ('pendiente', 'propuesta', 'error') ORDER BY id DESC LIMIT 20")
@@ -513,7 +568,22 @@ async function api(req, res, path) {
     if (m === 'PATCH') return send(res, 200, cat.renombrarSitio(db, r[1], await leerJson(req)));
     if (m === 'DELETE') return send(res, 200, cat.borrarSitio(db, r[1]));
   }
-  if (m === 'POST' && path === '/api/componentes/restaurar') return send(res, 200, await cat.restaurarPieza(db, FOTOS, (await leerJson(req)).token));
+  if (m === 'POST' && path === '/api/componentes/restaurar') {
+    const b = await leerJson(req);
+    if (!Array.isArray(b.tokens)) return send(res, 200, await cat.restaurarPieza(db, FOTOS, b.token));
+    const ids = []; // deshacer el borrado de varias: las que aún se puedan
+    for (const t of b.tokens.slice(0, MAX_PIEZAS_LOTE)) { try { ids.push((await cat.restaurarPieza(db, FOTOS, t)).id); } catch {} }
+    if (!ids.length) throw new HttpError(410, 'Ya no se puede deshacer');
+    return send(res, 200, {ok: true, ids});
+  }
+  if (m === 'POST' && path === '/api/componentes/lote') return send(res, 200, editarLote(await leerJson(req)));
+  if (m === 'POST' && path === '/api/componentes/lote/borrar') {
+    const ids = [...new Set(((await leerJson(req)).ids || []).map(Number).filter(Number.isInteger))].slice(0, MAX_PIEZAS_LOTE);
+    if (!ids.length) throw new HttpError(400, 'Elige alguna pieza');
+    const deshacer = [];
+    for (const id of ids) { comp(id); deshacer.push((await cat.borrarPieza(db, FOTOS, id)).deshacer); } // se puede deshacer 2 minutos
+    return send(res, 200, {ok: true, borradas: ids.length, deshacer});
+  }
 
   if ((r = path.match(/^\/api\/ajustes\/([a-z_]+)$/)) && m === 'PUT') {
     const valor = texto((await leerJson(req)).valor, 200);

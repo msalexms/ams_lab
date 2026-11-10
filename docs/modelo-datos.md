@@ -75,6 +75,9 @@ La web no guarda configuración propia: categorías, funciones de pin con sus co
 ## «Corregir con IA» (v6; antes «Revisar con IA»)
 Desde una pieza (revisa la pieza y la ficha de su tipo) o desde un tipo. La tarea (`clase = 'revisar'`) guarda en `entrada.objetivo` qué se revisa (`tipo_id`, `componente_id`). El modelo devuelve la ficha (y la pieza) **entera y corregida**; el servidor (`server/revision.mjs`) la compara con lo guardado y la propuesta es una lista de **cambios** (`id`, campo, antes, después; pines y datos emparejados por su nombre, así que reordenar no cuenta como cambio). Al aplicar los marcados se comprueba que lo de «antes» sigue igual: si la ficha cambió entretanto, no se aplica nada (409). Los cambios en la ficha la dejan con `origen = 'ia'` y `revisado = 0`.
 
+## Varias piezas y cambio de tipo con la IA (11/11/2026)
+Sin cambio de esquema. Una corrección hecha desde una pieza puede proponer el cambio `pieza.tipo`: `{existente: id}` o `{nuevo: ficha}`; al aplicarlo se comprueba que la pieza sigue con el tipo de antes (si no, 409) y, si es nuevo, se crea la ficha (`origen = 'ia'`, `revisado = 0`) con un id libre. Las correcciones en lote son tareas `revisar` normales con `entrada.lote` en común.
+
 ## Editar una ficha a mano (fase D)
 `GET /api/tipos/:id/ficha` da la ficha entera (formato de `guardarTipo`) y su **huella** (resumen de nombre, categoría, textos, alias, interfaces, pines y datos). `PUT` con la ficha nueva y esa huella: si la de ahora no coincide (la cambió la IA u otra pestaña), 409 y no se guarda nada. Se valida (nombre, categoría existente, función de pin existente, sin pines ni datos repetidos) y se guarda con `origen = 'usuario'`, `revisado = 1`. Los datos de una pieza llegan como `datos: [[clave, valor], …]` en el alta y la edición y se reescriben enteros.
 
