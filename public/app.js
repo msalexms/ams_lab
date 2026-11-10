@@ -336,7 +336,7 @@ function vInventario() {
         `<button class="f ${vistaInv() === k ? 'on' : ''}" data-vista="${k}" aria-pressed="${vistaInv() === k}">${v}</button>`).join('')}</span>
       <a class="btn solo-escritorio" href="#/ia">Añadir con IA</a>
       <a class="btn prim solo-escritorio" href="#/nuevo">Añadir pieza</a>
-    </div></div>`;
+    </div></div><div id="pend-aviso" aria-live="polite"></div>`;
 
   if (!D.componentes.length) return filtros + vacio('Aún no hay piezas. Pulsa + para añadir la primera.');
   if (!cs.length) return filtros + tambien(query, 'piezas') + vacio('Nada coincide con el filtro.');
@@ -507,7 +507,7 @@ function filaCambio(c, extra = '') {
     ${c.despues ? `<span class="ia-ahora">${esc(c.despues)}</span>` : ''}${extra}`;
 }
 function vLoteIA(id) {
-  return `<a class="back" href="#/">← Inventario</a><article class="hoja" id="lote-zona" data-lote="${esc(id)}"><p class="gris pad">Cargando…</p></article>`;
+  return `<a class="back" href="#/pendientes">← IA pendiente</a><article class="hoja" id="lote-zona" data-lote="${esc(id)}"><p class="gris pad">Cargando…</p></article>`;
 }
 function htmlLote(ts) {
   const listas = ts.filter((t) => t.estado !== 'pendiente').length;
@@ -663,6 +663,7 @@ function vComponente(id) {
           ${plegable('Más sobre este tipo', mas)}
           ${plegable('Notas', c.notas ? `<p class="notas">${esc(c.notas)}</p>` : '')}
           ${plegable('Proyectos donde se usa', ps.length ? listaProyectos(ps) : '', ps.length)}
+          ${plegableHist('pieza', c.id, conTipo ? c.tipo : '')}
         </div>
         <p class="meta">Actualizado ${esc(c.actualizado)}</p>
       </div>
@@ -702,6 +703,7 @@ function vTipo(tipo) {
             tablaDatos(f.datos)].join(''))}
           ${plegable('Tus piezas de este tipo', cs.length ? cs.map(filaComp).join('') : '', cs.length)}
           ${plegable('Proyectos donde se usa', ps.length ? listaProyectos(ps) : '', ps.length)}
+          ${plegableHist('tipo', tipo)}
         </div>
         <p class="meta">Ficha ${{seed: 'del catálogo base', ia: 'de la IA', usuario: 'escrita por ti'}[f.origen] || ''}</p>
       </div>
@@ -1226,7 +1228,7 @@ async function iaAbiertas() {
   if (!zona) return;
   try {
     const ts = await api('GET', 'api/ia/tareas');
-    zona.innerHTML = ts.length ? `<section class="grupo"><h3 class="grupo-t">Sin terminar<span class="n">${ts.length}</span></h3>${ts.map((t) => `
+    zona.innerHTML = ts.length ? `<section class="grupo"><h3 class="grupo-t">Sin terminar<span class="n">${ts.length}</span></h3><p class="sub"><a href="#/pendientes">Ver todo en «IA pendiente»</a></p>${ts.map((t) => `
       <div class="fila"><a class="fila-main" href="#/ia/${t.id}">${t.foto ? `<img class="thumb" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : ''}
         <div><div class="nombre">${esc(t.clase === 'revisar' ? `Correcciones para «${t.objetivo_nombre || '?'}»` : t.propuesta?.nombre || t.texto || 'Pieza sin nombre')}</div><div class="sub">${esc(t.creada)}</div></div></a>
         <div class="der">${t.estado === 'error' ? '<span class="mal">Error</span>' : esc(ESTADO_IA[t.estado])}</div></div>`).join('')}</section>` : '';
@@ -1430,7 +1432,206 @@ async function aplicarIA(form) {
 
 // ---------- Ajustes (fase B): IA, categorías, tipos, sitios, datos y tema ----------
 const plural = (n, uno, varios = `${uno}s`) => `${n} ${n === 1 ? uno : varios}`;
-const SECCIONES = {ia: 'IA', categorias: 'Categorías', tipos: 'Tipos', sitios: 'Sitios', datos: 'Datos', letra: 'Letra'};
+
+// ---------- IA pendiente: lo que la IA tiene abierto (para no perder un lote al salir de su pantalla) ----------
+// fecha del servidor (UTC «AAAA-MM-DD HH:MM:SS») → «hace 5 min», «hoy 14:32», «ayer 09:10», «3 nov 14:32»
+function cuando(s) {
+  const t = fechaSql(s);
+  if (!t) return '';
+  const d = new Date(t), seg = (Date.now() - t) / 1000;
+  if (seg < 60) return 'ahora';
+  if (seg < 3600) return `hace ${Math.floor(seg / 60)} min`;
+  const hora = d.toLocaleTimeString('es-ES', {hour: '2-digit', minute: '2-digit'});
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  if (d >= hoy) return `hoy ${hora}`;
+  if (d >= hoy - 864e5) return `ayer ${hora}`;
+  return `${d.toLocaleDateString('es-ES', {day: 'numeric', month: 'short', ...(d.getFullYear() !== hoy.getFullYear() ? {year: 'numeric'} : {})})} ${hora}`;
+}
+// el nombre bonito de los modelos («Claude Haiku 5.5») necesita el catálogo: si aún no está, se pide y se vuelve a pintar
+const conModelos = (fn) => { if (!MODELOS_IA && D.ia?.activa) modelosIA().then(fn).catch(() => {}); };
+const fechaCompleta = (s) => (fechaSql(s) ? new Date(fechaSql(s)).toLocaleString('es-ES', {dateStyle: 'full', timeStyle: 'medium'}) : '');
+
+function vPendientes() {
+  return `<a class="back" href="#/">← Inventario</a><article class="hoja" id="pend-zona"><p class="gris pad">Cargando…</p></article>`;
+}
+const estadosLote = (e) => [e.propuesta ? `${e.propuesta} lista${e.propuesta === 1 ? '' : 's'}` : '', e.pendiente ? `${e.pendiente} pensando` : '',
+  e.error ? `<span class="mal">${e.error} con error</span>` : ''].filter(Boolean).join(' · ');
+function estadoTarea(t) {
+  if (t.estado === 'error') return '<span class="mal">Error</span>';
+  if (t.estado === 'pendiente') return 'Pensando…';
+  if (t.clase !== 'revisar') return 'Lista para revisar';
+  const n = t.propuesta?.cambios?.length || 0;
+  return n ? plural(n, 'cambio') : 'Nada que cambiar';
+}
+function filaPendiente(t) {
+  const nombre = t.clase === 'revisar' ? `Correcciones para «${t.objetivo_nombre || '¿?'}»` : t.propuesta?.nombre || t.texto || 'Pieza sin nombre';
+  const modelo = nombreModelo(t.modelo || t.modelo_pedido || D.ia?.modelo);
+  return `<div class="fila"><a class="fila-main" href="#/ia/${t.id}">${t.foto ? `<img class="thumb" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : ''}
+      <div><div class="nombre">${esc(nombre)}</div><div class="sub">${esc(cuando(t.creada))}${modelo ? ` · ${esc(modelo)}` : ''}${t.texto && t.clase === 'revisar' ? ` · «${esc(t.texto)}»` : ''}</div></div></a>
+    <div class="der"><span>${estadoTarea(t)}</span>${t.estado !== 'pendiente' ? `<button class="btn mini" type="button" data-pend-descartar="tarea:${t.id}">Descartar</button>` : ''}</div></div>`;
+}
+function filaLotePendiente(l) {
+  const mas = l.piezas.length > 4 ? ` y ${l.piezas.length - 4} más` : '';
+  const abiertas = (l.estados.propuesta || 0) + (l.estados.error || 0);
+  return `<div class="fila"><a class="fila-main" href="#/ia/lote/${esc(l.lote)}">
+      <div><div class="nombre">Correcciones de ${piezasTxt(l.total)} a la vez</div>
+        <div class="sub">${esc(l.piezas.slice(0, 4).join(', '))}${mas}${l.texto ? ` · «${esc(l.texto)}»` : ''}</div>
+        <div class="sub">${esc(cuando(l.creada))}${l.cambios ? ` · ${plural(l.cambios, 'cambio')} por mirar` : ''}</div></div></a>
+    <div class="der"><span>${estadosLote(l.estados)}</span>${abiertas ? `<button class="btn mini" type="button" data-pend-descartar="lote:${esc(l.lote)}">Descartar</button>` : ''}</div></div>`;
+}
+async function cargarPendientes() {
+  const zona = $('#pend-zona');
+  if (!zona) return;
+  let p;
+  try { p = await api('GET', 'api/ia/pendientes'); } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; return; }
+  const revisar = p.tareas.filter((t) => t.clase === 'revisar'), altas = p.tareas.filter((t) => t.clase !== 'revisar');
+  const grupo = (titulo, filas) => (filas.length ? `<section class="grupo pad"><h3 class="grupo-t">${titulo}<span class="n">${filas.length}</span></h3>${filas.join('')}</section>` : '');
+  zona.innerHTML = `${cabecera('IA pendiente', '', 'Lo que la IA ha preparado y espera a que lo mires, lo que aún está pensando y lo que falló. Nada se aplica hasta que tú lo marcas.')}
+    ${p.total ? '' : '<p class="pad gris">No hay nada pendiente. Si pides correcciones o añades piezas con IA y sales sin terminar, aparecerán aquí.</p>'}
+    ${grupo('Varias piezas a la vez', p.lotes.map(filaLotePendiente))}
+    ${grupo('Correcciones', revisar.map(filaPendiente))}
+    ${grupo('Piezas nuevas con IA', altas.map(filaPendiente))}
+    <p class="pad sub">Lo que ya aplicaste o descartaste está en <a href="#/ajustes/historial?g=ia">Ajustes → Historial</a>.</p>`;
+  if (p.tareas.length) conModelos(() => { if (location.hash === '#/pendientes') cargarPendientes(); });
+  const pensando = p.lotes.some((l) => l.estados.pendiente) || p.tareas.some((t) => t.estado === 'pendiente');
+  if (pensando) setTimeout(() => { if (location.hash === '#/pendientes') cargarPendientes(); }, 4000);
+}
+async function descartarPendiente(valor) {
+  const [clase, id] = valor.split(':');
+  let ids = [Number(id)];
+  if (clase === 'lote') {
+    ids = (await api('GET', `api/ia/lotes/${encodeURIComponent(id)}`)).filter((t) => t.estado === 'propuesta' || t.estado === 'error').map((t) => t.id);
+    if (!ids.length || !confirm(`¿Descartar las ${ids.length} correcciones que quedan en este lote? No se cambia nada.`)) return;
+  } else if (!confirm('¿Descartar esta propuesta de la IA? No se cambia nada.')) return;
+  for (const t of ids) await api('POST', `api/ia/tareas/${t}/descartar`).catch(() => {});
+  CUENTA_PEND = null;
+  await cargarPendientes();
+  toast(ids.length === 1 ? 'Descartada' : `${ids.length} descartadas`);
+}
+
+// aviso en el Inventario cuando la IA tiene algo sin terminar
+let CUENTA_PEND = null;
+function pintarAvisoPend() {
+  const z = $('#pend-aviso'), c = CUENTA_PEND;
+  if (!z || !c) return;
+  z.innerHTML = c.tareas ? `<a class="pend-aviso" href="#/pendientes"><span class="nota-t">IA pendiente</span>
+    <span>${c.grupos === 1 ? 'Hay 1 cosa' : `Hay ${c.grupos} cosas`} de la IA sin terminar${c.pensando ? ` (${c.pensando} pensando)` : ''}</span><span class="gris">Ver →</span></a>` : '';
+}
+async function avisoPendientes() {
+  pintarAvisoPend(); // lo último que se supo, sin esperar
+  try { CUENTA_PEND = await api('GET', 'api/ia/pendientes/cuenta'); } catch { return; }
+  pintarAvisoPend();
+}
+
+// ---------- historial de cambios (Ajustes → Historial, y el de cada pieza o ficha) ----------
+const HIST = {grupo: '', q: '', filas: [], mas: false, cargando: false};
+const GRUPOS_HIST = {'': 'Todo', piezas: 'Piezas', fichas: 'Fichas', ia: 'IA', catalogo: 'Catálogo', sistema: 'Copias y ajustes'};
+const OBJETO_HIST = {pieza: 'pieza', tipo: 'ficha', categoria: 'categoría', sitio: 'sitio', ia: 'IA', copia: 'copia', ajustes: 'ajuste'};
+const quienHist = (r) => (r.quien === 'ia' ? `IA${r.modelo ? ` · ${esc(nombreModelo(r.modelo))}` : ''}` : r.quien === 'sistema' ? 'Sistema' : 'Tú');
+function enlaceHist(r) {
+  if (!r.nombre) return '';
+  if (r.objeto === 'pieza' && comp(r.objeto_id)) return `<a href="#/c/${esc(r.objeto_id)}">${esc(r.nombre)}</a>`;
+  if (r.objeto === 'tipo' && D.tipos[r.objeto_id]) return `<a href="#/g/${encodeURIComponent(r.objeto_id)}">${esc(r.nombre)}</a>`;
+  return esc(r.nombre);
+}
+function filaHist(r, conObjeto = true) {
+  const d = r.detalle || {}, cambios = d.cambios || [];
+  const extra = [
+    d.cantidad ? `Tenía: ${esc(d.cantidad)}${d.sitio ? ` · en ${esc(d.sitio)}` : ''}${d.tipo ? ` · ${esc(d.tipo)}` : ''}` : '',
+    d.antes ? `El estado anterior se guardó como ${esc(d.antes)}` : '',
+    d.lote ? `<a href="#/ia/lote/${esc(d.lote)}">Ver el lote</a>` : '',
+    d.orden ? `Orden nuevo: ${esc(d.orden.join(', '))}` : '',
+  ].filter(Boolean);
+  const objeto = conObjeto && r.nombre ? `<span class="hist-obj">${enlaceHist(r)} <span class="gris">· ${OBJETO_HIST[r.objeto] || r.objeto}</span></span>` : '';
+  const cab = `<span class="hist-cuando" title="${esc(fechaCompleta(r.fecha))}">${esc(cuando(r.fecha))}</span>
+    <span class="hist-quien hist-${r.quien}">${quienHist(r)}</span>
+    <span class="hist-que">${objeto}<span class="hist-res">${esc(r.resumen)}</span></span>`;
+  if (!cambios.length && !extra.length) return `<div class="hist">${cab}</div>`;
+  return `<details class="hist"><summary>${cab}</summary><div class="hist-det">
+    ${cambios.map((c) => `<div class="hist-c"><span class="hist-campo">${esc(c.campo)}</span>
+      <span class="ia-antes">${esc(c.antes) || '<span class="gris">(vacío)</span>'}</span><span class="ia-ahora">${esc(c.despues) || '<span class="gris">(vacío)</span>'}</span></div>`).join('')}
+    ${extra.length ? `<p class="sub">${extra.join(' · ')}</p>` : ''}</div></details>`;
+}
+function ajHistorial() {
+  return `${cabecera('Historial', '', 'Todo lo que ha cambiado, de lo más nuevo a lo más antiguo: lo que haces tú, lo que la IA corrige (con el modelo que usó) y lo que hace el sistema. Toca una línea para ver el antes y el después.')}
+    <div class="filtros pad hist-filtros">
+      <div class="cats">${Object.entries(GRUPOS_HIST).map(([k, v]) => `<button class="f ${HIST.grupo === k ? 'on' : ''}" type="button" data-hist-grupo="${k}">${v}</button>`).join('')}</div>
+      <input id="hist-q" class="buscar-mini" type="search" placeholder="Buscar nombre o modelo" value="${esc(HIST.q)}" autocomplete="off" aria-label="Buscar en el historial">
+    </div>
+    <div class="hist-lista pad" id="hist-lista">${HIST.filas.length ? HIST.filas.map((r) => filaHist(r)).join('') : `<p class="gris">${HIST.cargando ? 'Cargando…' : 'Nada por aquí todavía.'}</p>`}</div>
+    ${HIST.mas ? '<div class="pad acciones"><button class="btn" type="button" id="hist-mas">Cargar más</button></div>' : ''}`;
+}
+async function histCargar(desdeCero) {
+  const zona = $('#aj-zona');
+  if (!zona || zona.dataset.sec !== 'historial') return;
+  if (desdeCero) { HIST.filas = []; HIST.mas = false; }
+  HIST.cargando = true;
+  if (desdeCero) zona.innerHTML = ajHistorial();
+  const qs = new URLSearchParams({limite: '60', ...(HIST.grupo ? {grupo: HIST.grupo} : {}), ...(HIST.q ? {q: HIST.q} : {}),
+    ...(HIST.filas.length ? {antes: String(HIST.filas[HIST.filas.length - 1].id)} : {})});
+  try {
+    const r = await api('GET', `api/auditoria?${qs}`);
+    HIST.filas = HIST.filas.concat(r.filas);
+    HIST.mas = r.mas;
+  } catch (err) { HIST.cargando = false; zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; return; }
+  HIST.cargando = false;
+  const foco = document.activeElement?.id === 'hist-q' ? document.activeElement.selectionStart : null;
+  zona.innerHTML = ajHistorial();
+  if (foco != null) { const i = $('#hist-q'); i.focus(); i.setSelectionRange(foco, foco); }
+  if (HIST.filas.some((r) => r.modelo)) conModelos(() => { const z = $('#aj-zona'); if (z?.dataset.sec === 'historial') z.innerHTML = ajHistorial(); });
+}
+let HIST_ESPERA = null;
+// historial de una pieza o de una ficha: se carga al abrir el desplegable
+const plegableHist = (objeto, id, tipo = '') => `<details class="plegable" data-historial="${objeto}:${esc(id)}" data-tipo="${esc(tipo || '')}"><summary>Historial</summary>
+  <div class="plegable-cuerpo"><p class="gris">Cargando…</p></div></details>`;
+async function cargarHistDe(det) {
+  const [objeto, ...resto] = det.dataset.historial.split(':'), id = resto.join(':');
+  const cuerpo = det.querySelector('.plegable-cuerpo');
+  try {
+    const tipo = det.dataset.tipo || '';
+    const r = await api('GET', `api/auditoria?${new URLSearchParams({objeto, id, limite: '100', ...(tipo ? {tipo} : {})})}`);
+    cuerpo.innerHTML = r.filas.length ? `${tipo ? '<p class="sub">Los cambios de la pieza y los de la ficha de su tipo (marcados «ficha»).</p>' : ''}
+      <div class="hist-lista">${r.filas.map((x) => filaHist(x, x.objeto !== objeto)).join('')}</div>
+      ${r.mas ? `<p class="sub">Solo los 100 últimos. <a href="#/ajustes/historial">Todo el historial</a></p>` : ''}` : '<p class="gris">Sin cambios apuntados todavía.</p>';
+    if (r.filas.some((x) => x.modelo)) conModelos(() => cargarHistDe(det));
+  } catch (err) { cuerpo.innerHTML = `<p class="mal">${esc(err.message)}</p>`; }
+}
+
+// ---------- registro del servidor (Ajustes → Registro) ----------
+const REG = {nivel: 'todo', q: '', datos: null};
+const NIVELES_REG = {todo: 'Todo', avisos: 'Avisos y errores', errores: 'Solo errores'};
+function ajRegistro() {
+  const d = REG.datos;
+  const linea = (l) => `<div class="reg-l reg-${l.nivel}"><span class="reg-h" title="${esc(new Date(l.fecha).toLocaleString('es-ES'))}">${esc(new Date(l.fecha).toLocaleTimeString('es-ES'))}</span><span class="reg-t">${esc(l.texto)}</span></div>`;
+  return `${cabecera('Registro del servidor', '', 'Los últimos mensajes del servidor: arranque, copias, lo que hace la IA, cada cambio que llega y los errores. Se guardan en memoria y se borran al reiniciar.')}
+    <div class="filtros pad hist-filtros">
+      <div class="cats">${Object.entries(NIVELES_REG).map(([k, v]) => `<button class="f ${REG.nivel === k ? 'on' : ''}" type="button" data-reg-nivel="${k}">${v}</button>`).join('')}</div>
+      <input id="reg-q" class="buscar-mini" type="search" placeholder="Buscar en el registro" value="${esc(REG.q)}" autocomplete="off" aria-label="Buscar en el registro">
+      <button class="btn mini" type="button" id="reg-copiar">Copiar</button>
+    </div>
+    ${d ? `<p class="pad sub">Arrancó ${esc(new Date(d.arranque).toLocaleString('es-ES', {dateStyle: 'medium', timeStyle: 'short'}))} · ${d.guardadas} mensajes guardados (como mucho ${d.maximo}) · se actualiza solo</p>
+      <div class="registro pad" id="reg-lista">${d.lineas.length ? d.lineas.map(linea).join('') : '<p class="gris">Nada que coincida.</p>'}</div>` : '<p class="pad gris">Cargando…</p>'}`;
+}
+async function regCargar() {
+  const zona = $('#aj-zona');
+  if (!zona || zona.dataset.sec !== 'registro') return;
+  const h = location.hash;
+  try {
+    const nuevo = await api('GET', `api/registro?${new URLSearchParams({nivel: REG.nivel, q: REG.q})}`);
+    const cambia = !REG.datos || nuevo.ultimo !== REG.datos.ultimo || nuevo.lineas.length !== REG.datos.lineas.length || !$('#reg-lista');
+    REG.datos = nuevo;
+    if (cambia) {
+      const foco = document.activeElement?.id === 'reg-q' ? document.activeElement.selectionStart : null;
+      zona.innerHTML = ajRegistro();
+      if (foco != null) { const i = $('#reg-q'); i.focus(); i.setSelectionRange(foco, foco); }
+    }
+  } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; return; }
+  clearTimeout(regCargar.t);
+  regCargar.t = setTimeout(() => { if (location.hash === h) regCargar(); }, 5000);
+}
+
+const SECCIONES = {ia: 'IA', categorias: 'Categorías', tipos: 'Tipos', sitios: 'Sitios', datos: 'Datos', letra: 'Letra', historial: 'Historial', registro: 'Registro'};
 
 function vAjustes(sec) {
   if (sec && SECCIONES[sec]) {
@@ -1447,6 +1648,9 @@ function vAjustes(sec) {
       ${fila('#/ajustes/tipos', 'Tipos', `${plural(tipos.length - archivados, 'tipo')}${archivados ? ` · ${archivados} archivado${archivados === 1 ? '' : 's'}` : ''} · archivar, fusionar, borrar`)}
       ${fila('#/ajustes/sitios', 'Sitios', `${plural(ubicaciones().length, 'sitio')} · renombrar, juntar, borrar`)}
       ${fila('#/ajustes/datos', 'Datos', 'Copias de seguridad y exportar')}
+      ${fila('#/pendientes', 'IA pendiente', 'Correcciones y piezas nuevas de la IA que esperan a que las mires')}
+      ${fila('#/ajustes/historial', 'Historial', 'Quién cambió qué y cuándo: tú, la IA (con su modelo) o el sistema')}
+      ${fila('#/ajustes/registro', 'Registro', 'Mensajes del servidor: arranque, copias, IA y errores')}
       ${fila('#/ajustes/letra', 'Letra', `${esc(FUENTES[fuenteActual()].nombre)} · elige la letra de toda la app`)}
       <div class="fila"><div class="fila-main"><div><div class="nombre">Tema</div><div class="sub">Claro de día, grafito de noche o según el sistema</div></div></div>
         <div class="cats">${Object.entries({auto: 'Automático', claro: 'Claro', noche: 'Noche'}).map(([k, v]) =>
@@ -1465,6 +1669,8 @@ async function ajCargar() {
     if (sec === 'sitios') zona.innerHTML = ajSitios(await api('GET', 'api/ubicaciones'));
     if (sec === 'datos') zona.innerHTML = ajDatos(await api('GET', 'api/ajustes/resumen'));
     if (sec === 'letra') zona.innerHTML = ajLetra();
+    if (sec === 'historial') await histCargar(true);
+    if (sec === 'registro') { zona.innerHTML = ajRegistro(); await regCargar(); }
   } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; }
 }
 // tras un cambio en el catálogo: recarga los datos de toda la app y el apartado
@@ -1924,6 +2130,7 @@ function route() {
     glosario: ['glosario', vGlosario], g: ['glosario', () => (sub === 'editar' ? vEditarTipo(arg) : vTipo(arg))],
     ia: ['inventario', () => (arg === 'lote' ? vLoteIA(sub) : vIA(arg))],
     lote: ['inventario', vLote],
+    pendientes: ['inventario', vPendientes],
     ajustes: ['ajustes', () => vAjustes(arg)],
     buscar: ['buscar', vBuscar],
   };
@@ -1934,6 +2141,9 @@ function route() {
   document.title = `[AMS] lab · ${tab}`;
   if (v === 'g' && sub === 'editar') editarTipoCargar();
   if (v === 'ia') { if (arg === 'ajustes') iaAjustes(); else if (arg === 'lote') iaLote(sub); else if (arg) iaTarea(arg); else { iaAbiertas(); llenarModelosAlta(); } }
+  if (v === '') avisoPendientes();
+  if (v === 'pendientes') cargarPendientes();
+  if (v === 'ajustes' && arg === 'historial') { const g = new URLSearchParams(qs).get('g'); if (g != null && g in GRUPOS_HIST) HIST.grupo = g; }
   if (v !== '' && v !== 'lote' && ui.seleccionando) salirSeleccion(); // la selección vive en el Inventario y en «Editar juntas»
   if (v === 'ajustes') {
     const t = new URLSearchParams(qs).get('t');
@@ -1952,7 +2162,7 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-rev-vista],[data-vista],#sel-modo,[data-sel],[data-sel-acc],[data-lote-todas],[data-lote-marcar],#lote-aplicar,#lote-descartar,.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar]');
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-rev-vista],[data-vista],#sel-modo,[data-sel],[data-sel-acc],[data-lote-todas],[data-lote-marcar],#lote-aplicar,#lote-descartar,.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar],[data-pend-descartar],[data-hist-grupo],#hist-mas,[data-reg-nivel],#reg-copiar');
   if (!t || !app.contains(t)) return; // solo botones de la propia vista (no el <html>, que lleva data-* del tema)
   // sin redibujar la vista: el selector de tipo y las tablas editables viven dentro de formularios a medio rellenar
   if (t.classList.contains('combo-op')) { elegirTipo(t.closest('.combo'), t.dataset.valor); return; }
@@ -1975,6 +2185,15 @@ app.addEventListener('click', async (e) => {
     }
     if (t.id === 'lote-aplicar') { try { await aplicarLote(t); } catch (err) { toast(err.message, true); contarLote(); } return; }
     if (t.id === 'lote-descartar') { await descartarLote(); return; }
+    if (t.dataset.pendDescartar) { await descartarPendiente(t.dataset.pendDescartar); return; }
+    if (t.dataset.histGrupo != null) { HIST.grupo = t.dataset.histGrupo; await histCargar(true); return; }
+    if (t.id === 'hist-mas') { t.disabled = true; t.textContent = 'Cargando…'; await histCargar(false); return; }
+    if (t.dataset.regNivel) { REG.nivel = t.dataset.regNivel; REG.datos = null; await regCargar(); return; }
+    if (t.id === 'reg-copiar') {
+      const txt = (REG.datos?.lineas || []).slice().reverse().map((l) => `${l.fecha} ${l.nivel.toUpperCase()} ${l.texto}`).join('\n');
+      try { await navigator.clipboard.writeText(txt); toast('Registro copiado'); } catch { toast('No se ha podido copiar (hace falta HTTPS o localhost)', true); }
+      return;
+    }
     if (t.dataset.vista) {
       await api('PUT', 'api/ajustes/vista_inventario', {valor: t.dataset.vista});
       D.ajustes.vista_inventario = t.dataset.vista;
@@ -2143,6 +2362,18 @@ app.addEventListener('focusout', (e) => {
 });
 app.addEventListener('pointerdown', (e) => { if (e.target.closest('.combo-op')) e.preventDefault(); }); // que el campo no pierda el foco antes del clic
 app.addEventListener('input', (e) => { if (e.target.classList.contains('combo-q')) abrirCombo(e.target.closest('.combo')); });
+// buscar en el historial y en el registro (con una pequeña espera para no preguntar en cada tecla)
+app.addEventListener('input', (e) => {
+  if (e.target.id !== 'hist-q' && e.target.id !== 'reg-q') return;
+  clearTimeout(HIST_ESPERA);
+  const v = e.target.value.trim(), es = e.target.id;
+  HIST_ESPERA = setTimeout(() => { if (es === 'hist-q') { HIST.q = v; histCargar(true); } else { REG.q = v; REG.datos = null; regCargar(); } }, 300);
+});
+// el historial de una pieza o ficha se pide al abrir su desplegable (toggle no burbujea: en captura)
+app.addEventListener('toggle', (e) => {
+  const d = e.target;
+  if (d.open && d.dataset?.historial && !d.dataset.cargado) { d.dataset.cargado = '1'; cargarHistDe(d); }
+}, true);
 app.addEventListener('keydown', (e) => {
   if (!e.target.classList.contains('combo-q')) return;
   const combo = e.target.closest('.combo'), lista = combo.querySelector('.combo-lista');
