@@ -249,8 +249,8 @@ ol.pasos li { padding: var(--e1) 0; }
 .ed legend { padding: 0; margin-bottom: var(--e1); }
 .ed .ayuda { margin-top: calc(-1 * var(--e1)); }
 .ed-cab, .ed-fila { display: grid; gap: var(--e2); align-items: center; }
-.ed-pines :is(.ed-cab, .ed-fila) { grid-template-columns: minmax(110px, 1fr) minmax(0, 1.3fr) minmax(150px, .9fr) auto; }
-.ed-datos :is(.ed-cab, .ed-fila) { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; }
+.ed-pines :is(.ed-cab, .ed-fila) { grid-template-columns: 28px minmax(110px, 1fr) minmax(0, 1.3fr) minmax(150px, .9fr) auto; }
+.ed-datos :is(.ed-cab, .ed-fila) { grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1.3fr) auto; }
 .ed-cab { border-bottom: 1px solid var(--tinta); padding-bottom: var(--e1); }
 .ed-filas { display: grid; gap: var(--e2); }
 .ed-filas:empty::before { content: 'Ninguno todavía.'; color: var(--gris); font-size: .86rem; font-weight: 400; padding: var(--e1) 0; }
@@ -261,7 +261,14 @@ ol.pasos li { padding: var(--e1) 0; }
 .ed-fn { position: relative; }
 .ed-fn .dot { position: absolute; left: 10px; top: 50%; margin-top: -4px; pointer-events: none; }
 .form .ed-fn select { padding-left: 28px; }
-.ed-botones { display: flex; gap: var(--e1); }
+/* asa para arrastrar: toda la altura de la fila, sin que el navegador desplace la página al tocarla */
+.ed-asa { align-self: stretch; display: grid; place-items: center; width: 28px; padding: 0; background: none; border: 0; color: var(--gris);
+  cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; border-radius: 2px; }
+.ed-asa:hover { color: var(--tinta); background: var(--sel); }
+.ed-asa svg { width: 10px; height: 16px; fill: currentColor; }
+.ed-fila.arrastrando { position: relative; z-index: 3; background: var(--hoja); box-shadow: 0 8px 22px rgb(0 0 0 / .16); }
+.ed-fila.arrastrando .ed-asa { color: var(--tinta); cursor: grabbing; }
+body.arrastrando-fila { cursor: grabbing; -webkit-user-select: none; user-select: none; }
 .ed > .btn { justify-self: start; }
 
 /* ---------- IA: texto plano, sin recuadros de colores (diseño «hoja de datos») ---------- */
@@ -432,13 +439,14 @@ ol.pasos li { padding: var(--e1) 0; }
   .form > .acciones .btn { flex: 1; }
   /* tablas editables: cada fila en dos líneas */
   .ed-cab { display: none; }
-  .ed-pines .ed-fila { grid-template-columns: minmax(0, 1fr) minmax(140px, .85fr); grid-template-areas: "a d" "b c"; }
-  .ed-pines .ed-botones { justify-content: flex-end; }
-  .ed-datos .ed-fila { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "a a" "b d"; }
-  .ed-fila > :nth-child(1) { grid-area: a; }
-  .ed-fila > :nth-child(2) { grid-area: b; }
-  .ed-pines .ed-fila > :nth-child(3) { grid-area: c; }
-  .ed-fila > .ed-botones { grid-area: d; }
+  /* asa a la izquierda, en las dos líneas; pin y quitar arriba, uso y función abajo */
+  .ed-pines .ed-fila { grid-template-columns: 28px minmax(0, 1fr) minmax(120px, .75fr) auto; grid-template-areas: "h a a x" "h b c c"; }
+  .ed-datos .ed-fila { grid-template-columns: 28px minmax(0, 1fr) auto; grid-template-areas: "h a x" "h b b"; }
+  .ed-fila > .ed-asa { grid-area: h; }
+  .ed-fila > :nth-child(2) { grid-area: a; }
+  .ed-fila > :nth-child(3) { grid-area: b; }
+  .ed-pines .ed-fila > .ed-fn { grid-area: c; }
+  .ed-fila > .ed-quitar { grid-area: x; justify-self: end; }
   .aj-fila { grid-template-columns: minmax(0, 1fr) auto; }
   .aj-fila > .aj-botones { grid-column: 1 / -1; justify-content: flex-start; }
   .aj-buscar { max-width: none; width: 100%; }
