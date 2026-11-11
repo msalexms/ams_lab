@@ -129,9 +129,11 @@ function opcionesLlamada(m, nivel = 'poco') {
   const o = {maxOutputTokens: m.max_salida ? Math.min(tope, m.max_salida) : tope, abortSignal: AbortSignal.timeout(ESPERA[nivel] || ESPERA_MS)};
   const esfuerzo = esfuerzoPara(m, nivel);
   if (m.api === 'chat-completions' && esfuerzo) o.providerOptions = {openaiCompatible: {reasoningEffort: esfuerzo}};
+  // tipo Claude: si el catálogo le da niveles de esfuerzo, piensa «adaptativo» y lo regula el esfuerzo (los Claude nuevos no
+  // admiten el pensamiento con presupuesto: el SDK lo cambiaba solo, avisando en cada llamada); si no, con presupuesto de tokens
   if (m.api === 'messages' && m.razona && PRESUPUESTO[nivel])
-    o.providerOptions = {anthropic: {thinking: {type: 'enabled', budgetTokens: Math.min(PRESUPUESTO[nivel], Math.floor(o.maxOutputTokens / 2))},
-      ...(esfuerzo ? {effort: esfuerzo} : {})}}; // los Claude nuevos piensan «adaptativo»: lo que manda es el esfuerzo
+    o.providerOptions = {anthropic: esfuerzo ? {thinking: {type: 'adaptive'}, effort: esfuerzo}
+      : {thinking: {type: 'enabled', budgetTokens: Math.min(PRESUPUESTO[nivel], Math.floor(o.maxOutputTokens / 2))}}};
   return o;
 }
 // con pensamiento, algunos modelos tipo Claude rechazan la salida con formato fijo (400): se repite en «poco»

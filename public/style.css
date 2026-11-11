@@ -958,7 +958,7 @@ table.t-material td .sub a { color: inherit; text-underline-offset: 3px; }
 .pines-cab h3 { margin: 0; }
 .pines-cab h3 .n { margin-left: var(--e2); font-weight: 400; }
 .pines-cab .conmuta { border: 0; padding: 0; }
-.pines[data-vista="funcion"] .pines-orden, .pines[data-vista="orden"] .pines-funcion { display: none; }
+.pines[data-pines-modo="funcion"] .pines-orden, .pines[data-pines-modo="orden"] .pines-funcion { display: none; }
 .pines-funcion { border-top: 1px solid var(--tinta); }
 .pin-grupo { border-bottom: 1px solid var(--linea2); }
 .pin-grupo > summary { display: grid; grid-template-columns: auto minmax(0, 11em) minmax(0, 1fr) auto; gap: var(--e1) var(--e3); align-items: baseline; padding: var(--e3) 0; cursor: pointer; list-style: none; }
