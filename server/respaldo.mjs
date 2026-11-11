@@ -19,7 +19,7 @@ const fallo = (code, msg) => { throw new ErrorRespaldo(code, msg); };
 
 const MAX_SUBIDA = 2 * 1024 ** 3;  // 2 GB comprimido
 const MAX_TAR = 4 * 1024 ** 3;     // 4 GB descomprimido (contra ficheros «bomba»)
-const FOTO_OK = /^[\w.-]{1,120}\.(jpe?g|png|webp)$/i; // nombres que pone la app (c12-170….jpg, c-ia3-….jpg)
+const FOTO_OK = /^[\w.-]{1,120}\.(jpe?g|png|webp|pdf)$/i; // nombres que pone la app (c12-170….jpg, c-ia3-….jpg, p-a170….pdf)
 const SQLITE = Buffer.from('SQLite format 3\0');
 const sello = () => new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-');
 const etapas = (dataDir) => join(dataDir, 'restaurar');

@@ -1,4 +1,4 @@
-# Modelo de datos (v7) — `data/lab.db`
+# Modelo de datos (v8) — `data/lab.db`
 
 SQLite (`node:sqlite`). Esquema y migraciones en `server/db.mjs`; versión en `PRAGMA user_version`.
 
@@ -18,6 +18,9 @@ erDiagram
   tipos ||--o{ material_opciones : ""
   proyectos ||--o{ proyecto_conexiones : cablea
   proyectos ||--o{ proyecto_pasos : sigue
+  proyectos ||--o{ proyecto_notas : "bitácora"
+  proyectos ||--o{ proyecto_tareas : "tablero"
+  proyectos ||--o{ proyecto_archivos : "diagramas"
   tipos ||--o{ tipo_datos : "ficha extendida"
   componentes ||--o{ componente_datos : "datos de la pieza"
   componentes |o--o{ ia_tareas : "creada por"
@@ -32,26 +35,29 @@ erDiagram
   catalogo_quitados { text clase PK "tipo|categoria"; text id PK; text reemplazo; text fecha }
   ia_config { int id PK "siempre 1"; text clave "nunca sale por la API"; text modelo; text actualizado }
   ia_tareas { int id PK; text clase "alta|revisar|reorganizar"; text estado "pendiente|propuesta|aplicada|descartada|error"; text entrada "JSON"; text propuesta "JSON"; int componente_id FK; text modelo; text error; text creada; text actualizada }
-  tipo_pines { text tipo_id PK,FK; int orden PK; text pin; text uso; text funcion_id FK }
+  tipo_pines { text tipo_id PK,FK; int orden PK; text pin "uno solo"; text uso; text funcion_id FK; text nota }
   tipo_alias { text tipo_id PK,FK; text alias PK }
   tipo_interfaces { text tipo_id PK,FK; int orden PK; text interfaz }
   ubicaciones { int id PK; text nombre UK }
   componentes { int id PK; text nombre; text tipo_id FK; int cantidad "NULL=sin contar"; int varios; int ubicacion_id FK; text notas; int revisar; text foto UK; text creado; text actualizado }
   historial { int id PK; int componente_id FK; text componente_nombre; text accion "alta|stock|baja"; text antes; text despues; text fecha }
   auditoria { int id PK; text fecha; text quien "usuario|ia|sistema"; text accion; text objeto; text objeto_id; text nombre; text resumen; text detalle "JSON"; text modelo }
-  proyectos { text id PK; text nombre; int dificultad FK; text tiempo; text resumen }
+  proyectos { text id PK; text nombre; int dificultad FK; text tiempo; text resumen; text origen "seed|ia|usuario"; text estado "idea|en_marcha|pausa|terminado" }
   proyecto_material { int id PK; text proyecto_id FK; int orden; int cantidad; int opcional; text nota }
   material_opciones { int material_id PK,FK; text tipo_id PK,FK }
   proyecto_conexiones { text proyecto_id PK,FK; int orden PK; text desde; text hasta; text nota }
   proyecto_pasos { text proyecto_id PK,FK; int orden PK; text texto }
+  proyecto_notas { int id PK; text proyecto_id FK; text texto; text foto UK; text fecha }
+  proyecto_tareas { int id PK; text proyecto_id FK; text texto; text columna "hacer|curso|hecho"; int orden; text creada }
+  proyecto_archivos { int id PK; text proyecto_id FK; text fichero UK; text nombre; text tipo; int bytes; text fecha }
 ```
 
 ## Tres capas
 | Capa | Tablas | Quién la cambia |
 |---|---|---|
 | **Referencia** (configuración) | `categorias`, `funciones_pin` (nombre + **color claro y de noche** + tachado), `dificultades`; `ajustes` (tema: auto, claro, noche; vista_inventario: lista, cuadricula; ia_razonar: poco (por defecto), medio, mucho; fuente: jetbrains (por defecto), mixta, plex-mono, mono-sistema, plex-sans, sistema — el valor por defecto viene de seed, el elegido no se pisa; los valores válidos los comprueba el servidor) | `seed/referencia.json`; las categorías también la IA o el usuario |
-| **Catálogo** | `tipos`, `tipo_pines`, `tipo_alias`, `tipo_interfaces`, `tipo_datos`, `proyectos` y sus tablas | `seed/glosario.json`, `seed/proyectos.json`; los tipos también la IA o el usuario |
-| **Inventario** (datos del usuario) | `componentes`, `componente_datos`, `ubicaciones`, `historial` | solo la aplicación |
+| **Catálogo** | `tipos`, `tipo_pines`, `tipo_alias`, `tipo_interfaces`, `tipo_datos`, `proyectos` y sus tablas | `seed/glosario.json`, `seed/proyectos.json`; los tipos y los proyectos también la IA o el usuario |
+| **Inventario** (datos del usuario) | `componentes`, `componente_datos`, `ubicaciones`, `historial`; de cada proyecto, `proyectos.estado`, `proyecto_notas`, `proyecto_tareas` y `proyecto_archivos` | solo la aplicación |
 | **IA** | `ia_tareas` | la aplicación al llamar al modelo |
 
 La web no guarda configuración propia: categorías, funciones de pin con sus colores y dificultades le llegan en `GET /api/datos`.
@@ -98,21 +104,32 @@ Lo escribe el servidor (`server/auditoria.mjs`) cada vez que algo cambia, y se v
 - Exportar: `.tar.gz` (ustar + gzip) con `manifiesto.json`, `lab.db` (`VACUUM INTO`) y `fotos/*` (`server/respaldo.mjs`).
 - Restaurar en dos pasos: **preparar** (`POST /api/copia/preparar` con el archivo, o `POST /api/copias/<nombre>/preparar`) lo deja en `<datos>/restaurar/<token>/` y lo comprueba (cabecera SQLite, `user_version` ≤ la de la app, tablas `componentes` y `tipos`, `integrity_check`); **confirmar** (`POST /api/copia/restaurar {token}`) hace `VACUUM INTO lab-antes-restaurar-<fecha>.db`, cierra la base de datos, pone la nueva, mueve las fotos que falten y la vuelve a abrir (`abrir()` migra si es antigua). Solo hay una restauración preparada a la vez; las que no se confirman se borran al arrancar. No se restaura mientras la IA tiene una tarea pensando.
 
+## Proyectos (desde v8)
+- Un proyecto tiene dos partes. La **receta** (nombre, resumen, dificultad, tiempo, material, conexiones y pasos) es catálogo: lleva `origen` como los tipos, `seed/proyectos.json` solo actualiza los que siguen siendo `seed` y, al editarlo desde la web (`PUT /api/proyectos/:id`) o crearlo (`POST /api/proyectos`), queda como `usuario`.
+- Lo **del usuario** cuelga de la fila del proyecto: `estado`, la bitácora (`proyecto_notas`, con foto opcional), el tablero (`proyecto_tareas`, tres columnas) y los archivos (`proyecto_archivos`: imágenes o PDF). `seed/` nunca lo toca: `guardarProyecto()` actualiza la fila (no la borra) y solo reescribe material, conexiones y pasos.
+- Las fotos de las notas y los archivos están en `data/fotos` con el prefijo `p-`; entran en las copias diarias y en la copia completa como las fotos de las piezas.
+- Borrar un proyecto borra también su bitácora, su tablero y sus archivos (y los ficheros), y lo apunta en `catalogo_quitados` (clase `proyecto`) para que `seed/` no lo vuelva a crear.
+- El material no guarda qué pieza concreta se usa: la web lo calcula con el inventario (tus piezas de esos tipos, con su foto y su sitio).
+- `GET /api/datos` entrega cada proyecto con su receta y los recuentos (`tareas` por columna, `notas`, `archivos`); el detalle se pide con `GET /api/proyectos/:id`.
+
 ## Datos extra (clave → valor)
 - `tipo_datos`: lo que es igual en todas las piezas de un tipo (corriente máxima, dirección I2C, frecuencia…). En `seed/glosario.json`, campo `datos` (`{"Clave": "valor"}`).
 - `componente_datos`: lo que cambia de una pieza a otra del mismo tipo (el valor de una resistencia, el encapsulado…).
 - La API los entrega como listas `[clave, valor]` en `tipos.<id>.datos` y `componentes[].datos`.
 
 ## Tareas de la IA (`ia_tareas`)
+Clases: `alta` (una pieza nueva), `revisar` (corregir una pieza o una ficha) y `detectar` (v8: separar las piezas de una foto con varias; su `propuesta` es `{piezas: [{nombre, descripcion, cantidad, caja: {x, y, ancho, alto} en milésimas}], dudas}` y, al elegir las piezas, crea un alta por recorte con el mismo `entrada.lote`).
+
 Cada llamada al modelo se guarda: qué se le pidió (`entrada`, JSON), qué propuso (`propuesta`, JSON) y en qué quedó (`estado`). Si el usuario contesta las dudas, cada vuelta se añade a `entrada.rondas` (`{propuesta corregida, respuestas, extra}`, máx. 5) y el modelo rehace la propuesta. Nada se aplica sin pasar por `propuesta` y la confirmación del usuario; así una respuesta lenta o una pestaña cerrada no se pierde ni se paga dos veces.
 
 ## Reglas en la base de datos
 - `cantidad ≥ 0`; `varios = 1` (muchos) obliga a `cantidad = NULL`; nombres no vacíos; colores `#RRGGBB`; booleanos 0/1.
-- Claves foráneas activas: borrar un tipo deja sus piezas «sin tipo» (`SET NULL`); borrar un proyecto borra su material, conexiones y pasos (`CASCADE`); renombrar ids se propaga (`ON UPDATE CASCADE`).
+- Claves foráneas activas: borrar un tipo deja sus piezas «sin tipo» (`SET NULL`); borrar un proyecto borra su material, conexiones, pasos, notas, tareas y archivos (`CASCADE`); renombrar ids se propaga (`ON UPDATE CASCADE`).
 - *Triggers*: `actualizado` se pone solo; `historial` registra altas, cambios de stock y bajas, aunque el cambio no venga de la web. El historial completo (`auditoria`) lo escribe el servidor.
 - Ubicaciones únicas sin distinguir mayúsculas («Cajita 3» = «cajita 3»).
 
 ## Migraciones
+- v7 → v8 (11/11/2026): `tipo_pines.nota` (cada fila es un solo pin; lo que comparta con otro uso va en la nota). `proyectos.origen` y `proyectos.estado`; tablas `proyecto_notas`, `proyecto_tareas` y `proyecto_archivos`. `catalogo_quitados` admite la clase `proyecto`, `auditoria` el objeto `proyecto` e `ia_tareas` la clase `detectar`: como SQLite no deja cambiar un CHECK, las tres se rehacen copiando sus filas.
 - v1 → v2 (03/11/2026): `funciones_pin.color` pasa a `color_oscuro` y se añade `color_claro`; nueva tabla `ajustes`.
 - v2 → v3 (06/11/2026): `origen` en `categorias` y `tipos`, `revisado` en `tipos`; tablas `tipo_datos`, `componente_datos` e `ia_tareas`. Los tipos que no están en `seed/glosario.json` (creados desde la web) quedan con origen `usuario`.
 - v6 → v7 (11/11/2026): tabla `auditoria` (historial de cambios). Se rellena con lo que ya se sabía: las altas, cambios de stock y bajas de `historial` y las propuestas de la IA ya aplicadas (con su modelo), por orden de fecha.
@@ -120,4 +137,4 @@ Cada llamada al modelo se guarda: qué se le pidió (`entrada`, JSON), qué prop
 - v4 → v5 (09/11/2026): `tipos.archivado` y tabla `catalogo_quitados` (lo borrado o fusionado desde Ajustes).
 - v3 → v4 (06/11/2026): tabla `ia_config` (una fila): clave y modelo de la IA puestos desde la web. La clave nunca sale por la API (ni en `/api/datos` ni en `/api/exportar`), pero sí está en las copias de seguridad de la base de datos.
 
-`abrir()` mira `PRAGMA user_version`: 0 sin tablas → crea y siembra desde `seed/`; si es más antigua que la actual, **primero hace una copia completa** (`VACUUM INTO`) en la carpeta de copias como `lab-antes-vX-a-vY-<fecha>.db` (fuera de la rotación: no se borra sola) y después migra paso a paso (v0 → v7 directo, v1 → v2 → … → v7).
+`abrir()` mira `PRAGMA user_version`: 0 sin tablas → crea y siembra desde `seed/`; si es más antigua que la actual, **primero hace una copia completa** (`VACUUM INTO`) en la carpeta de copias como `lab-antes-vX-a-vY-<fecha>.db` (fuera de la rotación: no se borra sola) y después migra paso a paso (v0 → v8 directo, v1 → v2 → … → v8).

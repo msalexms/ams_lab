@@ -1,7 +1,7 @@
 // Historial de cambios de toda la aplicación (tabla «auditoria», modelo v7): quién cambió qué y cuándo.
 //   · quien: 'usuario' (tú, desde la web), 'ia' (cambios propuestos por la IA y confirmados por ti; con su modelo) o
 //     'sistema' (el propio servidor: restaurar una copia, migraciones…).
-//   · objeto: pieza, tipo, categoria, sitio, ia, copia o ajustes; objeto_id puede apuntar a algo que ya no existe.
+//   · objeto: pieza, tipo, categoria, sitio, proyecto, ia, copia o ajustes; objeto_id puede apuntar a algo que ya no existe.
 //   · detalle: JSON con los cambios campo a campo ({cambios: [{campo, antes, despues}]}) y lo que haga falta.
 // Nunca se apunta la clave de la IA. Se guardan como mucho MAX filas (las más antiguas se van al arrancar).
 const MAX = 20000;
@@ -29,6 +29,7 @@ const GRUPOS = {
   fichas: "objeto = 'tipo'",
   ia: "quien = 'ia' OR objeto = 'ia'",
   catalogo: "objeto IN ('tipo', 'categoria', 'sitio')",
+  proyectos: "objeto = 'proyecto'",
   sistema: "objeto IN ('copia', 'ajustes') OR quien = 'sistema'",
 };
 
@@ -100,7 +101,7 @@ export function cambiosFicha(a, b, categorias = {}) {
   poner('Ojo', a.ojo, b.ojo);
   poner('Interfaces', (a.interfaz || []).join(', '), (b.interfaz || []).join(', '));
   poner('También se llama', [...(a.alias || [])].sort().join(', '), [...(b.alias || [])].sort().join(', '));
-  const pin = (p) => `${p[0]}: ${p[1]} (${p[2]})`;
+  const pin = (p) => `${p[0]}: ${p[1]} (${p[2]})${p[3] ? ` · ${p[3]}` : ''}`;
   const pa = new Map((a.pines || []).map((p) => [p[0].toLowerCase(), p])), pb = new Map((b.pines || []).map((p) => [p[0].toLowerCase(), p]));
   for (const [k, p] of pb) poner(`Pin ${p[0]}`, pa.has(k) ? pin(pa.get(k)) : '', pin(p));
   for (const [k, p] of pa) if (!pb.has(k)) poner(`Pin ${p[0]}`, pin(p), '');

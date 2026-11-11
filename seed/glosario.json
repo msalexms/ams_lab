@@ -17,7 +17,7 @@
       "UART",
       "ADC",
       "DAC",
-      "táctil"
+      "Táctil"
     ],
     "pines": [
       [
@@ -36,42 +36,148 @@
         "gnd"
       ],
       [
-        "GPIO 21 · 22",
-        "I2C: SDA · SCL",
+        "GPIO 21",
+        "I2C SDA",
         "bus"
       ],
       [
-        "GPIO 23 · 19 · 18 · 5",
-        "SPI: MOSI · MISO · SCK · CS",
+        "GPIO 22",
+        "I2C SCL",
         "bus"
       ],
       [
-        "GPIO 16 · 17",
-        "UART2: RX · TX",
+        "GPIO 23",
+        "SPI MOSI",
         "bus"
       ],
       [
-        "GPIO 32–39",
+        "GPIO 19",
+        "SPI MISO",
+        "bus"
+      ],
+      [
+        "GPIO 18",
+        "SPI SCK",
+        "bus"
+      ],
+      [
+        "GPIO 5",
+        "SPI CS",
+        "bus"
+      ],
+      [
+        "GPIO 16",
+        "UART2 RX",
+        "bus"
+      ],
+      [
+        "GPIO 17",
+        "UART2 TX",
+        "bus"
+      ],
+      [
+        "GPIO 32",
         "Analógico (ADC1)",
         "ana"
       ],
       [
-        "GPIO 25 · 26",
+        "GPIO 33",
+        "Analógico (ADC1)",
+        "ana"
+      ],
+      [
+        "GPIO 34",
+        "Analógico (ADC1)",
+        "ana",
+        "También: Solo entrada"
+      ],
+      [
+        "GPIO 35",
+        "Analógico (ADC1)",
+        "ana",
+        "También: Solo entrada"
+      ],
+      [
+        "GPIO 36",
+        "Analógico (ADC1)",
+        "ana",
+        "También: Solo entrada"
+      ],
+      [
+        "GPIO 37",
+        "Analógico (ADC1)",
+        "ana",
+        "También: Solo entrada"
+      ],
+      [
+        "GPIO 38",
+        "Analógico (ADC1)",
+        "ana",
+        "También: Solo entrada"
+      ],
+      [
+        "GPIO 39",
+        "Analógico (ADC1)",
+        "ana",
+        "También: Solo entrada"
+      ],
+      [
+        "GPIO 25",
         "Salida analógica (DAC)",
         "ana"
       ],
       [
-        "GPIO 34–39",
-        "Solo entrada",
-        "otro"
+        "GPIO 26",
+        "Salida analógica (DAC)",
+        "ana"
       ],
       [
-        "GPIO 0 · 2 · 12 · 15",
+        "GPIO 0",
         "Arranque, con cuidado",
         "otro"
       ],
       [
-        "GPIO 6–11",
+        "GPIO 2",
+        "Arranque, con cuidado",
+        "otro"
+      ],
+      [
+        "GPIO 12",
+        "Arranque, con cuidado",
+        "otro"
+      ],
+      [
+        "GPIO 15",
+        "Arranque, con cuidado",
+        "otro"
+      ],
+      [
+        "GPIO 6",
+        "Flash, no usar",
+        "no"
+      ],
+      [
+        "GPIO 7",
+        "Flash, no usar",
+        "no"
+      ],
+      [
+        "GPIO 8",
+        "Flash, no usar",
+        "no"
+      ],
+      [
+        "GPIO 9",
+        "Flash, no usar",
+        "no"
+      ],
+      [
+        "GPIO 10",
+        "Flash, no usar",
+        "no"
+      ],
+      [
+        "GPIO 11",
         "Flash, no usar",
         "no"
       ]
