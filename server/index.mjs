@@ -232,6 +232,38 @@ async function borrarFoto(nombre) {
   if (nombre) await unlink(join(FOTOS, nombre)).catch(() => {});
 }
 
+// ---------- fotos de las tareas de la IA ----------
+// una tarea lleva su foto principal (entrada.foto: en un alta pasa a ser la de la pieza), hasta 3 más al empezar
+// (entrada.fotos_extra) y las que se añaden al contestar las dudas (entrada.rondas[].fotos). Como mucho MAX_FOTOS_TAREA.
+const MAX_FOTOS_INICIO = 4, MAX_FOTOS_RONDA = 4, MAX_FOTOS_TAREA = 8;
+const MAX_CUERPO_FOTOS = MAX_FOTOS_INICIO * MAX_FOTO * 1.4; // base64 ocupa ~4/3
+const fotosDeEntrada = (e) => [e.foto, ...(e.fotos_extra || []), ...(e.rondas || []).flatMap((r) => r.fotos || [])].filter(Boolean);
+// lista de fotos en base64 → Buffers comprobados (vacías o enormes: error)
+function fotosDe(lista, max) {
+  const fotos = (Array.isArray(lista) ? lista : []).filter(Boolean).map((x) => Buffer.from(String(x), 'base64'));
+  if (fotos.length > max) throw new HttpError(400, `Como mucho ${max} fotos a la vez`);
+  for (const f of fotos) {
+    if (f.length < 100) throw new HttpError(400, 'Una de las fotos está vacía');
+    if (f.length > MAX_FOTO) throw new HttpError(413, 'Una de las fotos es demasiado grande');
+  }
+  return fotos;
+}
+async function guardarFotosTarea(id, fotos, prefijo) {
+  const nombres = [];
+  for (const [i, f] of fotos.entries()) {
+    const n = `ia-${id}-${prefijo}${i + 1}-${Date.now()}.jpg`;
+    await writeFile(join(FOTOS, n), f);
+    nombres.push(n);
+  }
+  return nombres;
+}
+const leerJsonFotos = async (req) => {
+  try { return JSON.parse((await leerCuerpo(req, MAX_CUERPO_FOTOS)).toString('utf8') || '{}'); } catch (e) {
+    if (e instanceof HttpError) throw e;
+    throw new HttpError(400, 'JSON no válido');
+  }
+};
+
 // estados de una tarea de la IA, para los mensajes
 const ESTADO = {pendiente: 'en marcha', propuesta: 'esperando', aplicada: 'aplicada', descartada: 'descartada', error: 'con error'};
 
@@ -247,6 +279,7 @@ const tarea = (id) => {
   if (!t) throw new HttpError(404, 'No existe esa tarea');
   const entrada = JSON.parse(t.entrada);
   return {id: t.id, clase: t.clase, estado: t.estado, texto: entrada.texto || '', foto: entrada.foto || null, foto_de_pieza: !!entrada.foto_de_pieza,
+    fotos: fotosDeEntrada(entrada),
     propuesta: t.propuesta ? JSON.parse(t.propuesta) : null, error: t.error, modelo: t.modelo,
     componente_id: t.componente_id, creada: t.creada, rondas: (entrada.rondas || []).length,
     actualizada: t.actualizada, ahora: db.prepare("SELECT datetime('now') AS t").get().t, // para el contador de segundos
@@ -256,25 +289,32 @@ const tarea = (id) => {
 // el usuario contesta las dudas (y/o añade información) sobre la propuesta que tiene en pantalla, quizá ya corregida:
 // se guarda como una «vuelta» y el modelo rehace la propuesta. Como mucho 5 vueltas por tarea.
 const MAX_RONDAS = 5;
-function responderAlta(id, b) {
+async function responderAlta(id, b) {
   const t = tarea(id);
   if (t.estado !== 'propuesta') throw new HttpError(409, `Esta propuesta ya está ${ESTADO[t.estado] || t.estado}: no se puede repensar`);
   if (t.rondas >= MAX_RONDAS) throw new HttpError(409, `Ya van ${MAX_RONDAS} vueltas: ${t.clase === 'revisar' ? 'aplica lo que te sirva y corrige a mano el resto' : 'corrige a mano y guarda'}`);
   const respuestas = (Array.isArray(b.respuestas) ? b.respuestas : []).slice(0, 12)
     .map((x) => ({duda: texto(x?.duda, 300), respuesta: texto(x?.respuesta, 500)})).filter((x) => x.duda && x.respuesta);
   const extra = texto(b.extra, 1000);
-  if (!respuestas.length && !extra) throw new HttpError(400, 'Contesta alguna duda o escribe algo más');
+  const nuevas = fotosDe(b.fotos, MAX_FOTOS_RONDA);
+  if (!respuestas.length && !extra && !nuevas.length) throw new HttpError(400, 'Contesta alguna duda, escribe algo más o añade una foto');
+  if (nuevas.length) {
+    const m = await infoModelo(db, t.modelo_pedido);
+    if (m && !m.vision) throw new HttpError(400, `${m.nombre} no ve fotos: contesta con texto`);
+    if (t.fotos.length + nuevas.length > MAX_FOTOS_TAREA) throw new HttpError(400, `Como mucho ${MAX_FOTOS_TAREA} fotos por consulta (ya lleva ${t.fotos.length})`);
+  }
   const entrada = JSON.parse(db.prepare('SELECT entrada FROM ia_tareas WHERE id = ?').get(t.id).entrada);
+  const fotos = await guardarFotosTarea(t.id, nuevas, `r${(entrada.rondas || []).length + 1}-`);
   if (t.clase === 'revisar') {
     // corrección: el modelo vuelve a mirar la ficha (tal como está AHORA) con las respuestas; los cambios se recalculan
-    entrada.rondas = [...(entrada.rondas || []), {respuestas, extra}];
+    entrada.rondas = [...(entrada.rondas || []), {respuestas, extra, ...(fotos.length ? {fotos} : {})}];
   } else {
     // alta: la propuesta tal como la tiene el usuario (con sus correcciones), con la misma limpieza que al guardar
     const pb = b.propuesta && typeof b.propuesta === 'object' ? b.propuesta : {};
     const actual = normalizar(db, {...t.propuesta, ...pb, dudas: t.propuesta.dudas, confianza: t.propuesta.confianza,
       tipo_existente: pb.tipo === '__nuevo' ? null : pb.tipo ?? t.propuesta.tipo_existente,
       tipo_nuevo: pb.tipo === '__nuevo' ? pb.tipo_nuevo : pb.tipo ? null : t.propuesta.tipo_nuevo});
-    entrada.rondas = [...(entrada.rondas || []), {propuesta: actual, respuestas, extra}];
+    entrada.rondas = [...(entrada.rondas || []), {propuesta: actual, respuestas, extra, ...(fotos.length ? {fotos} : {})}];
   }
   db.prepare("UPDATE ia_tareas SET entrada = ?, estado = 'pendiente', error = NULL WHERE id = ? AND estado = 'propuesta'")
     .run(JSON.stringify(entrada), t.id);
@@ -285,11 +325,7 @@ function responderAlta(id, b) {
 // «Corregir con IA» desde una pieza (revisa la pieza y su tipo) o desde un tipo (revisa la ficha)
 async function crearRevision(req) {
   if (!estado(db).activa) throw new HttpError(503, 'Falta la clave de OpenCode Go: ponla en Ajustes → IA');
-  let b;
-  try { b = JSON.parse((await leerCuerpo(req, MAX_FOTO * 1.4)).toString('utf8') || '{}'); } catch (e) {
-    if (e instanceof HttpError) throw e;
-    throw new HttpError(400, 'JSON no válido');
-  }
+  const b = await leerJsonFotos(req); // la foto y hasta 3 más
   const id = await nuevaRevision(b);
   encolarIA(id);
   return tarea(id);
@@ -317,12 +353,14 @@ async function nuevaRevision(b) {
   // sin foto nueva, el modelo ve la que ya tiene la pieza (o, desde un tipo, la de una de sus piezas)
   const suya = foto ? null : db.prepare(`SELECT foto FROM componentes WHERE foto LIKE '%.jpg' AND ${objetivo.componente_id ? 'id = ?' : 'tipo_id = ?'}
     ORDER BY actualizado DESC LIMIT 1`).get(objetivo.componente_id ?? objetivo.tipo_id)?.foto;
+  const extras = foto ? fotosDe(b.fotos, MAX_FOTOS_INICIO - 1) : []; // otras fotos que manda el usuario (solo para el modelo)
   const {lastInsertRowid: id} = db.prepare("INSERT INTO ia_tareas (clase, entrada, componente_id) VALUES ('revisar', ?, ?)")
     .run(JSON.stringify(entrada), objetivo.componente_id ?? null);
   if (foto || suya) {
     entrada.foto = `ia-${id}-${Date.now()}.jpg`; // una copia solo para el modelo: se borra al aplicar o descartar (la de la pieza no se toca)
     if (foto) await writeFile(join(FOTOS, entrada.foto), foto);
     else { await copyFile(join(FOTOS, suya), join(FOTOS, entrada.foto)); entrada.foto_de_pieza = true; }
+    if (extras.length) entrada.fotos_extra = await guardarFotosTarea(id, extras, 'x');
     db.prepare('UPDATE ia_tareas SET entrada = ? WHERE id = ?').run(JSON.stringify(entrada), id);
   }
   return Number(id);
@@ -424,7 +462,7 @@ async function aplicarRevision(id, b) {
     if (e.code === 400 || e.code === 409) throw new HttpError(e.code, e.message);
     throw e;
   }
-  await borrarFoto(t.foto);
+  for (const f of t.fotos) await borrarFoto(f);
   // al historial: lo de la pieza y lo de la ficha por separado (cada uno sale en su historial), con el modelo
   const elegidos = t.propuesta.cambios.filter((c) => ids.includes(c.id));
   const lote = JSON.parse(db.prepare('SELECT entrada FROM ia_tareas WHERE id = ?').get(t.id).entrada).lote || null;
@@ -445,11 +483,7 @@ async function aplicarRevision(id, b) {
 
 async function crearAlta(req) {
   if (!estado(db).activa) throw new HttpError(503, 'Falta la clave de OpenCode Go: ponla en Ajustes → IA');
-  let b;
-  try { b = JSON.parse((await leerCuerpo(req, MAX_FOTO * 1.4)).toString('utf8') || '{}'); } catch (e) {
-    if (e instanceof HttpError) throw e;
-    throw new HttpError(400, 'JSON no válido');
-  }
+  const b = await leerJsonFotos(req); // la foto principal y hasta 3 más
   const id = await nuevaTareaFoto('alta', b);
   encolarIA(id); // en segundo plano: la web va preguntando el estado
   return tarea(id);
@@ -475,10 +509,12 @@ async function nuevaTareaFoto(clase, b) {
   const m = await infoModelo(db, entrada.modelo);
   if (m && !m.vision && clase === 'detectar') throw new HttpError(400, `${m.nombre} no ve fotos: elige otro modelo para la foto con varias piezas`);
   if (m && !m.vision && !textoUsuario) throw new HttpError(400, `${m.nombre} no ve fotos: escribe qué es la pieza o elige otro modelo`);
+  const extras = clase === 'alta' && foto ? fotosDe(b.fotos, MAX_FOTOS_INICIO - 1) : []; // otras caras de la pieza (solo para el modelo)
   const {lastInsertRowid: id} = db.prepare('INSERT INTO ia_tareas (clase, entrada) VALUES (?, ?)').run(clase, JSON.stringify(entrada));
   if (foto) {
     entrada.foto = `ia-${id}-${Date.now()}.jpg`; // provisional: al confirmar pasa a ser la foto de la pieza
     await writeFile(join(FOTOS, entrada.foto), foto);
+    if (extras.length) entrada.fotos_extra = await guardarFotosTarea(id, extras, 'x');
     db.prepare('UPDATE ia_tareas SET entrada = ? WHERE id = ?').run(JSON.stringify(entrada), id);
   }
   return Number(id);
@@ -560,6 +596,7 @@ async function aplicarAlta(id, b) {
   // la foto se mueve ANTES de abrir la transacción (no puede haber un await dentro: la conexión es compartida)
   const foto = t.foto ? `c-ia${t.id}-${Date.now()}.jpg` : null;
   if (foto) await rename(join(FOTOS, t.foto), join(FOTOS, foto));
+  const sobran = t.fotos.filter((f) => f !== t.foto); // las otras caras y las de las respuestas: solo eran para el modelo
   let compId, tipoId = p.tipo_existente;
   db.exec('BEGIN');
   try {
@@ -579,6 +616,7 @@ async function aplicarAlta(id, b) {
     if (foto) await rename(join(FOTOS, foto), join(FOTOS, t.foto)).catch(() => {}); // la foto vuelve a la tarea
     throw e;
   }
+  for (const f of sobran) await borrarFoto(f);
   const nueva = comp(compId), comunIA = {quien: 'ia', modelo: t.modelo, detalle: {tarea: t.id}};
   if (b.tipo === '__nuevo')
     apuntar({...comunIA, accion: 'tipo.alta', objeto: 'tipo', id: tipoId, nombre: nombresTipo()[tipoId], resumen: 'Ficha nueva creada por la IA (sin comprobar)'});
@@ -736,12 +774,12 @@ async function api(req, res, path) {
   if (m === 'GET' && path === '/api/auditoria') return send(res, 200, aud.listar(db, Object.fromEntries(new URL(req.url, 'http://x').searchParams)));
   if (m === 'GET' && path === '/api/registro') return send(res, 200, registro.leer(Object.fromEntries(new URL(req.url, 'http://x').searchParams)));
   if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)\/aplicar$/)) && m === 'POST') return send(res, 200, await aplicarAlta(r[1], await leerJson(req)));
-  if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)\/responder$/)) && m === 'POST') return send(res, 202, responderAlta(r[1], await leerJson(req)));
+  if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)\/responder$/)) && m === 'POST') return send(res, 202, await responderAlta(r[1], await leerJsonFotos(req)));
   if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)\/descartar$/)) && m === 'POST') {
     const t = tarea(r[1]);
     if (t.estado === 'aplicada') throw new HttpError(409, 'Eso ya se guardó: no se puede descartar');
     db.prepare("UPDATE ia_tareas SET estado = 'descartada' WHERE id = ?").run(t.id);
-    await borrarFoto(t.foto);
+    for (const f of t.fotos) await borrarFoto(f);
     if (t.estado !== 'descartada') {
       const o = t.objetivo || {};
       apuntar({accion: 'ia.descartar', modelo: t.modelo, detalle: {tarea: t.id},

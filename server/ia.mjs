@@ -319,6 +319,7 @@ const aSalida = (p) => ({
   datos_pieza: arr(p.datos_pieza).map(([dato, valor]) => ({dato, valor})), cantidad: p.cantidad, dudas: p.dudas, confianza: p.confianza,
 });
 const textoRonda = (r) => ['He revisado tu propuesta (la de arriba ya lleva mis correcciones).',
+  ...(r.fotos?.length ? [`Te mando ${r.fotos.length === 1 ? 'una foto más' : `${r.fotos.length} fotos más`} de la pieza.`] : []),
   ...(r.respuestas.length ? ['Respuestas a tus dudas:', ...r.respuestas.map((x) => `- «${x.duda}» → ${x.respuesta}`)] : []),
   ...(r.extra ? [`Además: ${r.extra}`] : []),
   'Rehaz la propuesta completa con esto en cuenta.'].join('\n');
@@ -331,18 +332,23 @@ function coste(m, uso) {
   return {tokens_entrada: e, tokens_salida: s, dolares: Math.round(dolares * 1e6) / 1e6};
 }
 
-async function proponer(db, entrada, foto, sesion) {
+// una foto como parte del mensaje
+const parteFoto = (f) => ({type: 'file', mediaType: 'image/jpeg', data: {type: 'data', data: f}});
+
+async function proponer(db, entrada, foto, sesion, mas = {}) {
   const {m, clave} = await modeloElegido(db, entrada.modelo);
   const ctx = contexto(db);
-  const contenido = [{type: 'text', text: entrada.texto || 'Identifica la pieza de la foto.'}];
-  if (foto && m.vision) contenido.push({type: 'file', mediaType: 'image/jpeg', data: {type: 'data', data: foto}});
+  const extras = m.vision ? arr(mas.extra) : [];
+  const contenido = [{type: 'text', text: entrada.texto || `Identifica la pieza de ${extras.length ? `las ${extras.length + 1} fotos (son la misma pieza)` : 'la foto'}.`}];
+  if (foto && m.vision) contenido.push(parteFoto(foto), ...extras.map(parteFoto));
   else if (!entrada.texto) throw new Error(`${m.nombre} no ve fotos: escribe qué es la pieza o elige otro modelo.`);
   // vueltas de revisión: la propuesta (ya corregida por el usuario) como respuesta del modelo + las respuestas del usuario
   const mensajes = [{role: 'user', content: contenido}];
-  for (const r of arr(entrada.rondas)) {
+  arr(entrada.rondas).forEach((r, i) => {
     mensajes.push({role: 'assistant', content: JSON.stringify(aSalida(r.propuesta))});
-    mensajes.push({role: 'user', content: textoRonda(r)});
-  }
+    const suyas = m.vision ? arr(arr(mas.rondas)[i]) : []; // las fotos que el usuario añadió al contestar
+    mensajes.push({role: 'user', content: suyas.length ? [{type: 'text', text: textoRonda(r)}, ...suyas.map(parteFoto)] : textoRonda({...r, fotos: []})});
+  });
   let error, nivel = nivelRazonar(db);
   for (let intento = 1; intento <= 2; intento++) {
     try {
@@ -508,7 +514,7 @@ const fichaSalida = (f) => ({nombre: f.nombre, categoria: f.categoria, resumen: 
   pines: f.pines.map(([pin, uso, funcion, nota]) => ({pin, uso, funcion, nota: nota || ''})), datos: f.datos.map(([dato, valor]) => ({dato, valor})), ojo: f.ojo});
 
 // pide la revisión y devuelve {propuesta: {objetivo, actual, nueva, cambios, motivos, dudas, confianza, coste}, modelo}
-async function proponerRevision(db, entrada, foto, sesion) {
+async function proponerRevision(db, entrada, foto, sesion, mas = {}) {
   const {m, clave} = await modeloElegido(db, entrada.modelo);
   const {diferencias, estadoActual} = await import('./revision.mjs');
   const obj = entrada.objetivo;
@@ -521,10 +527,12 @@ async function proponerRevision(db, entrada, foto, sesion) {
       datos_pieza: actual.pieza.datos_pieza.map(([dato, valor]) => ({dato, valor}))} : undefined});
   // vueltas anteriores: lo que preguntó el modelo y lo que contestó el usuario (para rehacer las correcciones con eso)
   const vueltas = arr(entrada.rondas).map((r) => [...arr(r.respuestas).map((x) => `- Preguntaste «${x.duda}» → ${x.respuesta}`),
-    ...(r.extra ? [`- Además: ${r.extra}`] : [])].join('\n')).filter(Boolean);
+    ...(r.extra ? [`- Además: ${r.extra}`] : []), ...(r.fotos?.length && m.vision ? [`- Te mando ${r.fotos.length === 1 ? 'una foto más' : `${r.fotos.length} fotos más`}.`] : [])].join('\n')).filter(Boolean);
   const respuestas = vueltas.length ? `Respuestas a tus dudas de antes (tenlas en cuenta y no vuelvas a preguntarlas):\n${vueltas.join('\n')}\n\n` : '';
   const contenido = [{type: 'text', text: `${entrada.texto ? `Lo que quiero que revises: ${entrada.texto}\n\n` : 'Revisa la ficha entera.\n\n'}${respuestas}Lo que hay guardado:\n${datosTexto}`}];
-  if (foto && m.vision) contenido.push({type: 'file', mediaType: 'image/jpeg', data: {type: 'data', data: foto}});
+  // la foto (y las otras que mandó el usuario al pedirla), y después las que añadió al contestar las dudas, en orden
+  if (foto && m.vision) contenido.push(parteFoto(foto), ...arr(mas.extra).map(parteFoto));
+  if (m.vision) contenido.push(...arr(mas.rondas).flat().map(parteFoto));
   let error, nivel = nivelRazonar(db);
   for (let intento = 1; intento <= 2; intento++) {
     try {
@@ -646,9 +654,12 @@ export async function ejecutarAlta(db, fotosDir, id) {
   const entrada = JSON.parse(t.entrada);
   try {
     const foto = entrada.foto ? await readFile(`${fotosDir}/${entrada.foto}`) : null;
+    // las otras fotos del principio y las de cada respuesta (si alguna ya no está, se sigue sin ella)
+    const leer = (lista) => Promise.all(arr(lista).map((n) => readFile(`${fotosDir}/${n}`).catch(() => null))).then((l) => l.filter(Boolean));
+    const mas = {extra: await leer(entrada.fotos_extra), rondas: await Promise.all(arr(entrada.rondas).map((r) => leer(r.fotos)))};
     const {propuesta, modelo} = t.clase === 'detectar' ? await detectar(db, entrada, foto, `ams-lab-tarea-${id}`)
-      : t.clase === 'revisar' ? await proponerRevision(db, entrada, foto, `ams-lab-tarea-${id}`)
-      : await proponer(db, entrada, foto, `ams-lab-tarea-${id}`);
+      : t.clase === 'revisar' ? await proponerRevision(db, entrada, foto, `ams-lab-tarea-${id}`, mas)
+      : await proponer(db, entrada, foto, `ams-lab-tarea-${id}`, mas);
     db.prepare("UPDATE ia_tareas SET estado = 'propuesta', propuesta = ?, modelo = ?, error = NULL WHERE id = ? AND estado = 'pendiente'")
       .run(JSON.stringify(propuesta), modelo, id);
   } catch (e) {
