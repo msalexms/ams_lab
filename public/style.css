@@ -994,3 +994,10 @@ table.t-material td .sub a { color: inherit; text-underline-offset: 3px; }
 @media (min-width: 761px) {
   .fila > .stepper, .fila > .muchos { width: 104px; flex: none; justify-content: center; text-align: center; }
 }
+
+/* varias fotos: miniaturas en el campo y las que ha mirado el modelo */
+.archivo .archivo-mini + .archivo-mini { margin-left: calc(-1 * var(--e2) + 2px); }
+.ia-tira { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2); }
+.ia-tira img { width: 64px; height: 48px; object-fit: cover; border: 1px solid var(--linea); display: block; }
+.ia-tira a:hover img { border-color: var(--tinta2); }
+.ia-dudas .campo { display: grid; gap: 6px; font-size: .84rem; font-weight: 500; color: var(--tinta2); margin-top: var(--e3); }

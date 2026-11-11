@@ -120,7 +120,7 @@ Lo escribe el servidor (`server/auditoria.mjs`) cada vez que algo cambia, y se v
 ## Tareas de la IA (`ia_tareas`)
 Clases: `alta` (una pieza nueva), `revisar` (corregir una pieza o una ficha) y `detectar` (v8: separar las piezas de una foto con varias; su `propuesta` es `{piezas: [{nombre, descripcion, cantidad, caja: {x, y, ancho, alto} en milésimas}], dudas}` y, al elegir las piezas, crea un alta por recorte con el mismo `entrada.lote`).
 
-Cada llamada al modelo se guarda: qué se le pidió (`entrada`, JSON), qué propuso (`propuesta`, JSON) y en qué quedó (`estado`). Si el usuario contesta las dudas, cada vuelta se añade a `entrada.rondas` (`{propuesta corregida, respuestas, extra}`, máx. 5) y el modelo rehace la propuesta. Nada se aplica sin pasar por `propuesta` y la confirmación del usuario; así una respuesta lenta o una pestaña cerrada no se pierde ni se paga dos veces.
+Cada llamada al modelo se guarda: qué se le pidió (`entrada`, JSON), qué propuso (`propuesta`, JSON) y en qué quedó (`estado`). Fotos: `entrada.foto` (la principal), `entrada.fotos_extra` (hasta 3 más) y `rondas[].fotos` (las que se añaden al contestar), como mucho 8 por tarea. Si el usuario contesta las dudas, cada vuelta se añade a `entrada.rondas` (`{propuesta corregida, respuestas, extra}`, máx. 5) y el modelo rehace la propuesta. Nada se aplica sin pasar por `propuesta` y la confirmación del usuario; así una respuesta lenta o una pestaña cerrada no se pierde ni se paga dos veces.
 
 ## Reglas en la base de datos
 - `cantidad ≥ 0`; `varios = 1` (muchos) obliga a `cantidad = NULL`; nombres no vacíos; colores `#RRGGBB`; booleanos 0/1.
