@@ -1,8 +1,9 @@
-// Pines resumidos de cada tipo: [pin, uso corto, función]. Funciones: vcc, gnd, bus, dig, ana, no, otro.
+// Pines de cada tipo: [pin, uso corto, función]. Se pueden agrupar al escribirlos; se guardan uno por fila (separarPines). Funciones: vcc, gnd, bus, dig, ana, no, otro.
 // npm run pines → los guarda en seed/glosario.json; después, npm run catalogo los pasa a la base de datos.
 // Los tipos que no están en seed/glosario.json (fuera del catálogo básico) se ignoran.
 import {readFileSync, writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {separarPines} from '../server/formato.mjs';
 
 const P = {
   'esp32-wrover-freenove': [['3V3', 'Salida 3,3 V', 'vcc'], ['5V', 'Entrada 5 V', 'vcc'], ['GND', 'Masa', 'gnd'],
@@ -64,7 +65,9 @@ const P = {
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const seed = `${ROOT}seed/glosario.json`;
 const g = JSON.parse(readFileSync(seed, 'utf8'));
-for (const [k, pines] of Object.entries(P)) if (g[k]) g[k].pines = pines;
+// aquí se escriben agrupados para que se lean bien («GPIO 16 · 17», «GPIO 32–39»); en el catálogo va UN pin por fila
+// ([pin, uso, función] o, si comparte algo, [pin, uso, función, nota])
+for (const [k, pines] of Object.entries(P)) if (g[k]) g[k].pines = separarPines(pines).map((p) => (p[3] ? p : p.slice(0, 3)));
 writeFileSync(seed, JSON.stringify(g, null, 2) + '\n');
 
 console.log('✔ pines guardados en seed/glosario.json (aplícalos con: npm run catalogo)');

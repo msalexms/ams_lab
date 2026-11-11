@@ -8,7 +8,8 @@
     "dibujos": "node scripts/dibujos.mjs",
     "pines": "node scripts/pines.mjs && node scripts/catalogo.mjs",
     "catalogo": "node scripts/catalogo.mjs",
-    "copia": "node scripts/copia.mjs"
+    "copia": "node scripts/copia.mjs",
+    "ia-simulada": "node scripts/ia-simulada.mjs"
   },
   "engines": {
     "node": ">=24"
