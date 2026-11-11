@@ -988,3 +988,9 @@ table.t-material td .sub a { color: inherit; text-underline-offset: 3px; }
 .anadir-menu { min-width: 280px; }
 .anadir-menu > .fab-op { display: grid; gap: 2px; padding: 12px var(--e4); }
 .anadir-menu > .fab-op:focus-visible { outline: 2px solid var(--tinta); outline-offset: -2px; }
+
+/* lista del inventario en escritorio: la cantidad (contador o «muchos») ocupa siempre lo mismo que su cabecera,
+   para que sitio, tensión e interfaz queden en columna en todas las filas */
+@media (min-width: 761px) {
+  .fila > .stepper, .fila > .muchos { width: 104px; flex: none; justify-content: center; text-align: center; }
+}
