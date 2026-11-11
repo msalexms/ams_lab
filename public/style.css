@@ -979,3 +979,12 @@ table.t-material td .sub a { color: inherit; text-underline-offset: 3px; }
   .pin-grupo-pines, .pin-grupo-notas { grid-column: 2; }
   .pin-grupo > summary::after { grid-column: 3; }
 }
+
+/* escritorio: «Añadir pieza» con desplegable (las opciones del «+» del móvil) */
+.anadir > summary.btn { display: inline-flex; gap: var(--e2); font-size: inherit; letter-spacing: normal; height: auto; }
+.anadir-flecha { font-size: .7rem; transition: transform .15s; }
+.anadir[open] .anadir-flecha { transform: rotate(180deg); }
+.anadir[open] > summary.btn.prim { border-color: var(--tinta); }
+.anadir-menu { min-width: 280px; }
+.anadir-menu > .fab-op { display: grid; gap: 2px; padding: 12px var(--e4); }
+.anadir-menu > .fab-op:focus-visible { outline: 2px solid var(--tinta); outline-offset: -2px; }

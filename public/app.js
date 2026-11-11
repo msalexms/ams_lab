@@ -403,6 +403,15 @@ function filaComp(c) {
       <span>${f ? esc(list(f.interfaz).slice(0, 2).join(', ')) : ''}</span></div>
     ${stepper(c)}</div>`;
 }
+// escritorio: «Añadir pieza» despliega las mismas opciones que el «+» del móvil (sin cámara: «Con IA, foto y texto»)
+const menuAnadir = () => `<details class="mas anadir solo-escritorio"><summary class="btn prim">Añadir pieza<span class="anadir-flecha" aria-hidden="true">▾</span></summary>
+  <div class="mas-menu anadir-menu" role="menu">
+    <label class="fab-op" role="menuitem" tabindex="0">Elegir foto con IA<span class="sub">la analiza en cuanto la eliges</span>
+      <input type="file" accept="image/*" class="foto-directa" hidden></label>
+    <a class="fab-op" role="menuitem" href="#/ia">Con IA, foto y texto<span class="sub">añade lo que sepas y elige el modelo</span></a>
+    <a class="fab-op" role="menuitem" href="#/ia/varias">Varias piezas en una foto<span class="sub">la IA las separa y las identifica</span></a>
+    <a class="fab-op" role="menuitem" href="#/nuevo">A mano<span class="sub">rellenas tú la ficha</span></a>
+  </div></details>`;
 const CAB_INVENTARIO = `<div class="fila fila-cab solo-escritorio" aria-hidden="true"><div class="fila-main">Pieza</div>
   <div class="fila-cols"><span>Sitio</span><span>Tensión</span><span>Interfaz</span></div><div class="fila-cant">Cantidad</div></div>`;
 
@@ -451,8 +460,7 @@ function vInventario() {
       <button class="f ${ui.seleccionando ? 'on' : ''}" id="sel-modo" type="button">${ui.seleccionando ? 'Terminar' : 'Seleccionar'}</button>
       <span class="conmuta" role="group" aria-label="Vista">${[['lista', 'Lista'], ['cuadricula', 'Cuadrícula']].map(([k, v]) =>
         `<button class="f ${vistaInv() === k ? 'on' : ''}" data-vista-inv="${k}" aria-pressed="${vistaInv() === k}">${v}</button>`).join('')}</span>
-      <a class="btn solo-escritorio" href="#/ia">Añadir con IA</a>
-      <a class="btn prim solo-escritorio" href="#/nuevo">Añadir pieza</a>
+      ${menuAnadir()}
     </div></div><div id="pend-aviso" aria-live="polite"></div>`;
 
   if (!D.componentes.length) return filtros + vacio('Aún no hay piezas. Pulsa + para añadir la primera.');
@@ -2971,7 +2979,11 @@ document.addEventListener('click', (e) => { if (!e.target.closest('#fab, #fab-me
 document.addEventListener('click', (e) => document.querySelectorAll('details.mas[open]').forEach((d) => {
   if (!d.contains(e.target) || e.target.closest('.mas-menu > a, .mas-menu > button')) d.open = false;
 }));
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarMenuFab(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  cerrarMenuFab();
+  document.querySelectorAll('details.mas[open]').forEach((d) => { d.open = false; if (d.contains(document.activeElement)) d.querySelector('summary')?.focus(); }); // «⋯» y «Añadir pieza»
+});
 async function fotoDirectaIA(file) {
   cerrarMenuFab();
   if (!D.ia?.activa) { toast('Primero pon la clave de OpenCode Go'); location.hash = '#/ia/ajustes'; return; }
@@ -2985,6 +2997,17 @@ async function fotoDirectaIA(file) {
   const t = await api('POST', 'api/ia/alta', {foto});
   location.hash = `#/ia/${t.id}`;
 }
+// «Elegir foto con IA» del desplegable de escritorio: lo mismo que el del móvil (también con Intro o Espacio)
+app.addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('.anadir-menu label.fab-op')) { e.preventDefault(); e.target.querySelector('input')?.click(); }
+});
+app.addEventListener('change', async (e) => {
+  if (!e.target.classList.contains('foto-directa')) return;
+  const f = e.target.files[0];
+  e.target.value = '';
+  e.target.closest('details')?.removeAttribute('open');
+  if (f) try { await fotoDirectaIA(f); } catch (err) { toast(err.message, true); }
+});
 for (const id of ['fab-camara', 'fab-galeria']) $(`#${id}`).addEventListener('change', async (e) => {
   const f = e.target.files[0];
   e.target.value = '';
