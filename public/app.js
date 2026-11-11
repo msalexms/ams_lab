@@ -374,7 +374,7 @@ function tablaPines(f) {
       <span class="pin-grupo-pines${FUNC[k].tachado ? ' tachado' : ''}">${esc(resumenPines(ps.map((p) => p.pin)))}</span>${notas ? `<span class="pin-grupo-notas">${plural(notas, 'nota')}</span>` : ''}</summary>
       <table class="t"><tbody>${ps.map((p) => filaPin(p)).join('')}</tbody></table></details>`;
   }).join('');
-  return `<div class="pines" data-vista="${vista}"><div class="pines-cab"><h3>Pines<span class="n">${pines.length}</span></h3>
+  return `<div class="pines" data-pines-modo="${vista}"><div class="pines-cab"><h3>Pines<span class="n">${pines.length}</span></h3>
       <span class="conmuta" role="group" aria-label="Cómo ver los pines">${[['funcion', 'Por función'], ['orden', 'En orden']].map(([k, t]) =>
         `<button class="f ${vista === k ? 'on' : ''}" type="button" data-pines-vista="${k}" aria-pressed="${vista === k}">${t}</button>`).join('')}</span></div>
     <div class="pines-funcion">${grupos}</div><div class="pines-orden">${enOrden}${leyenda}</div></div>`;
@@ -450,7 +450,7 @@ function vInventario() {
       ${nRevisar ? `<button class="f ${ui.revisar ? 'on' : ''}" id="rev">Pendientes<span class="n">${nRevisar}</span></button>` : ''}
       <button class="f ${ui.seleccionando ? 'on' : ''}" id="sel-modo" type="button">${ui.seleccionando ? 'Terminar' : 'Seleccionar'}</button>
       <span class="conmuta" role="group" aria-label="Vista">${[['lista', 'Lista'], ['cuadricula', 'Cuadrícula']].map(([k, v]) =>
-        `<button class="f ${vistaInv() === k ? 'on' : ''}" data-vista="${k}" aria-pressed="${vistaInv() === k}">${v}</button>`).join('')}</span>
+        `<button class="f ${vistaInv() === k ? 'on' : ''}" data-vista-inv="${k}" aria-pressed="${vistaInv() === k}">${v}</button>`).join('')}</span>
       <a class="btn solo-escritorio" href="#/ia">Añadir con IA</a>
       <a class="btn prim solo-escritorio" href="#/nuevo">Añadir pieza</a>
     </div></div><div id="pend-aviso" aria-live="polite"></div>`;
@@ -2252,7 +2252,7 @@ async function ajRefrescar(msg) {
 function ajCategorias(cats) {
   return `${cabecera('Categorías', '', 'Cámbiales el nombre escribiendo encima, ordénalas con las flechas o bórralas. «Otros» no se borra: es donde va lo que no tiene sitio.')}
     <div class="pad aj-lista">${cats.map((c, i) => `
-      <div class="aj-fila" data-cat="${esc(c.id)}">
+      <div class="aj-fila" data-cat-fila="${esc(c.id)}">
         <input class="aj-nombre" data-cat-nombre="${esc(c.id)}" value="${esc(c.nombre)}" maxlength="60" aria-label="Nombre de la categoría">
         <span class="sub">${plural(c.tipos, 'tipo')}</span>
         <span class="aj-botones">
@@ -2484,7 +2484,7 @@ async function clicAjustes(t) {
     return true;
   }
   if (d.catMover) {
-    const ids = [...document.querySelectorAll('[data-cat]')].map((e) => e.dataset.cat), i = ids.indexOf(d.catMover), j = i + Number(d.dir);
+    const ids = [...document.querySelectorAll('[data-cat-fila]')].map((e) => e.dataset.catFila), i = ids.indexOf(d.catMover), j = i + Number(d.dir);
     if (j < 0 || j >= ids.length) return true;
     [ids[i], ids[j]] = [ids[j], ids[i]];
     await api('PUT', 'api/categorias/orden', {ids});
@@ -2780,7 +2780,7 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-rev-vista],[data-vista],#sel-modo,[data-sel],[data-sel-acc],[data-lote-todas],[data-lote-marcar],#lote-aplicar,#lote-descartar,.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar],[data-pend-descartar],[data-hist-grupo],#hist-mas,[data-reg-nivel],#reg-copiar,[data-pro],#det-crear,[data-det-marcar],#lote-guardar,#filtros-abrir,#formato-aplicar,[data-formato-marcar],[data-pines-vista]');
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-rev-vista],[data-vista-inv],#sel-modo,[data-sel],[data-sel-acc],[data-lote-todas],[data-lote-marcar],#lote-aplicar,#lote-descartar,.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar],[data-pend-descartar],[data-hist-grupo],#hist-mas,[data-reg-nivel],#reg-copiar,[data-pro],#det-crear,[data-det-marcar],#lote-guardar,#filtros-abrir,#formato-aplicar,[data-formato-marcar],[data-pines-vista]');
   if (!t || !app.contains(t)) return; // solo botones de la propia vista (no el <html>, que lleva data-* del tema)
   // sin redibujar la vista: el selector de tipo y las tablas editables viven dentro de formularios a medio rellenar
   if (t.classList.contains('combo-op')) { elegirTipo(t.closest('.combo'), t.dataset.valor); return; }
@@ -2794,7 +2794,7 @@ app.addEventListener('click', async (e) => {
   if (t.dataset.pinesVista) {
     ui.pinesVista = t.dataset.pinesVista;
     const caja = t.closest('.pines');
-    caja.dataset.vista = ui.pinesVista;
+    caja.dataset.pinesModo = ui.pinesVista;
     caja.querySelectorAll('[data-pines-vista]').forEach((b) => { const on = b.dataset.pinesVista === ui.pinesVista; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
     return;
   }
@@ -2825,9 +2825,9 @@ app.addEventListener('click', async (e) => {
       try { await navigator.clipboard.writeText(txt); toast('Registro copiado'); } catch { toast('No se ha podido copiar (hace falta HTTPS o localhost)', true); }
       return;
     }
-    if (t.dataset.vista) {
-      await api('PUT', 'api/ajustes/vista_inventario', {valor: t.dataset.vista});
-      D.ajustes.vista_inventario = t.dataset.vista;
+    if (t.dataset.vistaInv) { // Lista / Cuadrícula del inventario (atributo propio: no confundir con otras «vistas»)
+      await api('PUT', 'api/ajustes/vista_inventario', {valor: t.dataset.vistaInv});
+      D.ajustes.vista_inventario = t.dataset.vistaInv;
       route();
       return;
     }
