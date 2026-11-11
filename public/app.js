@@ -19,7 +19,7 @@ const FUENTES = {
 const fuenteActual = () => (FUENTES[D.ajustes.fuente] ? D.ajustes.fuente : 'jetbrains');
 
 const D = {componentes: [], tipos: {}, proyectos: [], categorias: [], funciones: [], dificultades: [], ubicaciones: [], ajustes: {}};
-const ui = {sel: new Set(), seleccionando: false, selIA: false, visibles: [], cat: '', ubic: '', revisar: false, proFiltro: 'ya', sinComprobar: false, ajTipos: 'todos', ajBuscar: ''};
+const ui = {sel: new Set(), seleccionando: false, selIA: false, visibles: [], cat: '', ubic: '', revisar: false, proFiltro: 'todos', sinComprobar: false, ajTipos: 'todos', ajBuscar: ''};
 const $ = (s) => document.querySelector(s);
 const app = $('#app');
 const q = $('#q');
@@ -326,39 +326,92 @@ const specs = (pares) => `<dl class="specs">${pares.filter(([, v]) => v !== '' &
 const cabecera = (titulo, cat, resumen) => `<header class="hoja-cab"><h1>${titulo}</h1>${cat ? `<span class="cat">${esc(cat)}</span>` : ''}</header>
   ${resumen ? `<p class="resumen">${esc(resumen)}</p>` : '<div class="sin-resumen"></div>'}`;
 
-// tabla de pines: color y nombre de cada función salen de la base de datos (claro y noche)
+// tabla de pines. Cada fila es UN pin: [pin, uso, función, nota]. Color y nombre de cada función salen de la base de
+// datos (claro y noche). Con pocos pines, una tabla sin más. Con muchos (una placa), agrupados por función: cada grupo
+// plegado con sus pines en una línea («GPIO 21 · 22 · 32–39») y, al abrirlo, el detalle de cada uno con su nota.
+// «En orden» los enseña todos seguidos, como están en la placa. La vista elegida se recuerda mientras dure la visita.
+const PINES_AGRUPAR = 8;
+const colorPin = (id) => { const x = FUNC[id] || {color_claro: '#888888', color_oscuro: '#888888'}; return `--cc:${esc(x.color_claro)};--co:${esc(x.color_oscuro)}`; };
+// «GPIO 21», «GPIO 22», «GPIO 32»…«GPIO 39» → «GPIO 21 · 22 · 32–39» (solo para leerlos de un vistazo)
+function resumenPines(nombres) {
+  const out = [];
+  let prefijo = null, nums = [];
+  const cerrar = () => {
+    if (!nums.length) return;
+    nums.sort((a, b) => a - b); // de menor a mayor: se lee mejor que en el orden de la placa
+    const tramos = [];
+    for (let i = 0; i < nums.length; i++) {
+      let j = i;
+      while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++;
+      tramos.push(j - i >= 2 ? `${nums[i]}–${nums[j]}` : nums.slice(i, j + 1).join(' · '));
+      i = j;
+    }
+    out.push(`${prefijo}${tramos.join(' · ')}`);
+    nums = [];
+  };
+  for (const n of nombres) {
+    const m = String(n).match(/^(.*?\D)(\d+)$/);
+    if (m && m[1] === prefijo) { nums.push(Number(m[2])); continue; }
+    cerrar();
+    if (m) { prefijo = m[1]; nums = [Number(m[2])]; } else { prefijo = null; out.push(n); }
+  }
+  cerrar();
+  return out.join(' · ');
+}
+const filaPin = (p, n) => `<tr style="${colorPin(p.fn)}"${FUNC[p.fn]?.tachado ? ' class="tachado"' : ''}>${n != null ? `<td class="n">${n}</td>` : ''}
+  <td class="pin"><i class="dot"></i>${esc(p.pin)}</td><td>${esc(p.uso)}${p.nota ? `<div class="sub pin-nota">${esc(p.nota)}</div>` : ''}</td></tr>`;
 function tablaPines(f) {
-  const pines = list(f.pines).map(([pin, uso, fn]) => ({pin, uso, fn}));
+  const pines = list(f.pines).map(([pin, uso, fn, nota]) => ({pin, uso, fn, nota}));
   if (!pines.length) return '';
   const usadas = Object.keys(FUNC).filter((k) => pines.some((p) => p.fn === k));
-  const color = (id) => { const x = FUNC[id] || {color_claro: '#888888', color_oscuro: '#888888'}; return `--cc:${esc(x.color_claro)};--co:${esc(x.color_oscuro)}`; };
-  return `<h3>Pines</h3><table class="t"><thead><tr><th class="n">#</th><th>Pin</th><th>Uso</th></tr></thead><tbody>
-    ${pines.map((p, i) => `<tr style="${color(p.fn)}"${FUNC[p.fn]?.tachado ? ' class="tachado"' : ''}><td class="n">${i + 1}</td>
-      <td class="pin"><i class="dot"></i>${esc(p.pin)}</td><td>${esc(p.uso)}</td></tr>`).join('')}</tbody></table>
-    <p class="leyenda">${usadas.map((k) => `<span style="${color(k)}"><i class="dot"></i>${esc(FUNC[k].nombre)}</span>`).join('')}</p>`;
-}
-
-function listaProyectos(ps) {
-  return ps.map((p) => `<div class="fila"><a class="fila-main" href="#/p/${esc(p.id)}"><div>
-      <div class="nombre">${esc(p.nombre)}</div><div class="sub">${esc(p.resumen || '')}</div></div></a>
-      <div class="der"><div>${estadoProyecto(p)}</div><div class="sub">${esc(dificultad(p))}</div></div></div>`).join('');
+  const leyenda = `<p class="leyenda">${usadas.map((k) => `<span style="${colorPin(k)}"><i class="dot"></i>${esc(FUNC[k].nombre)}</span>`).join('')}</p>`;
+  const enOrden = `<table class="t"><thead><tr><th class="n">#</th><th>Pin</th><th>Uso</th></tr></thead><tbody>${pines.map((p, i) => filaPin(p, i + 1)).join('')}</tbody></table>`;
+  if (pines.length <= PINES_AGRUPAR) return `<h3>Pines</h3>${enOrden}${leyenda}`;
+  const vista = ui.pinesVista === 'orden' ? 'orden' : 'funcion';
+  const grupos = usadas.map((k) => {
+    const ps = pines.filter((p) => p.fn === k), notas = ps.filter((p) => p.nota).length;
+    return `<details class="pin-grupo" style="${colorPin(k)}"><summary><i class="dot"></i><span class="pin-grupo-t">${esc(FUNC[k].nombre)}<span class="n">${ps.length}</span></span>
+      <span class="pin-grupo-pines${FUNC[k].tachado ? ' tachado' : ''}">${esc(resumenPines(ps.map((p) => p.pin)))}</span>${notas ? `<span class="pin-grupo-notas">${plural(notas, 'nota')}</span>` : ''}</summary>
+      <table class="t"><tbody>${ps.map((p) => filaPin(p)).join('')}</tbody></table></details>`;
+  }).join('');
+  return `<div class="pines" data-vista="${vista}"><div class="pines-cab"><h3>Pines<span class="n">${pines.length}</span></h3>
+      <span class="conmuta" role="group" aria-label="Cómo ver los pines">${[['funcion', 'Por función'], ['orden', 'En orden']].map(([k, t]) =>
+        `<button class="f ${vista === k ? 'on' : ''}" type="button" data-pines-vista="${k}" aria-pressed="${vista === k}">${t}</button>`).join('')}</span></div>
+    <div class="pines-funcion">${grupos}</div><div class="pines-orden">${enOrden}${leyenda}</div></div>`;
 }
 
 // ---------- vistas ----------
+// el tipo en la fila de una pieza: solo lo que el nombre de la pieza no dice ya («HC-SR04» + «ultrasonidos»; nada si
+// el tipo se llama igual que la pieza)
+const PALABRAS_VACIAS = new Set(['de', 'del', 'con', 'la', 'el', 'los', 'las', 'para', 'por', 'en']);
+function tipoEnFila(c) {
+  if (!c.tipo || !D.tipos[c.tipo]) return '';
+  const t = g(c.tipo).nombre, pieza = norm(c.nombre).replace(/[^a-z0-9]+/g, ' ');
+  const nuevas = norm(t).split(/[^a-z0-9]+/).filter((w) => w.length > 1 && !PALABRAS_VACIAS.has(w) && !pieza.includes(w));
+  if (!nuevas.length) return '';
+  return norm(t).startsWith(norm(c.nombre)) ? t.slice(c.nombre.length).replace(/^[\s(·:,-]+|[)\s]+$/g, '') || t : t;
+}
+// en escritorio, el sitio, la tensión y las interfaces van en columnas; en el móvil, el sitio va bajo el nombre
 function filaComp(c) {
+  const f = c.tipo && D.tipos[c.tipo] ? g(c.tipo) : null, tipo = tipoEnFila(c);
+  const sub = [tipo ? esc(tipo) : '', c.ubicacion ? `<span class="solo-movil">${esc(c.ubicacion)}</span>` : ''].filter(Boolean);
   return `<div class="fila">
     <a class="fila-main" href="#/c/${c.id}">${c.foto ? `<img class="thumb" src="${fotoUrl(c)}" alt="" loading="lazy">` : ''}
       <div><div class="nombre">${esc(c.nombre)}${revisar(c)}</div>
-      <div class="sub">${[c.tipo ? g(c.tipo).nombre : '', c.ubicacion].filter(Boolean).map(esc).join(' · ')}</div></div></a>
+      ${sub.length ? `<div class="sub${tipo ? '' : ' solo-movil'}">${sub.join(tipo && c.ubicacion ? '<span class="solo-movil"> · </span>' : '')}</div>` : ''}</div></a>
+    <div class="fila-cols solo-escritorio"><span>${esc(c.ubicacion) || '<span class="gris">—</span>'}</span><span>${f ? esc(voltajeDe(f)) : ''}</span>
+      <span>${f ? esc(list(f.interfaz).slice(0, 2).join(', ')) : ''}</span></div>
     ${stepper(c)}</div>`;
 }
+const CAB_INVENTARIO = `<div class="fila fila-cab solo-escritorio" aria-hidden="true"><div class="fila-main">Pieza</div>
+  <div class="fila-cols"><span>Sitio</span><span>Tensión</span><span>Interfaz</span></div><div class="fila-cant">Cantidad</div></div>`;
 
 // cuadrícula: la foto manda; sin foto, solo el nombre (sin recuadros de relleno)
 function tarjetaComp(c) {
   return `<div class="tarjeta${c.foto ? '' : ' sin-foto'}">
     <a class="tarjeta-main" href="#/c/${c.id}">${c.foto ? `<img class="tarjeta-foto" src="${fotoUrl(c)}" alt="" loading="lazy">` : ''}
       <span class="tarjeta-txt"><span class="nombre">${esc(c.nombre)}${revisar(c)}</span>
-      <span class="sub">${[c.tipo ? g(c.tipo).nombre : '', c.ubicacion].filter(Boolean).map(esc).join(' · ')}</span></span></a>
+      <span class="sub">${[tipoEnFila(c), c.ubicacion].filter(Boolean).map(esc).join(' · ')}</span></span></a>
     <div class="tarjeta-pie">${stepper(c)}</div></div>`;
 }
 const vistaInv = () => (D.ajustes.vista_inventario === 'cuadricula' ? 'cuadricula' : 'lista');
@@ -388,7 +441,9 @@ function vInventario() {
     `<button class="f ${ui.cat === k ? 'on' : ''}" data-cat="${k}">${CATS[k]}<span class="n">${porCat[k]}</span></button>`).join('');
   const filtros = `<div class="filtros">
     <div class="cats"><button class="f ${!ui.cat ? 'on' : ''}" data-cat="">Todo<span class="n">${D.componentes.length}</span></button>${cats}</div>
-    <div class="filtros-der">
+    <button class="f solo-movil filtros-abrir ${ui.filtros ? 'on' : ''}" id="filtros-abrir" type="button" aria-expanded="${!!ui.filtros}">Filtros y vista${
+      [ui.ubic === '∅' ? 'sin sitio' : ui.ubic, ui.revisar ? 'pendientes' : '', ui.seleccionando ? 'seleccionando' : ''].filter(Boolean).map((x) => `<span class="n">· ${esc(x)}</span>`).join('')}</button>
+    <div class="filtros-der ${ui.filtros ? 'abierto' : ''}">
       <select id="ubic" class="sel" aria-label="Filtrar por sitio"><option value="">Cualquier sitio</option>
         ${ubicaciones().map((u) => `<option ${ui.ubic === u ? 'selected' : ''}>${esc(u)}</option>`).join('')}
         <option value="∅" ${ui.ubic === '∅' ? 'selected' : ''}>Sin sitio</option></select>
@@ -407,7 +462,7 @@ function vInventario() {
   const cabSel = sel ? `<div class="sel-cab"><span class="gris">Elige las piezas:</span>
     <button class="f" type="button" data-sel="visibles">Todas las que se ven (${cs.length})</button>
     <button class="f" type="button" data-sel="ninguna">Ninguna</button></div>` : '';
-  return filtros + tambien(query, 'piezas') + cabSel + Object.keys(CATS).map((k) => {
+  return filtros + tambien(query, 'piezas') + cabSel + (rejilla || sel ? '' : CAB_INVENTARIO) + Object.keys(CATS).map((k) => {
     const items = cs.filter((c) => catOf(c) === k).sort(byName);
     return items.length ? `<section class="grupo"><h3 class="grupo-t">${CATS[k]}<span class="n">${items.length}</span></h3>${rejilla
       ? `<div class="rejilla">${items.map(sel ? tarjetaSel : tarjetaComp).join('')}</div>` : items.map(sel ? filaSel : filaComp).join('')}</section>` : '';
@@ -572,6 +627,7 @@ function vLoteIA(id) {
   return `<a class="back" href="#/pendientes">← Cambios pendientes</a><article class="hoja" id="lote-zona" data-lote="${esc(id)}"><p class="gris pad">Cargando…</p></article>`;
 }
 function htmlLote(ts) {
+  if (ts[0].clase === 'alta') return htmlLoteAltas(ts);
   const listas = ts.filter((t) => t.estado !== 'pendiente').length;
   const tarea = (t) => {
     const c = comp(t.objetivo?.componente_id), cambios = t.propuesta?.cambios || [];
@@ -598,6 +654,8 @@ function htmlLote(ts) {
       <button class="btn peligro" type="button" id="lote-descartar">Descartar lo que quede</button></div>` : '<p class="pad gris">Ya no queda nada por revisar en este lote.</p>'}`;
 }
 function contarLote() {
+  const g2 = $('#lote-guardar');
+  if (g2) { const n = document.querySelectorAll('.lote-cambio:checked').length; g2.textContent = n ? `Guardar ${piezasTxt(n)}` : 'Marca alguna pieza'; g2.disabled = !n; return; }
   const b = $('#lote-aplicar');
   if (!b) return;
   const marcados = document.querySelectorAll('.lote-cambio:checked'), piezas = new Set([...marcados].map((x) => x.dataset.tarea)).size;
@@ -635,7 +693,9 @@ async function aplicarLote(boton) {
 async function descartarLote() {
   const ts = await api('GET', `api/ia/lotes/${encodeURIComponent(LOTE.id)}`);
   const quedan = ts.filter((t) => t.estado === 'propuesta' || t.estado === 'error');
-  if (!quedan.length || !(await confirmar(`¿Descartar las ${quedan.length} correcciones que quedan?\nNo se cambia nada de tus piezas ni de sus fichas.`, {si: 'Descartar', peligro: true}))) return;
+  const altas = ts[0]?.clase === 'alta';
+  if (!quedan.length || !(await confirmar(altas ? `¿Descartar las ${piezasTxt(quedan.length)} que quedan sin guardar?\nNo se añaden al inventario.`
+    : `¿Descartar las ${quedan.length} correcciones que quedan?\nNo se cambia nada de tus piezas ni de sus fichas.`, {si: 'Descartar', peligro: true}))) return;
   for (const t of quedan) await api('POST', `api/ia/tareas/${t.id}/descartar`).catch(() => {});
   await iaLote(LOTE.id);
   toast('Descartadas');
@@ -647,12 +707,12 @@ function buscarTodo(query) {
   const piezas = D.componentes.filter((c) => matches(compText(c), query)).sort(byName);
   const tipos = Object.entries(D.tipos).map(([k, t]) => ({k, ...t})).filter((t) => !t.archivado && matches([t.k, t.nombre, t.resumen,
     CATS[t.categoria], ...list(t.alias), ...list(t.interfaz), ...list(t.pines).flat(), ...list(t.datos).flat()].join(' '), query)).sort(byName);
-  const proyectos = D.proyectos.filter((p) => matches([p.nombre, p.resumen, ...(p.material || []).flatMap((m) => list(m.tipo).map((t) => g(t).nombre))].join(' '), query));
+  const proyectos = D.proyectos.filter((p) => matches(textoProyecto(p), query));
   return {piezas, tipos, proyectos};
 }
 const filaTipo = (t) => `<div class="fila"><a class="fila-main" href="#/g/${esc(t.k)}"><div><div class="nombre">${esc(t.nombre)}${t.revisado === 0 ? ' <span class="aviso">· sin comprobar</span>' : ''}</div>
   <div class="sub">${esc(t.resumen || '')}</div></div></a>
-  <div class="der"><div class="num ${stock(t.k) ? '' : 'gris'}">${stockText(t.k)}</div><div class="sub">${esc(voltajeDe(t))}</div></div></div>`;
+  <div class="der"><div class="${stock(t.k) ? '' : 'gris'}">${stock(t.k) ? `Tienes ${stockText(t.k)}` : 'No tienes'}</div><div class="sub">${esc(voltajeDe(t))}</div></div></div>`;
 
 function vBuscar() {
   const query = q.value.trim();
@@ -820,8 +880,13 @@ function elegirTipo(combo, valor) {
 // ---------- tablas editables: pines y datos (fase D) ----------
 // cada fila: sus campos y botones para subir, bajar y quitar. Se leen con leerEditor(form, nombre).
 const COLS = {
-  pines: [{k: 'pin', t: 'Pin', clase: 'mono', max: 60, ph: 'GPIO4'}, {k: 'uso', t: 'Uso', max: 60, ph: 'Datos del sensor'}, {k: 'fn', t: 'Función', funcion: true}],
+  pines: [{k: 'pin', t: 'Pin', clase: 'mono', max: 60, ph: 'GPIO4'}, {k: 'uso', t: 'Uso', max: 60, ph: 'Datos del sensor'}, {k: 'fn', t: 'Función', funcion: true},
+    {k: 'nota', t: 'Nota', max: 200, ph: 'también… / solo entrada'}],
   datos: [{k: 'clave', t: 'Dato', max: 60, ph: 'Corriente máx.'}, {k: 'valor', t: 'Valor', max: 200, ph: '20 mA'}],
+  material: [{k: 'tipo', t: 'Pieza', tipos: 'Elige el tipo…'}, {k: 'alt', t: 'O bien', tipos: 'o bien… (nada)'}, {k: 'cantidad', t: 'Cant.', num: true},
+    {k: 'nota', t: 'Nota', max: 200, ph: 'nota'}, {k: 'opcional', t: 'Opcional', check: true}],
+  conexiones: [{k: 'desde', t: 'Desde', clase: 'mono', max: 80, ph: 'PIR OUT'}, {k: 'hasta', t: 'Hasta', clase: 'mono', max: 80, ph: 'GPIO27'}, {k: 'nota', t: 'Nota', max: 200, ph: 'nota'}],
+  pasos: [{k: 'texto', t: 'Paso', area: true, max: 600, ph: 'Qué hay que hacer'}],
 };
 const colorFn = (id) => { const x = FUNC[id] || {color_claro: '#888888', color_oscuro: '#888888'}; return `--cc:${esc(x.color_claro)};--co:${esc(x.color_oscuro)}`; };
 // asa para arrastrar la fila (seis puntos, dibujados: nada de emojis)
@@ -830,6 +895,10 @@ function filaEditor(nombre, valores = []) {
   return `<div class="ed-fila"><button type="button" class="ed-asa" aria-label="Mover la fila: arrástrala, o usa las flechas arriba y abajo">${ASA}</button>${COLS[nombre].map((c, i) => c.funcion
     ? `<label class="ed-celda ed-fn" style="${colorFn(valores[i] || 'otro')}"><span class="ed-et">${c.t}</span><i class="dot"></i>
         <select data-col="${i}">${Object.entries(FUNC).map(([k, f]) => `<option value="${esc(k)}" ${k === (valores[i] || 'otro') ? 'selected' : ''}>${esc(f.nombre)}</option>`).join('')}</select></label>`
+    : c.tipos ? `<label class="ed-celda"><span class="ed-et">${c.t}</span><select data-col="${i}" aria-label="${c.t}">${opcionesTiposLista(valores[i] || '').replace('Sin tipo', c.tipos)}</select></label>`
+    : c.num ? `<label class="ed-celda"><span class="ed-et">${c.t}</span><input data-col="${i}" type="number" min="1" max="9999" inputmode="numeric" aria-label="${c.t}" value="${esc(valores[i] || 1)}"></label>`
+    : c.check ? `<label class="ed-celda ed-check"><input data-col="${i}" type="checkbox" ${valores[i] ? 'checked' : ''}><span>${c.t}</span></label>`
+    : c.area ? `<label class="ed-celda"><span class="ed-et">${c.t}</span><textarea data-col="${i}" rows="2" maxlength="${c.max}" placeholder="${esc(c.ph)}">${esc(valores[i] || '')}</textarea></label>`
     : `<label class="ed-celda"><span class="ed-et">${c.t}</span><input data-col="${i}" class="${c.clase || ''}" maxlength="${c.max}" value="${esc(valores[i] || '')}" placeholder="${esc(c.ph)}"></label>`).join('')}
     <button type="button" class="btn mini peligro ed-quitar" data-ed-quitar aria-label="Quitar fila">✕</button></div>`;
 }
@@ -841,14 +910,28 @@ function editorFilas(nombre, filas, {etiqueta, boton, ayuda = '', campo = nombre
     <button type="button" class="btn mini" data-ed-anadir>${boton}</button></fieldset>`;
 }
 const leerEditor = (raiz, campo) => [...(raiz.querySelector(`[data-ed="${campo}"]`)?.querySelectorAll('.ed-fila') || [])]
-  .map((f) => [...f.querySelectorAll('[data-col]')].map((x) => x.value.trim())).filter((v) => v[0]);
+  .map((f) => [...f.querySelectorAll('[data-col]')].map((x) => (x.type === 'checkbox' ? (x.checked ? '1' : '') : x.value.trim()))).filter((v) => v[0]);
+// un pin por fila: si en el nombre hay varios («GPIO 16 · 17», «GPIO 32–39», «SDA, SCL»), el servidor devuelve la tabla
+// con una fila por pin (misma regla que al guardar y que para la IA) y se repinta
+const VARIOS_PINES = /[·,;]|\sy\s|\d\s*[–-]\s*\D*\d+$|^[a-zA-Z]\s*[–-]\s*[a-zA-Z]$/;
+async function separarEnEditor(input) {
+  const ed = input.closest('.ed-pines');
+  if (!ed || !VARIOS_PINES.test(input.value.trim())) return;
+  const filas = [...ed.querySelectorAll('.ed-fila')].map((f) => [...f.querySelectorAll('[data-col]')].map((x) => x.value.trim())).filter((v) => v[0]);
+  try {
+    const r = await api('POST', 'api/pines/separar', {pines: filas});
+    if (r.pines.length === filas.length && r.pines.every((p, i) => p[0] === filas[i][0])) return; // era un solo pin
+    ed.querySelector('.ed-filas').innerHTML = r.pines.map((p) => filaEditor('pines', p)).join('');
+    toast(r.pines.length > filas.length ? `Separado: ahora hay ${plural(r.pines.length, 'pin', 'pines')}, uno por fila` : 'Pines repetidos juntados: mira sus notas');
+  } catch (err) { toast(err.message, true); }
+}
 function clicEditor(t) {
   const ed = t.closest('.ed');
   if (!ed) return false;
   const fila = t.closest('.ed-fila');
   if ('edAnadir' in t.dataset) {
     ed.querySelector('.ed-filas').insertAdjacentHTML('beforeend', filaEditor(ed.dataset.cols));
-    ed.querySelector('.ed-fila:last-child input')?.focus();
+    ed.querySelector('.ed-fila:last-child :is(input, select, textarea)')?.focus();
   } else if ('edQuitar' in t.dataset) fila.remove();
   else return false;
   return true;
@@ -1037,7 +1120,7 @@ async function editarTipoCargar() {
       </div>
       <label>Otros nombres<input name="alias" value="${esc(list(f.alias).join(', '))}" placeholder="DHT-11, sensor de humedad"><span class="ayuda">Separados por comas: sirven para buscar</span></label>
       <label>Ojo (advertencia)<textarea name="ojo" rows="2" maxlength="400" placeholder="No conectar a 5 V sin divisor">${esc(f.ojo)}</textarea></label>
-      ${editorFilas('pines', f.pines, {etiqueta: 'Pines', boton: 'Añadir pin', ayuda: 'En el orden de la placa. La función da el color del pin en todas las fichas.'})}
+      ${editorFilas('pines', f.pines, {etiqueta: 'Pines', boton: 'Añadir pin', ayuda: 'Un pin por fila, en el orden de la placa. La función da el color del pin en todas las fichas; en la nota, lo que haya que saber de ese pin («También: UART2 RX», «Solo entrada»). Si escribes varios en una fila («GPIO 16 · 17», «GPIO 32–39»), se separan solos.'})}
       ${editorFilas('datos', f.datos, {etiqueta: 'Datos', boton: 'Añadir dato', ayuda: 'Iguales para todas las piezas de este tipo: «Corriente máx.» → «20 mA».'})}
       <div class="acciones">
         <button class="btn prim" type="submit">Guardar ficha</button>
@@ -1057,42 +1140,287 @@ async function guardarFicha(form) {
   toast('Ficha guardada');
 }
 
-function vProyectos() {
-  const query = q.value.trim();
-  if (!D.proyectos.length) return vacio('Aún no hay proyectos.');
-  let ps = D.proyectos.slice();
-  if (query) ps = ps.filter((p) => matches([p.nombre, p.resumen, ...(p.material || []).flatMap((m) => list(m.tipo).map((t) => g(t).nombre))].join(' '), query));
-  const n = {ya: 0, poco: 0, todos: D.proyectos.length};
-  D.proyectos.forEach((p) => { const f = faltas(p).length; if (!f) n.ya++; if (f && f <= 2) n.poco++; });
-  if (ui.proFiltro === 'ya') ps = ps.filter((p) => !faltas(p).length);
-  if (ui.proFiltro === 'poco') ps = ps.filter((p) => { const f = faltas(p).length; return f && f <= 2; });
-  ps.sort((a, b) => faltas(a).length - faltas(b).length || (a.dificultad || 1) - (b.dificultad || 1));
-  const btn = (k, t) => `<button class="f ${ui.proFiltro === k ? 'on' : ''}" data-pf="${k}">${t}<span class="n">${n[k]}</span></button>`;
-  return `<div class="filtros"><div class="cats">${btn('ya', 'Puedo hacerlo ya')}${btn('poco', 'Me falta poco')}${btn('todos', 'Todos')}</div></div>
-    ${tambien(query, 'proyectos')}
-    ${ps.length ? `<section class="grupo"><h3 class="grupo-t">Proyectos<span class="n">${ps.length}</span></h3>${listaProyectos(ps)}</section>` : vacio('Ninguno en este filtro.')}`;
+// ---------- proyectos (v8): listado por estado con miniaturas, ficha con pestañas (tablero, bitácora, archivos) ----------
+const ESTADOS_PRO = {en_marcha: 'En marcha', pausa: 'En pausa', idea: 'Ideas', terminado: 'Terminados'}; // en el orden del listado
+const ESTADO_PRO = {idea: 'Idea', en_marcha: 'En marcha', pausa: 'En pausa', terminado: 'Terminado'};
+const COLUMNAS = {hacer: 'Por hacer', curso: 'En curso', hecho: 'Hecho'};
+const proyecto = (id) => D.proyectos.find((p) => p.id === id);
+const proActual = () => decodeURIComponent(location.hash.split('?')[0].split('/')[2] || '');
+const nTareas = (p) => (p.tareas ? p.tareas.hacer + p.tareas.curso + p.tareas.hecho : 0);
+const textoProyecto = (p) => [p.nombre, p.resumen, ...(p.material || []).flatMap((m) => list(m.tipo).map((t) => g(t).nombre))].join(' ');
+function guardarProLocal(p) {
+  const i = D.proyectos.findIndex((x) => x.id === p.id);
+  if (i >= 0) D.proyectos[i] = p; else D.proyectos.push(p);
+  D.proyectos.sort(byName);
+  contadores();
+}
+// tus piezas que valen para un hueco del material (primero las que tienen foto)
+const piezasDe = (m) => D.componentes.filter((c) => list(m.tipo).includes(c.tipo)).sort((a, b) => !!b.foto - !!a.foto || byName(a, b));
+// miniatura de un hueco del material: la foto de una de tus piezas; si no hay, el dibujo del tipo (los del catálogo base)
+function miniMaterial(m) {
+  const c = piezasDe(m).find((x) => x.foto);
+  if (c) return `<img class="thumb mini" src="${fotoUrl(c)}" alt="" title="${esc(c.nombre)}" loading="lazy">`;
+  const t = list(m.tipo).find((k) => D.tipos[k]?.origen === 'seed');
+  return t ? `<img class="thumb mini dibujo" src="img/tipos/${esc(t)}.svg" alt="" title="${esc(g(t).nombre)}" loading="lazy" onerror="this.remove()">` : '';
 }
 
-function vProyecto(id) {
-  const p = D.proyectos.find((x) => x.id === id);
+// filas de proyectos. Con «minis», la tira de fotos de las piezas (listado de Proyectos); sin ella, el estado va junto al nombre
+function listaProyectos(ps, minis = false) {
+  return ps.map((p) => {
+    const tira = minis ? (p.material || []).filter((m) => !m.opcional).map(miniMaterial).filter(Boolean).slice(0, 8).join('') : '';
+    const n = nTareas(p);
+    const avance = [n ? `${p.tareas.hecho}/${n} tareas` : '', p.notas ? plural(p.notas, 'nota') : ''].filter(Boolean).join(' · ');
+    const estado = !minis && p.estado && p.estado !== 'idea' ? ` <span class="gris">· ${esc(ESTADO_PRO[p.estado].toLowerCase())}</span>` : '';
+    return `<div class="fila fila-pro"><a class="fila-main" href="#/p/${esc(p.id)}"><div>
+      <div class="nombre">${esc(p.nombre)}${estado}</div><div class="sub">${esc(p.resumen || '')}</div>
+      ${tira ? `<div class="minis">${tira}</div>` : ''}</div></a>
+      <div class="der"><div>${p.estado === 'terminado' ? 'Terminado' : estadoProyecto(p)}</div><div class="sub">${esc(dificultad(p))}</div>
+        ${avance ? `<div class="sub">${esc(avance)}</div>` : ''}</div></div>`;
+  }).join('');
+}
+
+function vProyectos() {
+  const query = q.value.trim();
+  const nuevo = '<a class="btn prim" href="#/proyecto-nuevo">Nuevo proyecto</a>';
+  if (!D.proyectos.length) return vacio(`Aún no hay proyectos.<br>${nuevo}`);
+  const abiertos = D.proyectos.filter((p) => p.estado !== 'terminado');
+  const poco = (p) => { const f = faltas(p).length; return f > 0 && f <= 2; };
+  const filtros = {
+    todos: ['Todos', D.proyectos], en_marcha: ['En marcha', D.proyectos.filter((p) => p.estado === 'en_marcha')],
+    ya: ['Puedo hacerlo ya', abiertos.filter((p) => !faltas(p).length)], poco: ['Me falta poco', abiertos.filter(poco)],
+    terminado: ['Terminados', D.proyectos.filter((p) => p.estado === 'terminado')],
+  };
+  if (!filtros[ui.proFiltro]) ui.proFiltro = 'todos';
+  let ps = filtros[ui.proFiltro][1];
+  if (query) ps = ps.filter((p) => matches(textoProyecto(p), query));
+  ps = ps.slice().sort((a, b) => faltas(a).length - faltas(b).length || (a.dificultad || 1) - (b.dificultad || 1) || byName(a, b));
+  const barra = `<div class="filtros"><div class="cats">${Object.entries(filtros).filter(([k, [, l]]) => l.length || k === 'todos' || k === ui.proFiltro).map(([k, [t, l]]) =>
+    `<button class="f ${ui.proFiltro === k ? 'on' : ''}" data-pf="${k}">${t}<span class="n">${l.length}</span></button>`).join('')}</div>
+    <div class="filtros-der">${nuevo}</div></div>`;
+  if (!ps.length) return barra + tambien(query, 'proyectos') + vacio('Ninguno en este filtro.');
+  return barra + tambien(query, 'proyectos') + Object.entries(ESTADOS_PRO).map(([k, titulo]) => {
+    const items = ps.filter((p) => (p.estado || 'idea') === k);
+    return items.length ? `<section class="grupo"><h3 class="grupo-t">${titulo}<span class="n">${items.length}</span></h3>${listaProyectos(items, true)}</section>` : '';
+  }).join('');
+}
+
+// lo del usuario en el proyecto abierto (bitácora, tablero y archivos): se pide al entrar y se guarda para no parpadear
+const PRO = {id: null, det: null};
+const PRO_TABS = {ficha: 'Ficha', tablero: 'Tablero', bitacora: 'Bitácora', archivos: 'Archivos'};
+function tabsProyecto(p, tab) {
+  const n = nTareas(p), cuenta = {tablero: n ? `${p.tareas.hecho}/${n}` : '', bitacora: p.notas || '', archivos: p.archivos || ''};
+  return Object.entries(PRO_TABS).map(([k, t]) => `<a class="f ${k === tab ? 'on' : ''}" href="#/p/${esc(p.id)}${k === 'ficha' ? '' : `/${k}`}"
+    ${k === tab ? 'aria-current="page"' : ''}>${t}${cuenta[k] ? `<span class="n">${cuenta[k]}</span>` : ''}</a>`).join('');
+}
+
+function vProyecto(id, sub) {
+  const p = proyecto(id);
   if (!p) return vacio('No existe ese proyecto.');
-  const material = `<h3>Material</h3><table class="t"><thead><tr><th class="n">Cant.</th><th>Pieza</th><th class="der">Tienes</th></tr></thead><tbody>
+  if (sub === 'editar') return vProyectoForm(p);
+  const tab = PRO_TABS[sub] ? sub : 'ficha';
+  const listo = PRO.id === p.id && PRO.det;
+  return `<a class="back" href="#/proyectos">← Proyectos</a>
+    <article class="hoja ficha">
+      ${cabecera(esc(p.nombre), '', p.resumen)}
+      <div class="pro-barra">
+        <label class="pro-estado">Estado
+          <select id="pro-estado" class="sel">${Object.entries(ESTADO_PRO).map(([k, v]) => `<option value="${k}" ${k === (p.estado || 'idea') ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+        <a class="btn" href="#/p/${esc(p.id)}/editar">Editar</a>
+        ${menuMas(['<button role="menuitem" type="button" class="peligro" data-pro="borrar">Borrar este proyecto</button>'])}
+      </div>
+      <nav class="pro-tabs" id="pro-tabs" aria-label="Partes del proyecto">${tabsProyecto(p, tab)}</nav>
+      <div id="pro-zona" class="pz-cuerpo" data-id="${esc(p.id)}" data-tab="${tab}">${tab === 'ficha' ? fichaProyecto(p)
+        : listo ? PRO_PINTAR[tab](p, PRO.det) : '<p class="gris">Cargando…</p>'}</div>
+    </article>`;
+}
+
+function fichaProyecto(p) {
+  const material = `<h3>Material</h3><table class="t t-material"><thead><tr><th class="mini-c"></th><th class="n">Cant.</th><th>Pieza</th><th class="der">Tienes</th></tr></thead><tbody>
     ${(p.material || []).map((m) => {
       const tiene = stock(m.tipo), pide = m.cantidad || 1, ok = tiene >= pide;
       const nombre = list(m.tipo).map((t) => `<a href="#/g/${esc(t)}">${esc(g(t).nombre)}</a>`).join(' o ');
       const nota = [m.opcional ? 'opcional' : '', m.nota].filter(Boolean).map(esc).join(' · ');
-      return `<tr><td class="n">${pide}</td><td>${nombre}${nota ? `<div class="sub">${nota}</div>` : ''}</td>
+      const tuyas = piezasDe(m);
+      // qué piezas tuyas valen y dónde están (si solo es una y no tiene sitio, no añade nada al nombre del tipo)
+      const donde = tuyas.length === 1 && !tuyas[0].ubicacion ? '' : tuyas.slice(0, 3).map((c) => `<a href="#/c/${c.id}">${esc(c.nombre)}</a>${c.ubicacion ? ` (${esc(c.ubicacion)})` : ''}`).join(', ');
+      return `<tr><td class="mini-c">${miniMaterial(m)}</td><td class="n">${pide}</td>
+        <td>${nombre}${nota ? `<div class="sub">${nota}</div>` : ''}${donde ? `<div class="sub">Tuyas: ${donde}${tuyas.length > 3 ? ` y ${tuyas.length - 3} más` : ''}</div>` : ''}</td>
         <td class="der num ${ok || m.opcional ? '' : 'mal'}">${tiene >= MUCHOS ? 'muchos' : tiene}</td></tr>`;
-    }).join('')}</tbody></table>`;
+    }).join('') || '<tr><td colspan="4" class="gris">Sin material apuntado.</td></tr>'}</tbody></table>
+    ${faltas(p).length ? '<p><button class="btn mini" type="button" data-pro="copiar-faltas">Copiar lo que falta</button></p>' : ''}`;
   const con = p.conexiones?.length ? `<h3>Conexiones</h3><table class="t"><thead><tr><th>Desde</th><th>Hasta</th></tr></thead><tbody>
     ${p.conexiones.map(([a, b, n]) => `<tr><td class="pin">${esc(a)}</td><td class="pin">${esc(b)}${n ? `<div class="sub" style="font-family:var(--letra)">${esc(n)}</div>` : ''}</td></tr>`).join('')}</tbody></table>` : '';
-  const pasos = p.pasos?.length ? `<h3 class="sep">Pasos</h3><ol class="pasos">${p.pasos.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : '';
-  return `<a class="back" href="#/proyectos">← Proyectos</a>
+  const pasos = p.pasos?.length ? `<h3>Pasos</h3><ol class="pasos">${p.pasos.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : '';
+  return `${specs([['Dificultad', esc(may(DIF[p.dificultad || 1]))], ['Tiempo', esc(p.tiempo || '—')], ['Piezas', estadoProyecto(p)]])}
+    <div class="pro-dos"><div>${material}</div><div>${con}${pasos}${con || pasos ? '' : '<p class="gris">Sin conexiones ni pasos: añádelos en «Editar».</p>'}</div></div>
+    <div class="plegables">${plegableHist('proyecto', p.id)}</div>
+    <p class="meta">Proyecto ${{seed: 'del catálogo base', ia: 'propuesto por la IA', usuario: 'tuyo'}[p.origen] || ''}</p>`;
+}
+
+// tablero: tres columnas; cada tarea se mueve con las flechas (en el móvil las columnas van una debajo de otra)
+function tableroProyecto(p, det) {
+  const claves = new Set(det.tareas.map((t) => claveTxt(t.texto)));
+  const faltanPasos = (p.pasos || []).some((s) => !claves.has(claveTxt(s).slice(0, 300)));
+  const cols = Object.entries(COLUMNAS);
+  return `<form id="form-pro-tarea" class="form sin-pad pro-anadir" autocomplete="off">
+      <input name="texto" maxlength="300" required placeholder="Soldar los pines del sensor" aria-label="Tarea nueva">
+      <button class="btn prim" type="submit">Añadir</button></form>
+    ${faltanPasos ? '<p class="sub"><button class="btn mini" type="button" data-pro="pasos">Pasar los pasos al tablero</button> Crea una tarea por cada paso del proyecto.</p>' : ''}
+    <div class="tablero">${cols.map(([k, nombre], i) => {
+      const ts = det.tareas.filter((t) => t.columna === k);
+      const mover = (t, j, flecha) => (cols[j] ? `<button class="btn mini" type="button" data-pro="mover" data-id="${t.id}" data-col="${cols[j][0]}" aria-label="Pasar a «${cols[j][1]}»" title="Pasar a «${cols[j][1]}»">${flecha}</button>` : '');
+      return `<section class="tab-col"><h3>${nombre}<span class="n">${ts.length}</span></h3>${ts.map((t) => `<div class="tarea${k === 'hecho' ? ' hecha' : ''}">
+        <span class="tarea-t">${esc(t.texto)}</span><span class="tarea-b">${mover(t, i - 1, '←')}${mover(t, i + 1, '→')}
+        <button class="btn mini peligro" type="button" data-pro="borrar-tarea" data-id="${t.id}" aria-label="Borrar la tarea">✕</button></span></div>`).join('')
+        || '<p class="gris tab-vacia">Nada.</p>'}</section>`;
+    }).join('')}</div>`;
+}
+
+function bitacoraProyecto(p, det) {
+  return `<form id="form-pro-nota" class="form sin-pad" autocomplete="off">
+      <label>Nota nueva<textarea name="texto" rows="3" maxlength="4000" placeholder="Qué has hecho, qué falla, qué falta comprar…"></textarea></label>
+      ${campoFoto('Foto (opcional)')}
+      <div class="acciones"><button class="btn prim" type="submit">Apuntar</button></div>
+    </form>
+    <div class="bitacora">${det.notas.map((n) => `<article class="apunte">
+      <header><span class="gris" title="${esc(fechaCompleta(n.fecha))}">${esc(cuando(n.fecha))}</span>
+        <button class="btn mini peligro" type="button" data-pro="borrar-nota" data-id="${n.id}">Borrar</button></header>
+      ${n.texto ? `<p class="notas">${esc(n.texto)}</p>` : ''}
+      ${n.foto ? `<a class="apunte-foto" href="fotos/${encodeURIComponent(n.foto)}" target="_blank" aria-label="Ver la foto grande"><img src="fotos/${encodeURIComponent(n.foto)}" alt="" loading="lazy"></a>` : ''}
+    </article>`).join('') || '<p class="gris">Aún no has apuntado nada de este proyecto.</p>'}</div>`;
+}
+
+function archivosProyecto(p, det) {
+  const url = (a) => `fotos/${encodeURIComponent(a.fichero)}`;
+  const pie = (a) => `<span class="nombre">${esc(a.nombre)}</span><span class="sub">${esc(tamano(a.bytes))} · ${esc(cuando(a.fecha))}</span>`;
+  const borrar = (a) => `<button class="btn mini peligro" type="button" data-pro="borrar-archivo" data-id="${a.id}">Borrar</button>`;
+  const imgs = det.archivos.filter((a) => a.tipo.startsWith('image/')), docs = det.archivos.filter((a) => !a.tipo.startsWith('image/'));
+  return `<div class="pro-subir"><label class="btn prim">Subir diagrama o PDF<input type="file" id="pro-archivo" accept="image/*,application/pdf" hidden></label>
+      <span class="sub">Esquemas de conexión, capturas, hojas de datos. Las imágenes se reducen a 2400 px; los PDF, hasta 20 MB.</span></div>
+    ${imgs.length ? `<div class="diagramas">${imgs.map((a) => `<figure class="diagrama"><a href="${url(a)}" target="_blank" aria-label="Ver «${esc(a.nombre)}» grande"><img src="${url(a)}" alt="" loading="lazy"></a>
+      <figcaption><span class="diagrama-t">${pie(a)}</span>${borrar(a)}</figcaption></figure>`).join('')}</div>` : ''}
+    ${docs.map((a) => `<div class="fila"><a class="fila-main" href="${url(a)}" target="_blank"><span class="thumb pdf" aria-hidden="true">PDF</span><div>${pie(a)}</div></a>${borrar(a)}</div>`).join('')}
+    ${det.archivos.length ? '' : '<p class="gris">Ningún archivo todavía.</p>'}`;
+}
+const PRO_PINTAR = {tablero: tableroProyecto, bitacora: bitacoraProyecto, archivos: archivosProyecto};
+
+// pinta la pestaña abierta con lo que devuelve el servidor (y pone al día los recuentos del listado)
+function pintarProyecto(det) {
+  if (det) {
+    PRO.id = det.id; PRO.det = det;
+    const p = proyecto(det.id);
+    if (p) {
+      p.tareas = Object.fromEntries(Object.keys(COLUMNAS).map((k) => [k, det.tareas.filter((t) => t.columna === k).length]));
+      p.notas = det.notas.length; p.archivos = det.archivos.length;
+    }
+  }
+  const zona = $('#pro-zona'), p = zona && proyecto(zona.dataset.id);
+  if (!p || PRO.id !== p.id || !PRO_PINTAR[zona.dataset.tab]) return;
+  zona.innerHTML = PRO_PINTAR[zona.dataset.tab](p, PRO.det);
+  $('#pro-tabs').innerHTML = tabsProyecto(p, zona.dataset.tab);
+}
+async function cargarProyecto() {
+  const zona = $('#pro-zona');
+  if (!zona || zona.dataset.tab === 'ficha') return;
+  try { pintarProyecto(await api('GET', `api/proyectos/${encodeURIComponent(zona.dataset.id)}`)); }
+  catch (err) { if (PRO.id !== zona.dataset.id) zona.innerHTML = `<p class="mal">${esc(err.message)}</p>`; }
+}
+
+// botones de la ficha de un proyecto (data-pro)
+async function clicProyecto(t) {
+  const id = proActual(), p = proyecto(id), base = `api/proyectos/${encodeURIComponent(id)}`, a = t.dataset.pro;
+  if (a === 'mover') { t.disabled = true; pintarProyecto(await api('PATCH', `${base}/tareas/${t.dataset.id}`, {columna: t.dataset.col})); }
+  else if (a === 'borrar-tarea') { t.disabled = true; pintarProyecto(await api('DELETE', `${base}/tareas/${t.dataset.id}`)); }
+  else if (a === 'pasos') { t.disabled = true; pintarProyecto(await api('POST', `${base}/tareas`, {pasos: true})); }
+  else if (a === 'borrar-nota') {
+    if (!(await confirmar('¿Borrar esta nota de la bitácora?\nNo se puede deshacer.', {si: 'Borrar', peligro: true}))) return;
+    pintarProyecto(await api('DELETE', `${base}/notas/${t.dataset.id}`));
+  } else if (a === 'borrar-archivo') {
+    if (!(await confirmar('¿Borrar este archivo del proyecto?\nNo se puede deshacer.', {si: 'Borrar', peligro: true}))) return;
+    pintarProyecto(await api('DELETE', `${base}/archivos/${t.dataset.id}`));
+  } else if (a === 'copiar-faltas') {
+    const txt = `Para «${p.nombre}» me falta:\n${faltas(p).map((m) => `- ${m.cantidad || 1} × ${list(m.tipo).map((k) => g(k).nombre).join(' o ')} (tengo ${stockText(m.tipo)})`).join('\n')}`;
+    try { await navigator.clipboard.writeText(txt); toast('Lista copiada'); } catch { toast('No se ha podido copiar (hace falta HTTPS o localhost)', true); }
+  } else if (a === 'borrar') {
+    const suyo = [nTareas(p) ? plural(nTareas(p), 'tarea') : '', p.notas ? plural(p.notas, 'nota') : '', p.archivos ? plural(p.archivos, 'archivo') : ''].filter(Boolean);
+    if (!(await confirmar(`¿Borrar el proyecto «${p.nombre}»?\n${suyo.length ? `Se borran también sus ${suyo.join(', ')}. ` : ''}No se puede deshacer.`, {si: 'Borrar proyecto', peligro: true}))) return;
+    await api('DELETE', base);
+    D.proyectos = D.proyectos.filter((x) => x.id !== id);
+    if (PRO.id === id) { PRO.id = null; PRO.det = null; }
+    contadores();
+    location.hash = '#/proyectos';
+    toast(`Borrado «${p.nombre}»`);
+  }
+}
+async function cambiarEstadoPro(sel) {
+  const p = await api('PATCH', `api/proyectos/${encodeURIComponent(proActual())}`, {estado: sel.value});
+  guardarProLocal(p);
+  toast(`Estado: ${ESTADO_PRO[p.estado].toLowerCase()}`);
+}
+// imagen → JPEG de 2400 px como mucho, sobre blanco (los PNG con transparencia saldrían en negro); PDF → tal cual
+async function subirArchivoPro(file) {
+  let cuerpo = file, tipo = file.type;
+  if (tipo.startsWith('image/')) {
+    const cv = await lienzoDe(file, 2400), fondo = document.createElement('canvas');
+    fondo.width = cv.width; fondo.height = cv.height;
+    const ctx = fondo.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, fondo.width, fondo.height); ctx.drawImage(cv, 0, 0);
+    cuerpo = await jpeg(fondo); tipo = 'image/jpeg';
+  } else if (tipo !== 'application/pdf') throw new Error('Tiene que ser una imagen o un PDF');
+  if (cuerpo.size > 20 * 1024 * 1024) throw new Error('El archivo es demasiado grande (máx. 20 MB)');
+  toast('Subiendo…');
+  const nombre = file.name.replace(/\.[^.]+$/, '').slice(0, 120);
+  pintarProyecto(await api('POST', `api/proyectos/${encodeURIComponent(proActual())}/archivos?nombre=${encodeURIComponent(nombre)}`, cuerpo, {'content-type': tipo}));
+  toast('Archivo guardado');
+}
+async function anadirTareaPro(form) {
+  pintarProyecto(await api('POST', `api/proyectos/${encodeURIComponent(proActual())}/tareas`, {texto: new FormData(form).get('texto')}));
+  if (matchMedia('(hover: hover)').matches) $('#form-pro-tarea [name=texto]')?.focus(); // en el móvil, sin reabrir el teclado
+}
+async function anadirNotaPro(form) {
+  const fd = new FormData(form), foto = fd.get('foto');
+  const body = {texto: fd.get('texto')};
+  if (foto && foto.size) body.foto = await base64(await jpeg(await lienzoDe(foto, 1600)));
+  if (!String(body.texto).trim() && !body.foto) throw new Error('Escribe algo o pon una foto');
+  pintarProyecto(await api('POST', `api/proyectos/${encodeURIComponent(proActual())}/notas`, body));
+  toast('Apuntado');
+}
+
+// crear o editar la receta de un proyecto: nombre, material (tipos del glosario), conexiones y pasos
+function vProyectoForm(p) {
+  const x = p || {nombre: '', resumen: '', dificultad: 1, tiempo: '', material: [], conexiones: [], pasos: []};
+  const volver = p ? `#/p/${esc(p.id)}` : '#/proyectos';
+  return `<a class="back" href="${volver}">← ${p ? esc(p.nombre) : 'Proyectos'}</a>
     <article class="hoja">
-      ${cabecera(esc(p.nombre), '', p.resumen)}
-      ${specs([['Dificultad', esc(may(DIF[p.dificultad || 1]))], ['Tiempo', esc(p.tiempo || '—')], ['Material', estadoProyecto(p)]])}
-      <div class="hoja-cuerpo"><div>${material}</div><div>${con}${pasos}</div></div>
+      ${cabecera(p ? 'Editar proyecto' : 'Nuevo proyecto', '', p ? '' : 'Apunta la idea con lo que sepas: el material, las conexiones y los pasos se pueden completar más tarde.')}
+      ${p?.origen === 'seed' ? '<p class="nota">Es del catálogo base. Al guardar pasa a ser tuyo: las actualizaciones del catálogo ya no lo cambiarán.</p>' : ''}
+      <form id="form-proyecto" class="form ancho" autocomplete="off" data-id="${esc(p?.id || '')}">
+        <label>Nombre<input name="nombre" required maxlength="120" value="${esc(x.nombre)}" placeholder="Estación meteorológica"></label>
+        <label>Resumen<textarea name="resumen" rows="2" maxlength="600" placeholder="Qué hace, en una o dos frases">${esc(x.resumen || '')}</textarea></label>
+        <div class="dos">
+          <label>Dificultad<select name="dificultad">${Object.entries(DIF).map(([k, v]) => `<option value="${k}" ${Number(k) === (x.dificultad || 1) ? 'selected' : ''}>${esc(may(v))}</option>`).join('')}</select></label>
+          <label>Tiempo<input name="tiempo" maxlength="40" value="${esc(x.tiempo || '')}" placeholder="2 h"></label>
+        </div>
+        ${editorFilas('material', x.material.map((m) => [list(m.tipo)[0] || '', list(m.tipo)[1] || '', m.cantidad || 1, m.nota || '', m.opcional ? '1' : '']),
+          {etiqueta: 'Material', boton: 'Añadir pieza', ayuda: 'Elige cada pieza por su tipo del glosario. «O bien» es otro tipo que también vale.'})}
+        ${editorFilas('conexiones', x.conexiones, {etiqueta: 'Conexiones', boton: 'Añadir conexión', ayuda: 'De qué pin a qué pin.'})}
+        ${editorFilas('pasos', x.pasos.map((s) => [s]), {etiqueta: 'Pasos', boton: 'Añadir paso', ayuda: 'En orden. Luego puedes pasarlos al tablero como tareas.'})}
+        <div class="acciones">
+          <button class="btn prim" type="submit">Guardar proyecto</button>
+          <a class="btn" href="${volver}">Cancelar</a>
+        </div>
+      </form>
     </article>`;
+}
+async function guardarProyectoForm(form) {
+  const fd = new FormData(form), id = form.dataset.id;
+  const body = {nombre: fd.get('nombre'), resumen: fd.get('resumen'), dificultad: Number(fd.get('dificultad')) || 1, tiempo: fd.get('tiempo'),
+    material: leerEditor(form, 'material').map(([tipo, alt, cantidad, nota, opcional]) => ({tipo: [tipo, alt].filter(Boolean), cantidad: Number(cantidad) || 1, nota, opcional: !!opcional})),
+    conexiones: leerEditor(form, 'conexiones'), pasos: leerEditor(form, 'pasos').map(([s]) => s)};
+  const p = id ? await api('PUT', `api/proyectos/${encodeURIComponent(id)}`, body) : await api('POST', 'api/proyectos', body);
+  guardarProLocal(p);
+  location.hash = `#/p/${encodeURIComponent(p.id)}`;
+  toast(id ? 'Proyecto guardado' : 'Proyecto creado');
 }
 
 // ---------- IA: «Añadir con IA» (el modelo propone, el usuario confirma) ----------
@@ -1138,17 +1466,20 @@ const comas = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Bool
 
 function vIA(id) {
   if (id === 'ajustes') return `<a class="back" href="#/ia">← Añadir con IA</a><article class="hoja" id="ia-ajustes"><p class="gris pad">Cargando…</p></article>`;
+  if (id === 'varias') return vIAVarias();
   if (id) return `<a class="back" href="#/ia">← Añadir con IA</a><article class="hoja" id="ia-zona"><p class="gris pad">Cargando…</p></article>`;
   if (!D.ia?.activa) return `<a class="back" href="#/">← Inventario</a>${vacio('Falta la clave de OpenCode Go. <a class="btn prim" href="#/ia/ajustes">Configurar</a>')}`;
   return `<a class="back" href="#/">← Inventario</a>
     <article class="hoja">
       ${cabecera('Añadir con IA', '', 'Haz una foto de la pieza (mejor si se lee la serigrafía) y añade lo que sepas. La IA propone el nombre, el tipo y la ficha; tú lo miras y corriges antes de guardar.')}
       <p class="ia-atajo">Modelo de siempre: <span id="ia-modelo-siempre">${esc(nombreModelo(D.ia.modelo))}</span> · <a href="#/ia/ajustes">Cambiar modelo o clave</a></p>
+      <p class="ia-atajo"><a href="#/ia/varias">¿Muchas piezas? Súbelas en una sola foto y la IA las separa →</a></p>
       <form id="form-ia" class="form" autocomplete="off">
         ${campoFoto('Foto', 'Mejor si se lee la serigrafía.')}
         <label>Lo que sepas (opcional)<textarea name="texto" rows="3" maxlength="1000" placeholder="Sensor de humedad del kit de Freenove, 3 pines"></textarea></label>
         <label>Modelo para esta pieza<select name="modelo" id="ia-modelo-alta"><option value="">El de siempre (${esc(nombreModelo(D.ia.modelo))})</option></select>
           <span class="ayuda">Por si una pieza difícil merece otro modelo. No cambia el de siempre.</span></label>
+        <p class="nota" id="ia-aviso-modelo" hidden></p>
         <div class="acciones"><button class="btn prim" type="submit">Analizar</button></div>
       </form>
     </article>
@@ -1165,6 +1496,9 @@ const costePieza = (m) => (m.coste_medio
   ? `≈ ${dolares(m.coste_medio.dolares)} por pieza · media de tus ${m.coste_medio.consultas} consulta${m.coste_medio.consultas === 1 ? '' : 's'}`
   : `≈ ${dolares(((m.precio.entrada ?? 0) * 6000 + (m.precio.salida ?? 0) * 900) / 1e6)} por pieza (estimado)`);
 let MODELOS_IA = null;
+// lo que NO sabe hacer un modelo, en pocas palabras (vacío si lo hace todo)
+const limitesModelo = (m) => [m.vision ? '' : 'no ve fotos', m.estructurada ? '' : 'sin formato fijo'].filter(Boolean);
+const modeloIA = (id) => MODELOS_IA?.find((m) => m.id === (id || D.ia?.modelo)) || null;
 // nombre legible de un modelo («Claude Haiku 5.5») si ya tenemos el catálogo; si no, su identificador
 const nombreModelo = (id) => MODELOS_IA?.find((m) => m.id === id)?.nombre || id || '';
 async function modelosIA(forzar = false) {
@@ -1206,7 +1540,7 @@ async function iaAjustes() {
   try { lista = await modelosIA(true); } catch (err) { fallo = err.message; }
   const origen = {web: 'guardada en la app', entorno: 'de la variable IA_CLAVE del servidor'}[cfg.origen_clave];
   const fuera = cfg.modelo && lista.length && !lista.some((m) => m.id === cfg.modelo);
-  zona.innerHTML = `${cabecera('Configuración de la IA', '', 'Proveedor: OpenCode Go. Solo salen los modelos que entienden fotos y devuelven datos con formato fijo.')}
+  zona.innerHTML = `${cabecera('Configuración de la IA', '', 'Proveedor: OpenCode Go. Salen todos sus modelos de chat; los que no ven fotos o no devuelven datos con formato fijo llevan el aviso.')}
     <section class="pad ia-bloque">
       <h3>Modelo de siempre</h3>
       <p class="ayuda">Toca otro para cambiarlo. Se comprueba al momento con tu clave: no hace falta volver a ponerla.</p>
@@ -1214,9 +1548,11 @@ async function iaAjustes() {
         <label class="ia-modelo"><input type="radio" name="ia-modelo" value="${esc(m.id)}" ${m.id === cfg.modelo ? 'checked' : ''}>
           <span><span class="nombre">${esc(m.nombre)}${m.recomendado ? '<span class="gris"> · recomendado</span>' : ''}</span>
           <span class="sub">${esc(costePieza(m))}</span>
+          ${m.vision ? '' : '<span class="sub aviso">No ve fotos: solo sirve con texto, y no puede con «Varias piezas en una foto».</span>'}
+          ${m.estructurada ? '' : '<span class="sub aviso">Sin formato fijo: la app saca los datos de su texto. Falla más y deja más cosas por comprobar.</span>'}
           <span class="sub">${esc(m.descripcion)}</span></span></label>`).join('')}</div>`
         : `<p class="mal">${esc(fallo || 'No hay modelos disponibles')}</p>`}
-      ${fuera ? `<p class="aviso">El modelo actual («${esc(cfg.modelo)}») ya no está en el catálogo con fotos: elige otro.</p>` : ''}
+      ${fuera ? `<p class="aviso">El modelo actual («${esc(cfg.modelo)}») ya no está en el catálogo: elige otro.</p>` : ''}
       <p class="ayuda" id="ia-modelo-estado" role="status"></p>
     </section>
     <section class="pad ia-bloque" id="ia-razonar-zona">${bloqueRazonar(lista.find((m) => m.id === cfg.modelo))}</section>
@@ -1279,9 +1615,166 @@ async function llenarModelosAlta() {
       const a = $('#ia-modelo-siempre');
       if (a) a.textContent = actual.nombre;
     }
-    sel.insertAdjacentHTML('beforeend', lista.filter((m) => m.id !== D.ia?.modelo)
-      .map((m) => `<option value="${esc(m.id)}">${esc(m.nombre)} · ${esc(costePieza(m))}</option>`).join(''));
+    sel.insertAdjacentHTML('beforeend', lista.filter((m) => m.id !== D.ia?.modelo && (!sel.dataset.soloFotos || m.vision))
+      .map((m) => `<option value="${esc(m.id)}">${esc(m.nombre)}${limitesModelo(m).length ? ` (${limitesModelo(m).join(', ')})` : ''} · ${esc(costePieza(m))}</option>`).join(''));
+    avisoModeloAlta();
   } catch {}
+}
+// con un modelo que no ve fotos, el campo de la foto se apaga (y se dice por qué); sin formato fijo, solo se avisa
+function avisoModeloAlta() {
+  const sel = $('#ia-modelo-alta'), aviso = $('#ia-aviso-modelo');
+  if (!sel || !aviso) return;
+  const m = modeloIA(sel.value), form = sel.form, input = form.querySelector('.archivo-input');
+  const sinFotos = !!m && !m.vision, varias = form.id === 'form-ia-varias';
+  if (input) {
+    if (sinFotos && input.value) { input.value = ''; pintarArchivo(input); }
+    input.disabled = sinFotos;
+    input.closest('.archivo').classList.toggle('apagado', sinFotos);
+  }
+  const b = form.querySelector('[type=submit]');
+  if (varias && b) b.disabled = sinFotos;
+  const partes = !m ? [] : [
+    sinFotos ? (varias ? `${m.nombre} no ve fotos: no puede separar las piezas. Elige otro modelo.` : `${m.nombre} no ve fotos: no se puede subir foto. Describe la pieza con texto (lo que pone en la serigrafía, cuántos pines tiene…).`) : '',
+    m.estructurada ? '' : `${m.nombre} no devuelve datos con formato fijo: puede fallar o dejar más cosas por comprobar.`].filter(Boolean);
+  aviso.hidden = !partes.length;
+  aviso.textContent = partes.join(' ');
+}
+
+// ---------- foto con varias piezas: el modelo las separa, tú eliges cuáles, y cada una se identifica con su recorte ----------
+function vIAVarias() {
+  if (!D.ia?.activa) return `<a class="back" href="#/">← Inventario</a>${vacio('Falta la clave de OpenCode Go. <a class="btn prim" href="#/ia/ajustes">Configurar</a>')}`;
+  return `<a class="back" href="#/ia">← Añadir con IA</a>
+    <article class="hoja">
+      ${cabecera('Varias piezas en una foto', '', 'Pon las piezas separadas sobre un fondo liso y hazles una foto desde arriba. La IA las separa; tú eliges cuáles dar de alta y luego identifica cada una con su recorte. Nada se guarda hasta que lo confirmes.')}
+      <form id="form-ia-varias" class="form" autocomplete="off">
+        ${campoFoto('Foto con las piezas', 'Mejor pocas y que se lean (hasta 40). Con muchas piezas pequeñas, haz varias fotos.')}
+        <label>Lo que sepas de ellas (opcional)<textarea name="texto" rows="2" maxlength="1000" placeholder="Son del kit de sensores de Freenove"></textarea></label>
+        <label>Modelo<select name="modelo" id="ia-modelo-alta" data-solo-fotos="1"><option value="">El de siempre (${esc(nombreModelo(D.ia.modelo))})</option></select>
+          <span class="ayuda">Solo los que ven fotos. Gasta una consulta para separarlas y otra por cada pieza que elijas.</span></label>
+        <p class="nota" id="ia-aviso-modelo" hidden></p>
+        <div class="acciones"><button class="btn prim" type="submit">Separar las piezas</button></div>
+      </form>
+    </article>`;
+}
+async function enviarVarias(form) {
+  const fd = new FormData(form), file = fd.get('foto');
+  if (!file || !file.size) throw new Error('Elige la foto con las piezas');
+  toast('Enviando la foto…');
+  const foto = await base64(await jpeg(await lienzoDe(file, 2000))); // entera, sin encuadrar: los recortes salen de ella
+  const t = await api('POST', 'api/ia/detectar', {texto: fd.get('texto'), foto, modelo: fd.get('modelo') || undefined});
+  location.hash = `#/ia/${t.id}`;
+}
+// recuadro de una pieza con un margen del 8 % (los modelos no afinan los bordes); sin recuadro, la foto entera
+const cajaConMargen = (c) => {
+  if (!c) return {x: 0, y: 0, ancho: 1000, alto: 1000};
+  const mx = c.ancho * 0.08, my = c.alto * 0.08, x = Math.max(0, c.x - mx), y = Math.max(0, c.y - my);
+  return {x, y, ancho: Math.min(1000 - x, c.ancho + 2 * mx), alto: Math.min(1000 - y, c.alto + 2 * my)};
+};
+function recortar(img, caja, max) {
+  const c = cajaConMargen(caja), W = img.naturalWidth, H = img.naturalHeight;
+  const sx = c.x / 1000 * W, sy = c.y / 1000 * H, sw = Math.max(1, c.ancho / 1000 * W), sh = Math.max(1, c.alto / 1000 * H);
+  const k = Math.min(1, max / Math.max(sw, sh)), cv = document.createElement('canvas');
+  cv.width = Math.max(1, Math.round(sw * k)); cv.height = Math.max(1, Math.round(sh * k));
+  cv.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+  return cv;
+}
+let DETECCION = null; // la tarea que se está mirando
+function vistaDeteccion(t) {
+  DETECCION = t;
+  const p = t.propuesta, url = `fotos/${encodeURIComponent(t.foto)}`;
+  return `${cabecera(`${plural(p.piezas.length, 'pieza')} en la foto`, '', 'Desmarca las que no quieras y corrige el nombre si hace falta (es solo una pista). Después la IA identifica cada una con su recorte y te las enseña juntas para guardarlas.')}
+    ${specs([['Modelo', esc(nombreModelo(t.modelo))], ['Coste', esc(costeTexto(p.coste))]])}
+    ${p.dudas?.length ? `<div class="nota nota-ia"><p><span class="nota-t">Ojo</span> ${p.dudas.map(esc).join(' ')}</p></div>` : ''}
+    <div class="pad det">
+      <div class="det-foto"><img id="det-img" src="${url}" alt="La foto con las piezas numeradas">
+        ${p.piezas.map((x, i) => (x.caja ? `<span class="det-caja" data-i="${i}" style="left:${x.caja.x / 10}%;top:${x.caja.y / 10}%;width:${x.caja.ancho / 10}%;height:${x.caja.alto / 10}%"><b>${i + 1}</b></span>` : '')).join('')}</div>
+      <div class="det-lista">${p.piezas.map((x, i) => `<div class="det-pieza" data-i="${i}">
+        <label class="det-marca"><input type="checkbox" class="det-ok" checked aria-label="Dar de alta la pieza ${i + 1}"><b>${i + 1}</b></label>
+        <span class="det-mini" data-i="${i}"></span>
+        <div class="det-datos"><input class="det-nombre" maxlength="200" value="${esc(x.nombre)}" aria-label="Nombre de la pieza ${i + 1}">
+          ${x.descripcion ? `<span class="sub">${esc(x.descripcion)}</span>` : ''}${x.caja ? '' : '<span class="sub aviso">Sin recuadro: se usará la foto entera.</span>'}</div>
+        <label class="det-cant">Cant.<input type="number" class="det-cantidad" min="1" inputmode="numeric" value="${esc(x.cantidad ?? 1)}"></label>
+      </div>`).join('')}</div>
+      <div class="acciones">
+        <button class="btn prim" type="button" id="det-crear" data-id="${t.id}">Identificar las marcadas</button>
+        <button class="btn" type="button" data-det-marcar="todo">Marcar todas</button>
+        <button class="btn" type="button" data-det-marcar="nada">Ninguna</button>
+        <button class="btn peligro" type="button" id="ia-descartar" data-id="${t.id}" data-volver="#/ia/varias">Descartar</button>
+      </div>
+    </div>`;
+}
+// miniaturas de cada pieza (recortes de la foto) y texto del botón
+function pintarDeteccion() {
+  const img = $('#det-img');
+  if (!img || !DETECCION) return;
+  const hacer = () => document.querySelectorAll('.det-mini').forEach((m) => { if (!m.firstChild) m.append(recortar(img, DETECCION.propuesta.piezas[m.dataset.i].caja, 160)); });
+  if (img.complete && img.naturalWidth) hacer(); else img.addEventListener('load', hacer, {once: true});
+  contarDeteccion();
+}
+function contarDeteccion() {
+  const b = $('#det-crear');
+  if (!b) return;
+  const n = document.querySelectorAll('.det-ok:checked').length;
+  document.querySelectorAll('.det-pieza').forEach((f) => { const ok = f.querySelector('.det-ok').checked; f.classList.toggle('fuera', !ok);
+    document.querySelector(`.det-caja[data-i="${f.dataset.i}"]`)?.classList.toggle('fuera', !ok); });
+  b.textContent = n ? `Identificar ${piezasTxt(n)} (${plural(n, 'consulta')})` : 'Marca alguna pieza';
+  b.disabled = !n;
+}
+async function crearDeteccion(boton) {
+  const img = $('#det-img'), t = DETECCION;
+  if (!img?.naturalWidth) throw new Error('La foto aún no ha cargado');
+  boton.disabled = true;
+  boton.textContent = 'Recortando…';
+  const piezas = [];
+  for (const f of document.querySelectorAll('.det-pieza')) {
+    if (!f.querySelector('.det-ok').checked) continue;
+    const x = t.propuesta.piezas[f.dataset.i];
+    piezas.push({nombre: f.querySelector('.det-nombre').value.trim() || x.nombre, descripcion: x.descripcion, cantidad: Number(f.querySelector('.det-cantidad').value) || 1,
+      foto: await base64(await jpeg(recortar(img, x.caja, 1200)))});
+  }
+  toast(`Enviando ${piezasTxt(piezas.length)}…`);
+  const r = await api('POST', `api/ia/tareas/${t.id}/crear-piezas`, {piezas});
+  location.hash = `#/ia/lote/${r.lote}`;
+}
+
+// ---- lote de piezas nuevas (de una foto con varias): se guardan las marcadas tal como las propone la IA ----
+function htmlLoteAltas(ts) {
+  const listas = ts.filter((t) => t.estado !== 'pendiente').length;
+  const tarea = (t) => {
+    const p = t.propuesta || {};
+    const tipo = p.tipo_existente ? esc(g(p.tipo_existente).nombre) : p.tipo_nuevo ? `${esc(p.tipo_nuevo.nombre)} <span class="aviso">· tipo nuevo, sin comprobar</span>` : 'Sin tipo';
+    const estado = {pendiente: 'identificando…', propuesta: `confianza ${p.confianza || '?'}`, aplicada: 'guardada', descartada: 'descartada', error: 'error'}[t.estado] || t.estado;
+    const mini = t.foto ? `<img class="thumb" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : '';
+    const cuerpo = t.estado === 'error' ? `<p class="mal">${esc(t.error || 'Error')}</p>`
+      : t.estado === 'propuesta' ? `<p class="sub">${tipo} · ${p.cantidad ?? 1} ud.${p.dudas?.length ? ` · <span class="aviso">${plural(p.dudas.length, 'duda')}: ábrela para contestar</span>` : ''}</p>` : '';
+    const nombre = esc(p.nombre || 'Pieza sin identificar');
+    return `<section class="pad lote-tarea lote-alta lote-${t.estado}">
+      ${t.estado === 'propuesta' ? `<input type="checkbox" class="lote-cambio" data-tarea="${t.id}" value="alta" aria-label="Guardar ${nombre}" ${LOTE.desmarcados.has(`${t.id}:alta`) ? '' : 'checked'}>` : '<span></span>'}
+      ${mini}
+      <div><div class="lote-t">${t.estado === 'aplicada' && t.componente_id ? `<a class="nombre" href="#/c/${t.componente_id}">${nombre}</a>` : `<span class="nombre">${nombre}</span>`}
+        <span class="gris">· ${esc(estado)}</span>${t.estado === 'propuesta' ? `<a class="lote-abrir" href="#/ia/${t.id}">Abrir</a>` : ''}</div>${cuerpo}</div></section>`;
+  };
+  const quedan = ts.some((t) => t.estado === 'propuesta' || t.estado === 'error');
+  return `${cabecera(`${piezasTxt(ts.length)} de una foto`, '', listas < ts.length
+      ? `Identificando… ${listas} de ${ts.length} listas. Puedes ir mirando las que ya han llegado.`
+      : 'Guarda las marcadas tal como están, o abre una para corregirla, contestar sus dudas o ponerle sitio. Las fichas nuevas quedan «sin comprobar».')}
+    ${listas < ts.length ? '<div class="ia-progreso" role="progressbar" aria-label="La IA está identificando las piezas"><span></span></div>' : ''}
+    ${ts.map(tarea).join('')}
+    ${quedan ? `<div class="acciones pad lote-acciones">
+      <button class="btn prim" type="button" id="lote-guardar">Guardar las marcadas</button>
+      <button class="btn" type="button" data-lote-marcar="todo">Marcar todas</button>
+      <button class="btn" type="button" data-lote-marcar="nada">Ninguna</button>
+      <button class="btn peligro" type="button" id="lote-descartar">Descartar lo que quede</button></div>` : '<p class="pad gris">Ya no queda nada por revisar de esta foto.</p>'}`;
+}
+async function guardarLoteAltas(boton) {
+  const ids = [...document.querySelectorAll('.lote-cambio:checked')].map((x) => Number(x.dataset.tarea));
+  if (!ids.length) throw new Error('Marca alguna pieza');
+  boton.disabled = true;
+  boton.textContent = 'Guardando…';
+  const r = await api('POST', `api/ia/lotes/${encodeURIComponent(LOTE.id)}/guardar`, {ids});
+  await cargar(); contadores();
+  await iaLote(LOTE.id);
+  toast(`${piezasTxt(r.guardadas.length)} guardada${r.guardadas.length === 1 ? '' : 's'}${r.fallos.length ? `; ${r.fallos.length} no (${r.fallos[0].error})` : ''}`, r.fallos.length > 0);
 }
 
 // lista de tareas abiertas (debajo del formulario): nada se pierde si cierras la pestaña mientras el modelo piensa
@@ -1292,7 +1785,7 @@ async function iaAbiertas() {
     const ts = await api('GET', 'api/ia/tareas');
     zona.innerHTML = ts.length ? `<section class="grupo"><h3 class="grupo-t">Sin terminar<span class="n">${ts.length}</span></h3><p class="sub"><a href="#/pendientes">Ver todo en «Cambios pendientes»</a></p>${ts.map((t) => `
       <div class="fila"><a class="fila-main" href="#/ia/${t.id}">${t.foto ? `<img class="thumb" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : ''}
-        <div><div class="nombre">${esc(t.clase === 'revisar' ? `Correcciones para «${t.objetivo_nombre || '?'}»` : t.propuesta?.nombre || t.texto || 'Pieza sin nombre')}</div><div class="sub">${esc(t.creada)}</div></div></a>
+        <div><div class="nombre">${esc(t.clase === 'revisar' ? `Correcciones para «${t.objetivo_nombre || '¿?'}»` : t.clase === 'detectar' ? 'Foto con varias piezas' : t.propuesta?.nombre || t.texto || 'Pieza sin nombre')}</div><div class="sub">${esc(t.creada)}</div></div></a>
         <div class="der">${t.estado === 'error' ? '<span class="mal">Error</span>' : esc(ESTADO_IA[t.estado])}</div></div>`).join('')}</section>` : '';
   } catch {}
 }
@@ -1305,6 +1798,7 @@ async function iaTarea(id) {
   const foto = t.foto ? `<img class="foto ia-foto" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : '';
   const atras = document.querySelector('a.back');
   if (atras && t.clase === 'revisar') { atras.href = volverRevision(t); atras.textContent = `← ${textoVolver(t)}`; } // a su lote, a pendientes o a la ficha
+  else if (atras && t.lote) { atras.href = `#/ia/lote/${encodeURIComponent(t.lote)}`; atras.textContent = '← Las piezas de la foto'; }
   else if (atras && desdePendientes(t)) { atras.href = '#/pendientes'; atras.textContent = '← Cambios pendientes'; }
   if (t.estado === 'pendiente') {
     // la pantalla de espera se pinta UNA vez (si no, la animación y el contador se reiniciarían en cada consulta)
@@ -1313,7 +1807,7 @@ async function iaTarea(id) {
       zona.dataset.espera = clave;
       const lleva = Math.max(0, (fechaSql(t.ahora) - fechaSql(t.actualizada)) / 1000) || 0; // segundos que lleva, según el servidor
       zona.dataset.inicio = String(Date.now() - lleva * 1000);
-      zona.innerHTML = vistaEspera(foto, t.modelo_pedido || D.ia?.modelo, t.clase === 'revisar' ? 'Repasando la ficha…' : 'Analizando…');
+      zona.innerHTML = vistaEspera(foto, t.modelo_pedido || D.ia?.modelo, t.clase === 'revisar' ? 'Repasando la ficha…' : t.clase === 'detectar' ? 'Separando las piezas…' : 'Analizando…');
       arrancarContador(zona);
     }
     const h = location.hash;
@@ -1330,17 +1824,19 @@ async function iaTarea(id) {
   };
   if (t.estado === 'error') {
     pintar(`${cabecera('No ha salido', '', t.error || 'Error desconocido')}
-      <div class="pad">${foto}<div class="acciones"><a class="btn prim" href="${t.clase === 'revisar' ? fichaRevision(t) : '#/ia'}">Probar otra vez</a>
+      <div class="pad">${foto}<div class="acciones"><a class="btn prim" href="${t.clase === 'revisar' ? fichaRevision(t) : t.clase === 'detectar' ? '#/ia/varias' : '#/ia'}">Probar otra vez</a>
       <button class="btn peligro" id="ia-descartar" data-id="${t.id}">Descartar</button></div></div>`);
     return;
   }
   if (t.estado !== 'propuesta') {
     const enlace = t.clase === 'revisar' ? `<a class="btn" href="${volverRevision(t)}">${textoVolver(t)}</a>`
+      : t.clase === 'detectar' && t.propuesta?.lote ? `<a class="btn" href="#/ia/lote/${esc(t.propuesta.lote)}">Ver las piezas de la foto</a>`
       : t.componente_id ? `<a class="btn" href="#/c/${t.componente_id}">Ver la pieza</a>` : '';
     pintar(`${cabecera(ESTADO_IA[t.estado])}<div class="pad">${enlace}</div>`);
     return;
   }
   if (t.clase === 'revisar') { pintar(vistaCambios(t)); return; }
+  if (t.clase === 'detectar') { pintar(vistaDeteccion(t)); pintarDeteccion(); return; }
   const p = t.propuesta, n = p.tipo_nuevo || {}, sel = p.tipo_existente || (p.tipo_nuevo ? '__nuevo' : '');
   pintar(`${cabecera('Revisa la propuesta', '', 'Corrige lo que haga falta, mira cómo quedará y guarda. Nada se ha guardado todavía.')}
     ${specs([['Confianza', esc(p.confianza)], ['Modelo', esc(nombreModelo(t.modelo))], ['Coste', esc(costeTexto(p.coste))], ['Vuelta', t.rondas ? String(t.rondas + 1) : '']])}
@@ -1361,7 +1857,7 @@ async function iaTarea(id) {
         <label>Tensión<input name="tn_voltaje" maxlength="120" value="${esc(n.voltaje || '')}"></label>
         <label>Interfaces (separadas por comas)<input name="tn_interfaz" value="${esc(list(n.interfaz).join(', '))}"></label>
         <label>Otros nombres (separados por comas)<input name="tn_alias" value="${esc(list(n.alias).join(', '))}"></label>
-        ${editorFilas('pines', n.pines, {campo: 'tn_pines', etiqueta: 'Pines', boton: 'Añadir pin', ayuda: 'En el orden de la placa. La función da el color del pin.'})}
+        ${editorFilas('pines', n.pines, {campo: 'tn_pines', etiqueta: 'Pines', boton: 'Añadir pin', ayuda: 'Un pin por fila, en el orden de la placa. La función da el color del pin; en la nota, lo que haya que saber de ese pin. Si escribes varios en una fila, se separan solos.'})}
         ${editorFilas('datos', n.datos, {campo: 'tn_datos', etiqueta: 'Datos del tipo', boton: 'Añadir dato', ayuda: 'Iguales para todas las piezas de este tipo.'})}
         <label>Ojo (advertencia)<textarea name="tn_ojo" rows="2" maxlength="400">${esc(n.ojo || '')}</textarea></label>
       </div>
@@ -1375,7 +1871,7 @@ async function iaTarea(id) {
       <label>Notas<textarea name="notas" rows="2" maxlength="2000"></textarea></label>
       <div class="acciones">
         <button class="btn prim" type="submit">Guardar pieza</button>
-        <button class="btn peligro" type="button" id="ia-descartar" data-id="${t.id}">Descartar</button>
+        <button class="btn peligro" type="button" id="ia-descartar" data-id="${t.id}"${t.lote ? ` data-volver="#/ia/lote/${esc(t.lote)}"` : ''}>Descartar</button>
       </div>
     </form>`);
 }
@@ -1488,7 +1984,7 @@ async function aplicarIA(form) {
   await cargar(); // trae la pieza, la ficha nueva (si la hay) y los contadores
   contadores();
   toast('Guardada');
-  location.hash = `#/c/${r.componente.id}`;
+  location.hash = LOTE.id && ui.origenTarea?.desde === `#/ia/lote/${LOTE.id}` ? ui.origenTarea.desde : `#/c/${r.componente.id}`;
 }
 
 // ---------- Ajustes (fase B): IA, categorías, tipos, sitios, datos y tema ----------
@@ -1521,12 +2017,13 @@ const estadosLote = (e) => [e.propuesta ? `${e.propuesta} lista${e.propuesta ===
 function estadoTarea(t) {
   if (t.estado === 'error') return '<span class="mal">Error</span>';
   if (t.estado === 'pendiente') return 'Preparándose…';
+  if (t.clase === 'detectar') return `${plural(t.propuesta?.piezas?.length || 0, 'pieza')} por elegir`;
   if (t.clase !== 'revisar') return 'Lista para revisar';
   const n = t.propuesta?.cambios?.length || 0;
   return n ? plural(n, 'cambio') : 'Nada que cambiar';
 }
 function filaPendiente(t) {
-  const nombre = t.clase === 'revisar' ? `Correcciones para «${t.objetivo_nombre || '¿?'}»` : t.propuesta?.nombre || t.texto || 'Pieza sin nombre';
+  const nombre = t.clase === 'revisar' ? `Correcciones para «${t.objetivo_nombre || '¿?'}»` : t.clase === 'detectar' ? 'Foto con varias piezas' : t.propuesta?.nombre || t.texto || 'Pieza sin nombre';
   const modelo = nombreModelo(t.modelo || t.modelo_pedido || D.ia?.modelo);
   return `<div class="fila"><a class="fila-main" href="#/ia/${t.id}">${t.foto ? `<img class="thumb" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : ''}
       <div><div class="nombre">${esc(nombre)}</div><div class="sub">${esc(cuando(t.creada))}${modelo ? ` · ${esc(modelo)}` : ''}${t.texto && t.clase === 'revisar' ? ` · «${esc(t.texto)}»` : ''}</div></div></a>
@@ -1536,7 +2033,7 @@ function filaLotePendiente(l) {
   const mas = l.piezas.length > 4 ? ` y ${l.piezas.length - 4} más` : '';
   const abiertas = (l.estados.propuesta || 0) + (l.estados.error || 0);
   return `<div class="fila"><a class="fila-main" href="#/ia/lote/${esc(l.lote)}">
-      <div><div class="nombre">Correcciones de ${piezasTxt(l.total)} a la vez</div>
+      <div><div class="nombre">${l.clase === 'alta' ? `${piezasTxt(l.total)} de una foto` : `Correcciones de ${piezasTxt(l.total)} a la vez`}</div>
         <div class="sub">${esc(l.piezas.slice(0, 4).join(', '))}${mas}${l.texto ? ` · «${esc(l.texto)}»` : ''}</div>
         <div class="sub">${esc(cuando(l.creada))}${l.cambios ? ` · ${plural(l.cambios, 'cambio')} por mirar` : ''}</div></div></a>
     <div class="der"><span>${estadosLote(l.estados)}</span>${abiertas ? `<button class="btn mini" type="button" data-pend-descartar="lote:${esc(l.lote)}">Descartar</button>` : ''}</div></div>`;
@@ -1587,13 +2084,14 @@ async function avisoPendientes() {
 
 // ---------- historial de cambios (Ajustes → Historial, y el de cada pieza o ficha) ----------
 const HIST = {grupo: '', q: '', filas: [], mas: false, cargando: false};
-const GRUPOS_HIST = {'': 'Todo', piezas: 'Piezas', fichas: 'Fichas', ia: 'IA', catalogo: 'Catálogo', sistema: 'Copias y ajustes'};
-const OBJETO_HIST = {pieza: 'pieza', tipo: 'ficha', categoria: 'categoría', sitio: 'sitio', ia: 'IA', copia: 'copia', ajustes: 'ajuste'};
+const GRUPOS_HIST = {'': 'Todo', piezas: 'Piezas', fichas: 'Fichas', ia: 'IA', catalogo: 'Catálogo', proyectos: 'Proyectos', sistema: 'Copias y ajustes'};
+const OBJETO_HIST = {pieza: 'pieza', tipo: 'ficha', categoria: 'categoría', sitio: 'sitio', ia: 'IA', copia: 'copia', ajustes: 'ajuste', proyecto: 'proyecto'};
 const quienHist = (r) => (r.quien === 'ia' ? `IA${r.modelo ? ` · ${esc(nombreModelo(r.modelo))}` : ''}` : r.quien === 'sistema' ? 'Sistema' : 'Tú');
 function enlaceHist(r) {
   if (!r.nombre) return '';
   if (r.objeto === 'pieza' && comp(r.objeto_id)) return `<a href="#/c/${esc(r.objeto_id)}">${esc(r.nombre)}</a>`;
   if (r.objeto === 'tipo' && D.tipos[r.objeto_id]) return `<a href="#/g/${encodeURIComponent(r.objeto_id)}">${esc(r.nombre)}</a>`;
+  if (r.objeto === 'proyecto' && proyecto(r.objeto_id)) return `<a href="#/p/${encodeURIComponent(r.objeto_id)}">${esc(r.nombre)}</a>`;
   return esc(r.nombre);
 }
 function filaHist(r, conObjeto = true) {
@@ -1603,6 +2101,7 @@ function filaHist(r, conObjeto = true) {
     d.antes ? `El estado anterior se guardó como ${esc(d.antes)}` : '',
     d.lote ? `<a href="#/ia/lote/${esc(d.lote)}">Ver el lote</a>` : '',
     d.orden ? `Orden nuevo: ${esc(d.orden.join(', '))}` : '',
+    d.texto ? `«${esc(d.texto)}»` : '',
   ].filter(Boolean);
   const objeto = conObjeto && r.nombre ? `<span class="hist-obj">${enlaceHist(r)} <span class="gris">· ${OBJETO_HIST[r.objeto] || r.objeto}</span></span>` : '';
   const cab = `<span class="hist-cuando" title="${esc(fechaCompleta(r.fecha))}">${esc(cuando(r.fecha))}</span>
@@ -1692,7 +2191,7 @@ async function regCargar() {
   regCargar.t = setTimeout(() => { if (location.hash === h) regCargar(); }, 5000);
 }
 
-const SECCIONES = {ia: 'IA', categorias: 'Categorías', tipos: 'Tipos', sitios: 'Sitios', datos: 'Datos', letra: 'Letra', historial: 'Historial', registro: 'Registro'};
+const SECCIONES = {ia: 'IA', categorias: 'Categorías', tipos: 'Tipos', sitios: 'Sitios', formato: 'Uniformar formato', datos: 'Datos', letra: 'Letra', historial: 'Historial', registro: 'Registro'};
 
 function vAjustes(sec) {
   if (sec && SECCIONES[sec]) {
@@ -1702,20 +2201,27 @@ function vAjustes(sec) {
   const tipos = Object.values(D.tipos), archivados = tipos.filter((t) => t.archivado).length;
   const fila = (href, nombre, sub) => `<div class="fila"><a class="fila-main" href="${href}"><div><div class="nombre">${nombre}</div>
     <div class="sub">${sub}</div></div></a><span class="gris">→</span></div>`;
-  return `<article class="hoja">${cabecera('Ajustes', '', 'Todo lo que se configura de la app. Lo que cambies aquí se ve al momento en el inventario y el glosario.')}
+  const grupo = (titulo, filas) => `<section class="aj-grupo"><h3 class="grupo-t">${titulo}</h3>${filas.join('')}</section>`;
+  const pend = CUENTA_PEND?.grupos ? `<span class="aviso">${CUENTA_PEND.grupos} sin revisar</span> · ` : '';
+  return `<article class="hoja">${cabecera('Ajustes', '', 'Lo que cambies aquí se ve al momento en el inventario y el glosario.')}
     <div class="pad aj-menu">
-      ${fila('#/ajustes/ia', 'IA', D.ia?.activa ? `Conectada · ${esc(nombreModelo(D.ia.modelo))} · razona ${esc((RAZONAR[D.ajustes.ia_razonar] || RAZONAR.poco).nombre.toLowerCase())} · clave ${esc(D.ia.clave)}` : '<span class="mal">Sin clave</span>')}
-      ${fila('#/ajustes/categorias', 'Categorías', `${plural(D.categorias.length, 'categoría')} · renombrar, ordenar, añadir, borrar`)}
-      ${fila('#/ajustes/tipos', 'Tipos', `${plural(tipos.length - archivados, 'tipo')}${archivados ? ` · ${archivados} archivado${archivados === 1 ? '' : 's'}` : ''} · archivar, fusionar, borrar`)}
-      ${fila('#/ajustes/sitios', 'Sitios', `${plural(ubicaciones().length, 'sitio')} · renombrar, juntar, borrar`)}
-      ${fila('#/ajustes/datos', 'Datos', 'Copias de seguridad y exportar')}
-      ${fila('#/pendientes', 'Cambios pendientes', 'Correcciones y piezas nuevas que dejaste a medias')}
-      ${fila('#/ajustes/historial', 'Historial', 'Quién cambió qué y cuándo: tú, la IA (con su modelo) o el sistema')}
-      ${fila('#/ajustes/registro', 'Registro', 'Mensajes del servidor: arranque, copias, IA y errores')}
-      ${fila('#/ajustes/letra', 'Letra', `${esc(FUENTES[fuenteActual()].nombre)} · elige la letra de toda la app`)}
-      <div class="fila"><div class="fila-main"><div><div class="nombre">Tema</div><div class="sub">Claro de día, grafito de noche o según el sistema</div></div></div>
-        <div class="cats">${Object.entries({auto: 'Automático', claro: 'Claro', noche: 'Noche'}).map(([k, v]) =>
-          `<button class="f ${(D.ajustes.tema || 'auto') === k ? 'on' : ''}" data-poner-tema="${k}">${v}</button>`).join('')}</div></div>
+      ${grupo('IA', [
+        fila('#/ajustes/ia', 'Modelo y clave', D.ia?.activa ? `Conectada · ${esc(nombreModelo(D.ia.modelo))} · razona ${esc((RAZONAR[D.ajustes.ia_razonar] || RAZONAR.poco).nombre.toLowerCase())} · clave ${esc(D.ia.clave)}` : '<span class="mal">Sin clave</span>'),
+        fila('#/pendientes', 'Cambios pendientes', `${pend}correcciones y piezas nuevas que dejaste a medias`)])}
+      ${grupo('Catálogo', [
+        fila('#/ajustes/categorias', 'Categorías', `${plural(D.categorias.length, 'categoría')} · renombrar, ordenar, añadir, borrar`),
+        fila('#/ajustes/tipos', 'Tipos', `${plural(tipos.length - archivados, 'tipo')}${archivados ? ` · ${archivados} archivado${archivados === 1 ? '' : 's'}` : ''} · archivar, fusionar, borrar`),
+        fila('#/ajustes/sitios', 'Sitios', `${plural(ubicaciones().length, 'sitio')} · renombrar, juntar, borrar`),
+        fila('#/ajustes/formato', 'Uniformar formato', 'Que todo esté escrito igual: «3,3 V», «I2C», «Corriente máx.»')])}
+      ${grupo('Aspecto', [
+        fila('#/ajustes/letra', 'Letra', `${esc(FUENTES[fuenteActual()].nombre)} · elige la letra de toda la app`),
+        `<div class="fila"><div class="fila-main"><div><div class="nombre">Tema</div><div class="sub">Claro de día, grafito de noche o según el sistema</div></div></div>
+          <div class="cats">${Object.entries({auto: 'Automático', claro: 'Claro', noche: 'Noche'}).map(([k, v]) =>
+            `<button class="f ${(D.ajustes.tema || 'auto') === k ? 'on' : ''}" data-poner-tema="${k}">${v}</button>`).join('')}</div></div>`])}
+      ${grupo('Datos y actividad', [
+        fila('#/ajustes/datos', 'Copias de seguridad', 'Hacer una copia, descargarla, restaurar y exportar'),
+        fila('#/ajustes/historial', 'Historial', 'Quién cambió qué y cuándo: tú, la IA (con su modelo) o el sistema'),
+        fila('#/ajustes/registro', 'Registro', 'Mensajes del servidor: arranque, copias, IA y errores')])}
     </div></article>`;
 }
 
@@ -1728,6 +2234,7 @@ async function ajCargar() {
     if (sec === 'categorias') zona.innerHTML = ajCategorias(await api('GET', 'api/categorias'));
     if (sec === 'tipos') zona.innerHTML = ajTipos(await api('GET', 'api/tipos'));
     if (sec === 'sitios') zona.innerHTML = ajSitios(await api('GET', 'api/ubicaciones'));
+    if (sec === 'formato') { zona.innerHTML = ajFormato(await api('GET', 'api/ajustes/formato')); contarFormato(); }
     if (sec === 'datos') zona.innerHTML = ajDatos(await api('GET', 'api/ajustes/resumen'));
     if (sec === 'letra') zona.innerHTML = ajLetra();
     if (sec === 'historial') await histCargar(true);
@@ -1809,6 +2316,42 @@ function ajLetra() {
         </span>
         <span class="sub">${esc(f.sub)}</span>
       </label>`).join('')}</div>`;
+}
+
+// Uniformar formato: lo que cambiaría en las fichas y en los datos de las piezas para que todo esté escrito igual
+function ajFormato(r) {
+  const grupos = new Map();
+  for (const c of r.cambios) { const k = `${c.objeto}:${c.objeto_id}`; if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(c); }
+  const enlace = (c) => (c.objeto === 'tipo' ? `#/g/${encodeURIComponent(c.objeto_id)}` : `#/c/${esc(c.objeto_id)}`);
+  return `${cabecera('Uniformar formato', '', 'La app escribe siempre igual las tensiones y las unidades («3,3 V», «20 mA»), las interfaces («I2C») y los nombres de los datos («Corriente máx.»). Aquí sale lo que ya está guardado de otra manera: marca lo que quieras dejar igual que el resto. Solo cambia cómo está escrito, no lo que dice, y no gasta consultas de la IA.')}
+    ${r.cambios.length ? [...grupos.values()].map((cs) => `<section class="pad formato-grupo">
+      <p class="lote-t"><a class="nombre" href="${enlace(cs[0])}">${esc(cs[0].nombre)}</a><span class="gris">· ${cs[0].objeto === 'tipo' ? 'ficha' : 'pieza'}</span></p>
+      ${cs.map((c) => `<label class="ia-cambio-fila"><input type="checkbox" class="formato-cambio" value="${esc(c.id)}" checked><span>${filaCambio(c)}</span></label>`).join('')}</section>`).join('')
+      + `<div class="acciones pad lote-acciones">
+        <button class="btn prim" type="button" id="formato-aplicar">Aplicar lo marcado</button>
+        <button class="btn" type="button" data-formato-marcar="todo">Marcar todo</button>
+        <button class="btn" type="button" data-formato-marcar="nada">Ninguno</button></div>`
+      : '<p class="pad">Todo está ya escrito con el mismo formato.</p>'}
+    ${r.interfaces.length ? `<section class="pad"><h3 class="grupo-t">Interfaces en uso<span class="n">${r.interfaces.length}</span></h3>
+      <p class="sub">La app no puede saber si dos nombres distintos son la misma cosa («Analógica» y «1 pin analógico»). Si ves dos que lo son, edita la ficha y deja uno: la IA usará el que quede.</p>
+      <p class="formato-lista">${r.interfaces.map((x) => `<span>${esc(x.nombre)} <span class="gris">×${x.n}</span></span>`).join('')}</p></section>` : ''}`;
+}
+function contarFormato() {
+  const b = $('#formato-aplicar');
+  if (!b) return;
+  const n = document.querySelectorAll('.formato-cambio:checked').length;
+  b.textContent = n ? `Aplicar ${plural(n, 'cambio')}` : 'Marca algún cambio';
+  b.disabled = !n;
+}
+async function aplicarFormato(boton) {
+  const ids = [...document.querySelectorAll('.formato-cambio:checked')].map((x) => x.value);
+  boton.disabled = true;
+  boton.textContent = 'Aplicando…';
+  const r = await api('POST', 'api/ajustes/formato', {ids});
+  await cargar(); contadores();
+  $('#aj-zona').innerHTML = ajFormato(r);
+  contarFormato();
+  toast(`${plural(r.aplicados, 'cambio')} de formato aplicado${r.aplicados === 1 ? '' : 's'}`);
 }
 
 function ajSitios(sitios) {
@@ -2196,7 +2739,7 @@ function route() {
   const map = {
     '': ['inventario', vInventario], c: ['inventario', () => vComponente(arg)],
     nuevo: ['inventario', () => vForm(null, new URLSearchParams(qs).get('tipo') || '')], editar: ['inventario', () => vForm(arg)],
-    proyectos: ['proyectos', vProyectos], p: ['proyectos', () => vProyecto(arg)],
+    proyectos: ['proyectos', vProyectos], p: ['proyectos', () => vProyecto(arg, sub)], 'proyecto-nuevo': ['proyectos', () => vProyectoForm(null)],
     glosario: ['glosario', vGlosario], g: ['glosario', () => (sub === 'editar' ? vEditarTipo(arg) : vTipo(arg))],
     ia: ['inventario', () => (arg === 'lote' ? vLoteIA(sub) : vIA(arg))],
     lote: ['inventario', vLote],
@@ -2210,7 +2753,8 @@ function route() {
   app.innerHTML = fn();
   document.title = `[AMS] lab · ${tab}`;
   if (v === 'g' && sub === 'editar') editarTipoCargar();
-  if (v === 'ia') { if (arg === 'ajustes') iaAjustes(); else if (arg === 'lote') iaLote(sub); else if (arg) iaTarea(arg); else { iaAbiertas(); llenarModelosAlta(); } }
+  if (v === 'p') cargarProyecto();
+  if (v === 'ia') { if (arg === 'ajustes') iaAjustes(); else if (arg === 'lote') iaLote(sub); else if (arg === 'varias') llenarModelosAlta(); else if (arg) iaTarea(arg); else { iaAbiertas(); llenarModelosAlta(); } }
   if (v === '') avisoPendientes();
   if (v === 'pendientes') cargarPendientes();
   if (v === 'ajustes' && arg === 'historial') { const g = new URLSearchParams(qs).get('g'); if (g != null && g in GRUPOS_HIST) HIST.grupo = g; }
@@ -2219,20 +2763,24 @@ function route() {
     const t = new URLSearchParams(qs).get('t');
     if (arg === 'tipos' && t) { ui.ajBuscar = D.tipos[t]?.nombre || t; ui.ajTipos = D.tipos[t]?.archivado ? 'archivados' : 'todos'; }
     if (arg === 'ia') iaAjustes(); else if (arg) ajCargar();
-    else if (!MODELOS_IA && D.ia?.activa) modelosIA().then(() => { if (location.hash === '#/ajustes') route(); }).catch(() => {});
+    else {
+      if (!MODELOS_IA && D.ia?.activa) modelosIA().then(() => { if (location.hash === '#/ajustes') route(); }).catch(() => {});
+      if (!CUENTA_PEND) avisoPendientes().then(() => { if (location.hash === '#/ajustes' && CUENTA_PEND?.grupos) route(); }).catch(() => {});
+    }
   }
+  if (v === 'proyecto-nuevo' && matchMedia('(hover: hover)').matches) $('#form-proyecto [name=nombre]').focus();
   if (v === 'nuevo' && matchMedia('(hover: hover)').matches) $('#form [name=nombre]').focus(); // en el móvil, sin abrir el teclado
 }
 
 function contadores() {
   $('#n-inv').textContent = D.componentes.length || '';
-  $('#n-pro').textContent = D.proyectos.filter((p) => !faltas(p).length).length || '';
+  $('#n-pro').textContent = D.proyectos.length || '';
   $('#n-glo').textContent = Object.values(D.tipos).filter((t) => !t.archivado).length || '';
 }
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-rev-vista],[data-vista],#sel-modo,[data-sel],[data-sel-acc],[data-lote-todas],[data-lote-marcar],#lote-aplicar,#lote-descartar,.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar],[data-pend-descartar],[data-hist-grupo],#hist-mas,[data-reg-nivel],#reg-copiar');
+  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-rev-vista],[data-vista],#sel-modo,[data-sel],[data-sel-acc],[data-lote-todas],[data-lote-marcar],#lote-aplicar,#lote-descartar,.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar],[data-pend-descartar],[data-hist-grupo],#hist-mas,[data-reg-nivel],#reg-copiar,[data-pro],#det-crear,[data-det-marcar],#lote-guardar,#filtros-abrir,#formato-aplicar,[data-formato-marcar],[data-pines-vista]');
   if (!t || !app.contains(t)) return; // solo botones de la propia vista (no el <html>, que lleva data-* del tema)
   // sin redibujar la vista: el selector de tipo y las tablas editables viven dentro de formularios a medio rellenar
   if (t.classList.contains('combo-op')) { elegirTipo(t.closest('.combo'), t.dataset.valor); return; }
@@ -2243,8 +2791,16 @@ app.addEventListener('click', async (e) => {
     if (d.open) d.querySelector('textarea')?.focus({preventScroll: true});
     return;
   }
+  if (t.dataset.pinesVista) {
+    ui.pinesVista = t.dataset.pinesVista;
+    const caja = t.closest('.pines');
+    caja.dataset.vista = ui.pinesVista;
+    caja.querySelectorAll('[data-pines-vista]').forEach((b) => { const on = b.dataset.pinesVista === ui.pinesVista; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+    return;
+  }
   if (clicEditor(t)) return;
   try {
+    if (t.dataset.pro) { await clicProyecto(t); return; }
     if (t.id === 'sel-modo') { if (ui.seleccionando) salirSeleccion(); else ui.seleccionando = true; route(); return; }
     if (t.dataset.sel) { if (t.dataset.sel === 'visibles') ui.visibles.forEach((id) => ui.sel.add(id)); else ui.sel.clear(); route(); return; }
     if (t.dataset.selAcc) { if (!t.disabled) await accionSel(t.dataset.selAcc); return; }
@@ -2255,6 +2811,11 @@ app.addEventListener('click', async (e) => {
     }
     if (t.id === 'lote-aplicar') { try { await aplicarLote(t); } catch (err) { toast(err.message, true); contarLote(); } return; }
     if (t.id === 'lote-descartar') { await descartarLote(); return; }
+    if (t.id === 'formato-aplicar') { try { await aplicarFormato(t); } catch (err) { toast(err.message, true); contarFormato(); } return; }
+    if (t.dataset.formatoMarcar) { document.querySelectorAll('.formato-cambio').forEach((x) => (x.checked = t.dataset.formatoMarcar === 'todo')); contarFormato(); return; }
+    if (t.id === 'lote-guardar') { try { await guardarLoteAltas(t); } catch (err) { toast(err.message, true); contarLote(); } return; }
+    if (t.id === 'det-crear') { try { await crearDeteccion(t); } catch (err) { toast(err.message, true); contarDeteccion(); } return; }
+    if (t.dataset.detMarcar) { document.querySelectorAll('.det-ok').forEach((x) => (x.checked = t.dataset.detMarcar === 'todo')); contarDeteccion(); return; }
     if (t.dataset.pendDescartar) { await descartarPendiente(t.dataset.pendDescartar); return; }
     if (t.dataset.histGrupo != null) { HIST.grupo = t.dataset.histGrupo; await histCargar(true); return; }
     if (t.id === 'hist-mas') { t.disabled = true; t.textContent = 'Cargando…'; await histCargar(false); return; }
@@ -2304,6 +2865,7 @@ app.addEventListener('click', async (e) => {
     } else if (t.dataset.cat !== undefined) ui.cat = t.dataset.cat;
     else if (t.dataset.pf) ui.proFiltro = t.dataset.pf;
     else if (t.id === 'rev') ui.revisar = !ui.revisar;
+    else if (t.id === 'filtros-abrir') ui.filtros = !ui.filtros;
     else if (t.id === 'quitar-pendiente') {
       guardarLocal(await api('PATCH', `api/componentes/${location.hash.split('/')[2]}`, {revisar: false}));
       toast('Marca quitada');
@@ -2332,7 +2894,12 @@ app.addEventListener('click', async (e) => {
 app.addEventListener('change', async (e) => {
   const t = e.target;
   if (t.id === 'ubic') { ui.ubic = t.value; route(); }
+  if (t.id === 'pro-estado') { try { await cambiarEstadoPro(t); } catch (err) { toast(err.message, true); route(); } }
+  if (t.id === 'pro-archivo' && t.files[0]) { const f = t.files[0]; t.value = ''; try { await subirArchivoPro(f); } catch (err) { toast(err.message, true); } }
   if (t.name === 'ia-modelo') cambiarModeloIA(t);
+  if (t.id === 'ia-modelo-alta') avisoModeloAlta();
+  if (t.classList.contains('det-ok')) contarDeteccion();
+  if (t.classList.contains('formato-cambio')) contarFormato();
   if (t.name === 'ia-razonar') {
     const antes = D.ajustes.ia_razonar;
     try { await api('PUT', 'api/ajustes/ia_razonar', {valor: t.value}); D.ajustes.ia_razonar = t.value; toast(`La IA razonará: ${RAZONAR[t.value].nombre.toLowerCase()}`); }
@@ -2356,6 +2923,7 @@ app.addEventListener('change', async (e) => {
   if (t.classList.contains('lote-cambio')) { LOTE.desmarcados[t.checked ? 'delete' : 'add'](`${t.dataset.tarea}:${t.value}`); contarLote(); }
   if (t.id === 'aj-importar' && t.files[0]) { subirCopia(t.files[0]); t.value = ''; }
   if (t.matches('.ed-fn select')) t.closest('.ed-fn').style.cssText = colorFn(t.value); // el punto de color sigue a la función
+  if (t.matches('.ed-pines .ed-fila [data-col="0"]')) separarEnEditor(t);
   if (t.name === 'varios') { const n = t.form.querySelector('[name=cantidad]'); n.disabled = t.checked; if (!t.checked && !n.value) n.value = 1; }
   if ((t.id === 'foto' || t.id === 'foto2') && t.files[0]) {
     try { await subirFoto(Number(location.hash.split('/')[2]), t.files[0]); route(); } catch (err) { toast(err.message, true); }
@@ -2366,10 +2934,11 @@ app.addEventListener('submit', async (e) => {
   const b = e.target.querySelector('[type=submit]');
   b.disabled = true;
   b.dataset.texto ||= b.textContent;
-  if (e.target.id === 'form-ia') b.textContent = 'Enviando…';
+  if (e.target.id === 'form-ia' || e.target.id === 'form-ia-varias') b.textContent = 'Enviando…';
   if (e.target.id === 'form-ia-config') b.textContent = 'Comprobando…';
   try {
     if (e.target.id === 'form-ia') await enviarIA(e.target);
+    else if (e.target.id === 'form-ia-varias') await enviarVarias(e.target);
     else if (e.target.id === 'form-ia-config') await guardarAjustesIA(e.target);
     else if (e.target.id === 'form-revisar') await enviarRevision(e.target);
     else if (e.target.id === 'aj-cat-nueva') {
@@ -2379,6 +2948,9 @@ app.addEventListener('submit', async (e) => {
     }
     else if (e.target.id === 'form-ia-ok') await aplicarIA(e.target);
     else if (e.target.id === 'form-ficha') await guardarFicha(e.target);
+    else if (e.target.id === 'form-proyecto') await guardarProyectoForm(e.target);
+    else if (e.target.id === 'form-pro-tarea') await anadirTareaPro(e.target);
+    else if (e.target.id === 'form-pro-nota') await anadirNotaPro(e.target);
     else if (e.target.id === 'form-lote') { await guardarLote(e.target); b.disabled = false; }
     else await guardarForm(e.target, location.hash.startsWith('#/editar/') ? location.hash.split('/')[2] : null);
   } catch (err) { toast(err.message, true); b.disabled = false; b.textContent = b.dataset.texto; }
@@ -2403,6 +2975,9 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarMenu
 async function fotoDirectaIA(file) {
   cerrarMenuFab();
   if (!D.ia?.activa) { toast('Primero pon la clave de OpenCode Go'); location.hash = '#/ia/ajustes'; return; }
+  await modelosIA().catch(() => {});
+  const m = modeloIA();
+  if (m && !m.vision) { toast(`${m.nombre} no ve fotos: elige otro modelo o describe la pieza con texto`, true); location.hash = '#/ia'; return; }
   const blob = await fotoEncuadrada(file);
   if (!blob) return;
   toast('Enviando foto…');
