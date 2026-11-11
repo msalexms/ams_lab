@@ -5,6 +5,8 @@
 //   · Un tipo con piezas o usado en proyectos no se borra: se archiva (oculto) o se fusiona con otro.
 //   · Una categoría con tipos se borra moviendo antes sus tipos a otra. «otro» no se borra (es la de reserva).
 //   · Borrar una pieza deja 2 minutos para deshacerlo (la foto espera en la papelera).
+import {fichaUniforme, separarPines} from './formato.mjs';
+import {vocabularios} from './uniformar.mjs';
 import {rename, unlink, readdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -23,7 +25,7 @@ const quitar = (db, clase, id, reemplazo = null) => db.prepare(`INSERT INTO cata
 
 // id libre a partir de un nombre: que no exista ni esté en la lista de quitados (si no, seed/ lo confundiría)
 export function idLibre(db, tabla, nombre, porDefecto) {
-  const clase = tabla === 'tipos' ? 'tipo' : 'categoria';
+  const clase = {tipos: 'tipo', proyectos: 'proyecto'}[tabla] || 'categoria';
   const base = String(nombre).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || porDefecto;
   const ocupado = (id) => db.prepare(`SELECT 1 FROM ${tabla} WHERE id = ?`).get(id) || db.prepare('SELECT 1 FROM catalogo_quitados WHERE clase = ? AND id = ?').get(clase, id);
   let id = base, n = 2;
@@ -220,8 +222,9 @@ export function guardarFicha(db, id, b) {
   if (!db.prepare('SELECT 1 FROM categorias WHERE id = ?').get(categoria)) fallo(400, 'Esa categoría no existe');
   const filas = (v) => (Array.isArray(v) ? v : []).filter(Array.isArray);
   const repetido = (claves) => claves.find((k, i) => claves.findIndex((x) => x.toLowerCase() === k.toLowerCase()) !== i);
-  const pines = filas(b.pines).map(([pin, uso, fn]) => [texto(pin, 60), texto(uso, 60), String(fn || '')])
-    .filter(([pin]) => pin).slice(0, 80);
+  // un pin por fila: si llega una fila con varios («GPIO 16 · 17»), se separa (el editor ya lo hace al escribir)
+  const pines = separarPines(filas(b.pines).map(([pin, uso, fn, nota]) => [texto(pin, 60), texto(uso, 60), String(fn || ''), texto(nota, 200)])
+    .filter(([pin]) => pin)).slice(0, 120);
   const pinRepe = repetido(pines.map((p) => p[0]));
   if (pinRepe) fallo(400, `El pin «${pinRepe}» está repetido`);
   for (const p of pines) if (!funcs.has(p[2])) fallo(400, `Elige la función del pin «${p[0]}»`);
@@ -229,8 +232,9 @@ export function guardarFicha(db, id, b) {
   const datoRepe = repetido(datos.map((d) => d[0]));
   if (datoRepe) fallo(400, `El dato «${datoRepe}» está repetido`);
   const lista = (v, max, n) => [...new Set((Array.isArray(v) ? v : String(v || '').split(',')).map((x) => texto(x, max)).filter(Boolean))].slice(0, n);
-  const ficha = {...actual, nombre, categoria, resumen: texto(b.resumen, 400), voltaje: texto(b.voltaje, 120), ojo: texto(b.ojo, 400),
-    alias: lista(b.alias, 80, 12), interfaz: lista(b.interfaz, 40, 12), pines, datos};
+  // lo que escribes a mano también queda con el formato de siempre («3v3» → «3,3 V», «i2c» → «I2C»)
+  const ficha = fichaUniforme({...actual, nombre, categoria, resumen: texto(b.resumen, 400), voltaje: texto(b.voltaje, 120), ojo: texto(b.ojo, 400),
+    alias: lista(b.alias, 80, 12), interfaz: lista(b.interfaz, 40, 12), pines, datos}, vocabularios(db).tipo);
   return enTransaccion(db, () => {
     guardarTipo(db, id, ficha, {origen: 'usuario', revisado: 1}); // la escribe el usuario: comprobada y seed/ ya no la pisa
     return fichaEditable(db, id);

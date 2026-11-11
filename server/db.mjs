@@ -10,9 +10,12 @@ import {mkdirSync, readFileSync, existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {opcionesCopias} from './copias.mjs';
 
-export const VERSION = 7;
+export const VERSION = 8;
+export const ESTADOS_PROYECTO = ['idea', 'en_marcha', 'pausa', 'terminado'];
+export const COLUMNAS_TAREA = ['hacer', 'curso', 'hecho'];
 export const ORIGENES = ['seed', 'ia', 'usuario'];
 const ORIGEN = `TEXT NOT NULL DEFAULT 'seed' CHECK (origen IN ('seed', 'ia', 'usuario'))`;
+const ESTADO_PROYECTO = `TEXT NOT NULL DEFAULT 'idea' CHECK (estado IN ('idea', 'en_marcha', 'pausa', 'terminado'))`;
 const HEX = (col) => `CHECK (${col} GLOB '#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]')`;
 const AJUSTES = `
   CREATE TABLE ajustes (                    -- preferencias de la aplicación (no del navegador)
@@ -73,6 +76,7 @@ const ESQUEMA = `
     pin         TEXT NOT NULL,
     uso         TEXT NOT NULL,
     funcion_id  TEXT NOT NULL REFERENCES funciones_pin(id) ON UPDATE CASCADE,
+    nota        TEXT,          -- lo que hay que saber de ese pin además de su uso («También: UART2 RX», «solo entrada») (v8)
     PRIMARY KEY (tipo_id, orden)
   ) WITHOUT ROWID;
   CREATE INDEX tipo_pines_funcion ON tipo_pines(funcion_id);
@@ -103,7 +107,9 @@ const ESQUEMA = `
     nombre      TEXT NOT NULL,
     dificultad  INTEGER NOT NULL DEFAULT 1 REFERENCES dificultades(nivel),
     tiempo      TEXT,
-    resumen     TEXT
+    resumen     TEXT,
+    origen      ${ORIGEN},          -- seed/ solo actualiza los que siguen siendo 'seed' (v8)
+    estado      ${ESTADO_PROYECTO}  -- lo pone el usuario; seed/ nunca lo toca
   );
   CREATE TABLE proyecto_material (
     id           INTEGER PRIMARY KEY,
@@ -148,11 +154,12 @@ const ESQUEMA = `
 `;
 
 // v3: datos extra (clave → valor) de cada tipo y de cada pieza, y las tareas de la IA (propuestas pendientes de revisar)
-// tareas de la IA: «alta» (pieza nueva), «revisar» (corregir una ficha o una pieza, v6) y «reorganizar» (reservada)
+// tareas de la IA: «alta» (pieza nueva), «revisar» (corregir una ficha o una pieza, v6), «detectar» (separar las piezas
+// de una foto con muchas, v8) y «reorganizar» (reservada)
 const IA_TAREAS = (nombre) => `
   CREATE TABLE ${nombre} (                  -- cada llamada al modelo: lo que se le pidió, lo que propuso y qué se hizo
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    clase          TEXT NOT NULL CHECK (clase IN ('alta', 'revisar', 'reorganizar')),
+    clase          TEXT NOT NULL CHECK (clase IN ('alta', 'revisar', 'detectar', 'reorganizar')),
     estado         TEXT NOT NULL DEFAULT 'pendiente'
                    CHECK (estado IN ('pendiente', 'propuesta', 'aplicada', 'descartada', 'error')),
     entrada        TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(entrada)),
@@ -203,33 +210,69 @@ const TABLAS_V4 = `
 // v5: lo que el usuario quitó del catálogo (borrado o fusionado). seed/ lo consulta para no volver a crearlo, y
 // «reemplazo» dice por qué se sustituyó (fusión de tipos, categoría a la que se movieron sus tipos): los proyectos y
 // las fichas de seed/ que apuntaban a lo quitado se redirigen solos.
-const TABLAS_V5 = `
-  CREATE TABLE catalogo_quitados (
-    clase      TEXT NOT NULL CHECK (clase IN ('tipo', 'categoria')),
+const QUITADOS = (nombre) => `
+  CREATE TABLE ${nombre} (
+    clase      TEXT NOT NULL CHECK (clase IN ('tipo', 'categoria', 'proyecto')),
     id         TEXT NOT NULL,
     reemplazo  TEXT,
     fecha      TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (clase, id)
   ) WITHOUT ROWID;
 `;
+const TABLAS_V5 = QUITADOS('catalogo_quitados');
 
 // v7: historial de cambios de toda la aplicación (Ajustes → Historial y el de cada pieza o ficha). Lo escribe el
 // servidor (server/auditoria.mjs) al cambiar algo: quién (tú, la IA con su modelo, o el sistema), qué y el detalle
 // (los campos con su antes y su después). Nunca guarda la clave de la IA. «historial» (stock) sigue con sus triggers.
-const TABLAS_V7 = `
-  CREATE TABLE auditoria (
+const AUDITORIA = (nombre) => `
+  CREATE TABLE ${nombre} (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     fecha      TEXT NOT NULL DEFAULT (datetime('now')),
     quien      TEXT NOT NULL CHECK (quien IN ('usuario', 'ia', 'sistema')),
     accion     TEXT NOT NULL,                 -- «pieza.editar», «tipo.fusionar», «ia.aplicar», «copia.restaurar»…
-    objeto     TEXT NOT NULL CHECK (objeto IN ('pieza', 'tipo', 'categoria', 'sitio', 'ia', 'copia', 'ajustes')),
+    objeto     TEXT NOT NULL CHECK (objeto IN ('pieza', 'tipo', 'categoria', 'sitio', 'ia', 'copia', 'ajustes', 'proyecto')),
     objeto_id  TEXT,                          -- id de la pieza, del tipo… (puede que ya no exista)
     nombre     TEXT,                          -- su nombre en ese momento
     resumen    TEXT NOT NULL,                 -- frase que se lee en la web
     detalle    TEXT CHECK (detalle IS NULL OR json_valid(detalle)),   -- {cambios: [{campo, antes, despues}], …}
     modelo     TEXT                           -- si lo hizo la IA: con qué modelo
   );
-  CREATE INDEX auditoria_objeto ON auditoria(objeto, objeto_id);
+`;
+const INDICE_AUDITORIA = 'CREATE INDEX auditoria_objeto ON auditoria(objeto, objeto_id);';
+const TABLAS_V7 = AUDITORIA('auditoria') + INDICE_AUDITORIA;
+
+// v8: lo que el usuario apunta de cada proyecto. Cuelga de «proyectos» (se borra con él), pero seed/ ya no borra la
+// fila del proyecto al arrancar: solo reescribe su material, conexiones y pasos, y solo si sigue siendo «de seed».
+// Las fotos de las notas y los archivos (diagramas: imagen o PDF) están en data/fotos con el prefijo «p-».
+const TABLAS_V8 = `
+  CREATE TABLE proyecto_notas (             -- bitácora: cómo avanza, con foto opcional
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    proyecto_id  TEXT NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    texto        TEXT NOT NULL DEFAULT '',
+    foto         TEXT UNIQUE,
+    fecha        TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK (length(trim(texto)) > 0 OR foto IS NOT NULL)
+  );
+  CREATE INDEX proyecto_notas_proyecto ON proyecto_notas(proyecto_id);
+  CREATE TABLE proyecto_tareas (            -- tablero: por hacer, en curso, hecho
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    proyecto_id  TEXT NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    texto        TEXT NOT NULL CHECK (length(trim(texto)) > 0),
+    columna      TEXT NOT NULL DEFAULT 'hacer' CHECK (columna IN ('hacer', 'curso', 'hecho')),
+    orden        INTEGER NOT NULL DEFAULT 0,
+    creada       TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX proyecto_tareas_proyecto ON proyecto_tareas(proyecto_id);
+  CREATE TABLE proyecto_archivos (          -- diagramas y esquemas
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    proyecto_id  TEXT NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    fichero      TEXT NOT NULL UNIQUE,       -- en data/fotos
+    nombre       TEXT NOT NULL,              -- el que le puso el usuario
+    tipo         TEXT NOT NULL,              -- image/jpeg, application/pdf…
+    bytes        INTEGER NOT NULL,
+    fecha        TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX proyecto_archivos_proyecto ON proyecto_archivos(proyecto_id);
 `;
 
 // lo quitado: id → reemplazo (o null). resolver() sigue la cadena de reemplazos (A→B→C) hasta algo que exista.
@@ -312,14 +355,19 @@ export function guardarTipo(db, id, t, {origen = 'seed', revisado = 1} = {}) {
   for (const a of new Set(list(t.alias))) db.prepare('INSERT INTO tipo_alias (tipo_id, alias) VALUES (?, ?)').run(id, a);
   const interfaces = Array.isArray(t.interfaz) ? t.interfaz : String(t.interfaz || '').split(/,\s*(?![^(]*\))/);
   interfaces.filter((i) => i && i !== '—').forEach((i, n) => db.prepare('INSERT INTO tipo_interfaces (tipo_id, orden, interfaz) VALUES (?, ?, ?)').run(id, n + 1, i));
-  list(t.pines).forEach(([pin, uso, fn], n) =>
-    db.prepare('INSERT INTO tipo_pines (tipo_id, orden, pin, uso, funcion_id) VALUES (?, ?, ?, ?, ?)').run(id, n + 1, pin, uso, fn || deducirFuncion(pin)));
+  list(t.pines).forEach(([pin, uso, fn, nota], n) =>
+    db.prepare('INSERT INTO tipo_pines (tipo_id, orden, pin, uso, funcion_id, nota) VALUES (?, ?, ?, ?, ?, ?)').run(id, n + 1, pin, uso, fn || deducirFuncion(pin), nota || null));
 }
 
-export function guardarProyecto(db, p) {
-  db.prepare('DELETE FROM proyectos WHERE id = ?').run(p.id); // borra en cascada material, conexiones y pasos
-  db.prepare('INSERT INTO proyectos (id, nombre, dificultad, tiempo, resumen) VALUES (?, ?, ?, ?, ?)')
-    .run(p.id, p.nombre, p.dificultad || 1, p.tiempo ?? null, p.resumen ?? null);
+// escribe un proyecto entero (formato de seed/proyectos.json). La fila no se borra nunca (de ella cuelgan el estado, la
+// bitácora, el tablero y los archivos del usuario): se actualiza, y se reescriben su material, conexiones y pasos.
+export function guardarProyecto(db, p, {origen = 'seed'} = {}) {
+  db.prepare(`INSERT INTO proyectos (id, nombre, dificultad, tiempo, resumen, origen) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET nombre = excluded.nombre, dificultad = excluded.dificultad, tiempo = excluded.tiempo,
+      resumen = excluded.resumen, origen = excluded.origen`)
+    .run(p.id, p.nombre, p.dificultad || 1, p.tiempo ?? null, p.resumen ?? null, origen);
+  db.prepare('DELETE FROM material_opciones WHERE material_id IN (SELECT id FROM proyecto_material WHERE proyecto_id = ?)').run(p.id);
+  for (const tabla of ['proyecto_material', 'proyecto_conexiones', 'proyecto_pasos']) db.prepare(`DELETE FROM ${tabla} WHERE proyecto_id = ?`).run(p.id);
   // cada tipo del material se resuelve: si se fusionó, va al que se quedó; si se borró sin reemplazo, se omite
   let orden = 0;
   list(p.material).forEach((m) => {
@@ -350,7 +398,7 @@ function enTransaccion(db, fn) {
 // Respeta los tipos que ya no son «de seed» (creados o cambiados por la IA o por el usuario): esos no se pisan.
 export function sincronizarCatalogo(db, seedDir) {
   const ref = leer(seedDir, 'referencia.json'), glosario = leer(seedDir, 'glosario.json') || {}, proyectos = leer(seedDir, 'proyectos.json') || [];
-  let tipos = 0, respetados = 0;
+  let tipos = 0, respetados = 0, nPro = 0;
   enTransaccion(db, () => {
     if (ref) guardarReferencia(db, ref);
     const ajenos = new Set(db.prepare("SELECT id FROM tipos WHERE origen <> 'seed'").all().map((r) => r.id));
@@ -362,9 +410,16 @@ export function sincronizarCatalogo(db, seedDir) {
       guardarTipo(db, id, {...t, categoria: resolver(db, 'categoria', t.categoria || 'otro') || 'otro'});
       tipos++;
     }
-    for (const p of proyectos) guardarProyecto(db, p);
+    // proyectos: igual que los tipos. Los que el usuario cambió o borró no se tocan
+    const proAjenos = new Set(db.prepare("SELECT id FROM proyectos WHERE origen <> 'seed'").all().map((r) => r.id));
+    const proFuera = quitados(db, 'proyecto');
+    for (const p of proyectos) {
+      if (proFuera.has(p.id) || proAjenos.has(p.id)) continue;
+      guardarProyecto(db, p);
+      nPro++;
+    }
   });
-  return {tipos, respetados, proyectos: proyectos.length};
+  return {tipos, respetados, proyectos: nPro};
 }
 
 // ---------- apertura, creación y migraciones ----------
@@ -388,6 +443,7 @@ export function abrir(dataDir, seedDir) {
     if (version === 4) { migrarDesdeV4(db); version = 5; }
     if (version === 5) { migrarDesdeV5(db); version = 6; }
     if (version === 6) { migrarDesdeV6(db); version = 7; }
+    if (version === 7) { migrarDesdeV7(db); version = 8; }
   }
 
   db.exec('PRAGMA foreign_keys = ON;');
@@ -408,7 +464,7 @@ function copiaAntesDeMigrar(db, dataDir, version) {
 
 function crearNueva(db, seedDir) {
   enTransaccion(db, () => {
-    db.exec(ESQUEMA + TABLAS_V3 + TABLAS_V4 + TABLAS_V5 + TABLAS_V7);
+    db.exec(ESQUEMA + TABLAS_V3 + TABLAS_V4 + TABLAS_V5 + TABLAS_V7 + TABLAS_V8);
     const ref = leer(seedDir, 'referencia.json'), glosario = leer(seedDir, 'glosario.json') || {}, proyectos = leer(seedDir, 'proyectos.json') || [];
     guardarReferencia(db, ref);
     for (const [id, t] of Object.entries(glosario)) guardarTipo(db, id, t);
@@ -427,7 +483,7 @@ function migrarDesdeV0(db, seedDir) {
   db.exec('PRAGMA foreign_keys = OFF');
   enTransaccion(db, () => {
     for (const t of ['componentes', 'tipos', 'proyectos', 'historial']) db.exec(`ALTER TABLE ${t} RENAME TO v0_${t}`);
-    db.exec(ESQUEMA + TABLAS_V3 + TABLAS_V4 + TABLAS_V5 + TABLAS_V7);
+    db.exec(ESQUEMA + TABLAS_V3 + TABLAS_V4 + TABLAS_V5 + TABLAS_V7 + TABLAS_V8);
     guardarReferencia(db, leer(seedDir, 'referencia.json'));
     for (const t of db.prepare('SELECT * FROM v0_tipos').all()) guardarTipo(db, t.id, {nombre: t.nombre, categoria: t.categoria, ...JSON.parse(t.ficha)});
     for (const p of db.prepare('SELECT * FROM v0_proyectos').all()) guardarProyecto(db, {id: p.id, ...JSON.parse(p.datos)});
@@ -508,6 +564,37 @@ function migrarDesdeV6(db) {
   console.log('Base de datos migrada al modelo v7');
 }
 
+// v7 → v8: cada pin puede llevar una nota (tipo_pines.nota). Los proyectos pasan a ser también del usuario: origen (como los tipos) y estado, y sus tablas de bitácora,
+// tablero y archivos. «catalogo_quitados» y «auditoria» admiten proyectos e «ia_tareas» la clase «detectar» (foto con
+// varias piezas): SQLite no deja cambiar un CHECK, así que las tres se rehacen con las mismas columnas y se copian las filas.
+function migrarDesdeV7(db) {
+  enTransaccion(db, () => {
+    db.exec(`ALTER TABLE tipo_pines ADD COLUMN nota TEXT;
+      ALTER TABLE proyectos ADD COLUMN origen ${ORIGEN};
+      ALTER TABLE proyectos ADD COLUMN estado ${ESTADO_PROYECTO};
+      ${TABLAS_V8}
+      ${QUITADOS('catalogo_quitados_v8')}
+      INSERT INTO catalogo_quitados_v8 (clase, id, reemplazo, fecha) SELECT clase, id, reemplazo, fecha FROM catalogo_quitados;
+      DROP TABLE catalogo_quitados;
+      ALTER TABLE catalogo_quitados_v8 RENAME TO catalogo_quitados;
+      ${AUDITORIA('auditoria_v8')}
+      INSERT INTO auditoria_v8 (id, fecha, quien, accion, objeto, objeto_id, nombre, resumen, detalle, modelo)
+        SELECT id, fecha, quien, accion, objeto, objeto_id, nombre, resumen, detalle, modelo FROM auditoria;
+      DROP TABLE auditoria;
+      ALTER TABLE auditoria_v8 RENAME TO auditoria;
+      ${INDICE_AUDITORIA}
+      ${IA_TAREAS('ia_tareas_v8')}
+      INSERT INTO ia_tareas_v8 (id, clase, estado, entrada, propuesta, componente_id, modelo, error, creada, actualizada)
+        SELECT id, clase, estado, entrada, propuesta, componente_id, modelo, error, creada, actualizada FROM ia_tareas;
+      DROP TABLE ia_tareas;
+      ALTER TABLE ia_tareas_v8 RENAME TO ia_tareas;
+      CREATE INDEX ia_tareas_estado ON ia_tareas(estado);
+      ${TRIGGERS_V3}`);
+    db.exec('PRAGMA user_version = 8');
+  });
+  console.log('Base de datos migrada al modelo v8');
+}
+
 // una ficha tal como está en la base de datos, en el formato de guardarTipo() (para revisarla o reescribirla entera)
 export function leerFicha(db, id) {
   const t = db.prepare('SELECT * FROM tipos WHERE id = ?').get(id);
@@ -517,7 +604,7 @@ export function leerFicha(db, id) {
     ojo: t.advertencias || '', origen: t.origen, revisado: t.revisado, archivado: t.archivado,
     alias: db.prepare('SELECT alias FROM tipo_alias WHERE tipo_id = ? ORDER BY alias').all(id).map((r) => r.alias),
     interfaz: db.prepare('SELECT interfaz FROM tipo_interfaces WHERE tipo_id = ? ORDER BY orden').all(id).map((r) => r.interfaz),
-    pines: db.prepare('SELECT pin, uso, funcion_id FROM tipo_pines WHERE tipo_id = ? ORDER BY orden').all(id).map((r) => [r.pin, r.uso, r.funcion_id]),
+    pines: db.prepare('SELECT pin, uso, funcion_id, nota FROM tipo_pines WHERE tipo_id = ? ORDER BY orden').all(id).map((r) => [r.pin, r.uso, r.funcion_id, r.nota || '']),
     datos: db.prepare('SELECT clave, valor FROM tipo_datos WHERE tipo_id = ? ORDER BY orden').all(id).map((r) => [r.clave, r.valor]),
   };
 }

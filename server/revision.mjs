@@ -3,6 +3,7 @@
 // «antes» sigue igual (si alguien editó la ficha entretanto, no se pisa: hay que pedir otra revisión).
 import {leerFicha, guardarTipo} from './db.mjs';
 import {idLibre} from './catalogo.mjs';
+import {mismoValor, mismasInterfaces} from './formato.mjs';
 
 const limpio = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
 const clave = (v) => limpio(v).toLowerCase();
@@ -22,22 +23,24 @@ export function diferencias(actual, nueva, {categorias = {}, funciones = {}, tip
   if (actual.tipo && nueva.tipo) {
     const a = actual.tipo, n = nueva.tipo, verCat = (id) => categorias[id] || id;
     for (const [campo, etiqueta] of Object.entries(CAMPOS_TIPO)) {
-      if (limpio(a[campo]) === limpio(n[campo])) continue; // las mayúsculas cuentan
+      // iguales una vez uniformados (tensión) o salvo mayúsculas y punto final (resumen, «Ojo»): no es un cambio.
+      // En el nombre las mayúsculas sí cuentan
+      if (mismoValor(campo, a[campo], n[campo])) continue;
       if (campo === 'nombre' && !limpio(n.nombre)) continue; // nunca dejar un tipo sin nombre
       poner({id: `tipo.${campo}`, ambito: 'tipo', campo, etiqueta, antes: campo === 'categoria' ? verCat(a[campo]) : limpio(a[campo]),
         despues: campo === 'categoria' ? verCat(n[campo]) : limpio(n[campo]), actual: limpio(a[campo]), nuevo: limpio(n[campo])});
     }
     for (const [campo, etiqueta] of Object.entries(LISTAS_TIPO)) {
-      if (mismaLista(a[campo], n[campo])) continue;
+      if (campo === 'interfaz' ? mismasInterfaces(a[campo], n[campo]) : mismaLista(a[campo], n[campo])) continue;
       poner({id: `tipo.${campo}`, ambito: 'tipo', campo, etiqueta, antes: lista(a[campo]).join(', '), despues: lista(n[campo]).join(', '),
         actual: lista(a[campo]), nuevo: lista(n[campo])});
     }
     // pines: se emparejan por su nombre (el orden no cuenta como cambio)
-    const verPin = (p) => (p ? `${p[1]} · ${funciones[p[2]] || p[2]}` : '');
+    const verPin = (p) => (p ? `${p[1]} · ${funciones[p[2]] || p[2]}${limpio(p[3]) ? ` · ${limpio(p[3])}` : ''}` : '');
     const pinesA = new Map((a.pines || []).map((p) => [clave(p[0]), p])), pinesN = new Map((n.pines || []).map((p) => [clave(p[0]), p]));
     for (const [k, p] of pinesN) {
       const viejo = pinesA.get(k);
-      if (viejo && clave(viejo[1]) === clave(p[1]) && viejo[2] === p[2]) continue;
+      if (viejo && clave(viejo[1]) === clave(p[1]) && viejo[2] === p[2] && clave(viejo[3]) === clave(p[3])) continue;
       poner({id: `tipo.pin.${k}`, ambito: 'tipo', campo: 'pin', etiqueta: `Pin ${limpio(p[0])}`, antes: viejo ? verPin(viejo) : '', despues: verPin(p),
         actual: viejo || null, nuevo: p, tipoCambio: viejo ? 'cambio' : 'nuevo'});
     }
@@ -145,7 +148,8 @@ export function aplicarCambios(db, objetivo, cambios, ids) {
       const filas = c.campo === 'pin' ? obj.pines : c.campo === 'dato' ? obj.datos : obj.datos_pieza;
       const k = c.id.split('.').slice(2).join('.');
       const hay = fila(filas, k) || null;
-      if (JSON.stringify(hay && hay.map(limpio)) !== JSON.stringify(c.actual && c.actual.map(limpio))) cambiado(c);
+      const cols = (f) => f && Array.from({length: c.campo === 'pin' ? 4 : f.length}, (_, i) => limpio(f[i])); // pines: siempre pin, uso, función y nota
+      if (JSON.stringify(cols(hay)) !== JSON.stringify(cols(c.actual))) cambiado(c);
       const resto = filas.filter((x) => clave(x[0]) !== k);
       const idx = filas.findIndex((x) => clave(x[0]) === k);
       if (c.nuevo) resto.splice(idx >= 0 ? idx : resto.length, 0, c.nuevo); // en su sitio si ya estaba; si no, al final

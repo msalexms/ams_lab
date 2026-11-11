@@ -16,8 +16,11 @@ import * as aud from './auditoria.mjs';
 import {programarCopias, opcionesCopias, copiar, copiarFotosNuevas} from './copias.mjs';
 import * as respaldo from './respaldo.mjs';
 import * as cat from './catalogo.mjs';
+import * as pro from './proyectos.mjs';
+import * as uniformar from './uniformar.mjs';
+import {separarPines} from './formato.mjs';
 import {aplicarCambios} from './revision.mjs';
-import {estado, ejecutarAlta, normalizar, cerrarInterrumpidas, modelos, guardarConfig, modeloValido, MODELO_RECOMENDADO} from './ia.mjs';
+import {estado, ejecutarAlta, normalizar, cerrarInterrumpidas, modelos, guardarConfig, modeloValido, infoModelo, MAX_DETECTADAS, MODELO_RECOMENDADO} from './ia.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUB = join(ROOT, 'public');
@@ -49,7 +52,7 @@ aud.podar(db);
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
-  '.webp': 'image/webp', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8',
+  '.webp': 'image/webp', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.pdf': 'application/pdf',
 };
 const FOTO_EXT = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'};
 
@@ -90,7 +93,7 @@ function tipos() {
   return Object.fromEntries(db.prepare('SELECT * FROM tipos').all().map((t) => [t.id, {
     nombre: t.nombre, categoria: t.categoria_id, resumen: t.resumen, voltaje: t.voltaje,
     alias: (alias[t.id] || []).map((a) => a.alias), interfaz: (inter[t.id] || []).map((i) => i.interfaz),
-    pines: (pines[t.id] || []).map((p) => [p.pin, p.uso, p.funcion_id]),
+    pines: (pines[t.id] || []).map((p) => [p.pin, p.uso, p.funcion_id, p.nota || '']),
     datos: (datos[t.id] || []).map((d) => [d.clave, d.valor]),
     ojo: t.advertencias || '', origen: t.origen, revisado: t.revisado, archivado: t.archivado,
   }]));
@@ -102,22 +105,6 @@ const datosDe = (filas) => {
   return filas.map((c) => ({...c, datos: (d[c.id] || []).map((x) => [x.clave, x.valor])}));
 };
 
-function proyectos() {
-  const opciones = agrupar(db.prepare('SELECT * FROM material_opciones').all(), 'material_id');
-  const material = agrupar(db.prepare('SELECT * FROM proyecto_material ORDER BY orden').all(), 'proyecto_id');
-  const conex = agrupar(db.prepare('SELECT * FROM proyecto_conexiones ORDER BY orden').all(), 'proyecto_id');
-  const pasos = agrupar(db.prepare('SELECT * FROM proyecto_pasos ORDER BY orden').all(), 'proyecto_id');
-  return db.prepare('SELECT * FROM proyectos ORDER BY nombre').all().map((p) => ({
-    ...p,
-    material: (material[p.id] || []).map((m) => {
-      const ts = (opciones[m.id] || []).map((o) => o.tipo_id);
-      return {tipo: ts.length === 1 ? ts[0] : ts, cantidad: m.cantidad, opcional: !!m.opcional, nota: m.nota};
-    }),
-    conexiones: (conex[p.id] || []).map((c) => [c.desde, c.hasta, c.nota]),
-    pasos: (pasos[p.id] || []).map((s) => s.texto),
-  }));
-}
-
 const todo = () => ({
   ia: estado(db), // nunca la clave entera
   categorias: db.prepare('SELECT id, nombre FROM categorias ORDER BY orden').all(),
@@ -126,7 +113,7 @@ const todo = () => ({
   dificultades: db.prepare('SELECT nivel, nombre FROM dificultades ORDER BY nivel').all(),
   ubicaciones: db.prepare('SELECT nombre FROM ubicaciones ORDER BY nombre COLLATE NOCASE').all().map((u) => u.nombre),
   tipos: tipos(),
-  proyectos: proyectos(),
+  proyectos: pro.listar(db),
   componentes: datosDe(db.prepare(`${SQL_COMP} ORDER BY c.nombre COLLATE NOCASE`).all()),
 });
 
@@ -322,7 +309,7 @@ async function nuevaRevision(b) {
   } else throw new HttpError(400, 'Di qué hay que corregir (una pieza o un tipo)');
   const entrada = {texto: texto(b.texto, 1000), objetivo, ...(b.lote ? {lote: String(b.lote)} : {})};
   if (b.modelo) {
-    if (!(await modeloValido(String(b.modelo)))) throw new HttpError(400, 'Ese modelo no está disponible para fotos');
+    if (!(await modeloValido(String(b.modelo)))) throw new HttpError(400, 'Ese modelo no está en el catálogo');
     entrada.modelo = String(b.modelo);
   }
   const foto = b.foto ? Buffer.from(String(b.foto), 'base64') : null;
@@ -353,7 +340,7 @@ function encolarIA(id) {
       enCurso--;
       try {
         const t = db.prepare('SELECT clase, estado, modelo, error FROM ia_tareas WHERE id = ?').get(tid);
-        if (t) console[t.estado === 'error' ? 'warn' : 'log'](`[ia] tarea ${tid} (${t.clase === 'revisar' ? 'corrección' : 'alta'}, ${t.modelo || '?'}): ${t.estado === 'propuesta' ? 'propuesta lista' : t.estado}${t.error ? ` · ${t.error}` : ''} · ${Math.round((Date.now() - t0) / 1000)} s`);
+        if (t) console[t.estado === 'error' ? 'warn' : 'log'](`[ia] tarea ${tid} (${t.clase === 'revisar' ? 'corrección' : t.clase === 'detectar' ? 'foto con varias' : 'alta'}, ${t.modelo || '?'}): ${t.estado === 'propuesta' ? 'propuesta lista' : t.estado}${t.error ? ` · ${t.error}` : ''} · ${Math.round((Date.now() - t0) / 1000)} s`);
       } catch {}
       encolarIA();
     });
@@ -382,8 +369,9 @@ function pendientesIA() {
     const ts = tareasLote(lote), abiertas = ts.filter((t) => ['pendiente', 'propuesta', 'error'].includes(t.estado));
     const estados = {};
     for (const t of ts) estados[t.estado] = (estados[t.estado] || 0) + 1;
-    return {lote, creada: ts[0]?.creada, total: ts.length, estados, piezas: abiertas.map((t) => t.objetivo_nombre).filter(Boolean),
-      cambios: abiertas.reduce((n, t) => n + (t.estado === 'propuesta' ? t.propuesta?.cambios?.length || 0 : 0), 0), texto: ts[0]?.texto || ''};
+    return {lote, clase: ts[0]?.clase, creada: ts[0]?.creada, total: ts.length, estados, piezas: abiertas.map((t) => t.objetivo_nombre || t.propuesta?.nombre || t.texto).filter(Boolean),
+      cambios: abiertas.reduce((n, t) => n + (t.estado === 'propuesta' ? t.propuesta?.cambios?.length || 0 : 0), 0),
+      texto: ts[0]?.clase === 'alta' ? '' : ts[0]?.texto || ''}; // en un lote de piezas nuevas el texto es la pista interna de cada recorte
   });
   return {lotes, tareas: filas.filter((f) => !f.lote).slice(0, 100).map((f) => tarea(f.id)), total: filas.length};
 }
@@ -462,25 +450,99 @@ async function crearAlta(req) {
     if (e instanceof HttpError) throw e;
     throw new HttpError(400, 'JSON no válido');
   }
+  const id = await nuevaTareaFoto('alta', b);
+  encolarIA(id); // en segundo plano: la web va preguntando el estado
+  return tarea(id);
+}
+
+// crea (sin lanzarla) una tarea que parte de una foto y/o un texto: «alta» (una pieza) o «detectar» (foto con varias).
+// b: {texto, foto (base64), modelo, lote}
+async function nuevaTareaFoto(clase, b) {
   const textoUsuario = texto(b.texto, 1000);
   const foto = b.foto ? Buffer.from(String(b.foto), 'base64') : null;
+  if (clase === 'detectar' && !foto) throw new HttpError(400, 'Falta la foto con las piezas');
   if (!textoUsuario && !foto) throw new HttpError(400, 'Pon una foto o escribe algo de la pieza');
   if (foto && foto.length < 100) throw new HttpError(400, 'Foto vacía');
-  // modelo solo para esta pieza (opcional): tiene que estar en el catálogo de modelos con fotos
-  const entrada = {texto: textoUsuario};
+  if (foto && foto.length > MAX_FOTO) throw new HttpError(413, 'La foto es demasiado grande');
+  // modelo solo para esta vez (opcional): tiene que estar en el catálogo
+  const entrada = {texto: textoUsuario, ...(b.lote ? {lote: String(b.lote)} : {})};
   if (b.modelo) {
     const pedido = String(b.modelo);
-    if (!(await modeloValido(pedido))) throw new HttpError(400, 'Ese modelo no está disponible para fotos');
+    if (!(await modeloValido(pedido))) throw new HttpError(400, 'Ese modelo no está en el catálogo');
     entrada.modelo = pedido;
   }
-  const {lastInsertRowid: id} = db.prepare("INSERT INTO ia_tareas (clase, entrada) VALUES ('alta', ?)").run(JSON.stringify(entrada));
+  // lo que sabe hacer el modelo: uno que no ve fotos necesita texto, y no puede separar las piezas de una foto
+  const m = await infoModelo(db, entrada.modelo);
+  if (m && !m.vision && clase === 'detectar') throw new HttpError(400, `${m.nombre} no ve fotos: elige otro modelo para la foto con varias piezas`);
+  if (m && !m.vision && !textoUsuario) throw new HttpError(400, `${m.nombre} no ve fotos: escribe qué es la pieza o elige otro modelo`);
+  const {lastInsertRowid: id} = db.prepare('INSERT INTO ia_tareas (clase, entrada) VALUES (?, ?)').run(clase, JSON.stringify(entrada));
   if (foto) {
     entrada.foto = `ia-${id}-${Date.now()}.jpg`; // provisional: al confirmar pasa a ser la foto de la pieza
     await writeFile(join(FOTOS, entrada.foto), foto);
     db.prepare('UPDATE ia_tareas SET entrada = ? WHERE id = ?').run(JSON.stringify(entrada), id);
   }
-  encolarIA(Number(id)); // en segundo plano: la web va preguntando el estado
+  return Number(id);
+}
+
+// foto con varias piezas, paso 1: el modelo las separa (nombre aproximado y recuadro de cada una)
+async function crearDeteccion(req) {
+  if (!estado(db).activa) throw new HttpError(503, 'Falta la clave de OpenCode Go: ponla en Ajustes → IA');
+  let b;
+  try { b = JSON.parse((await leerCuerpo(req, MAX_FOTO * 1.4)).toString('utf8') || '{}'); } catch (e) {
+    if (e instanceof HttpError) throw e;
+    throw new HttpError(400, 'JSON no válido');
+  }
+  const id = await nuevaTareaFoto('detectar', b);
+  encolarIA(id);
   return tarea(id);
+}
+// paso 2: el usuario ha elegido las piezas; llega el recorte de cada una (lo hace la web) y cada recorte se identifica
+// por el camino de siempre, todas con el mismo «lote». b: {piezas: [{nombre, descripcion, cantidad, foto (base64)}]}
+async function crearPiezasDetectadas(id, req) {
+  const t = tarea(id);
+  if (t.clase !== 'detectar') throw new HttpError(400, 'Esta tarea no es una foto con varias piezas');
+  if (t.estado !== 'propuesta') throw new HttpError(409, `Esta foto ya está ${ESTADO[t.estado] || t.estado}`);
+  let b;
+  try { b = JSON.parse((await leerCuerpo(req, 60e6)).toString('utf8') || '{}'); } catch (e) {
+    if (e instanceof HttpError) throw e;
+    throw new HttpError(400, 'JSON no válido');
+  }
+  const piezas = (Array.isArray(b.piezas) ? b.piezas : []).slice(0, MAX_DETECTADAS).filter((p) => p && p.foto);
+  if (!piezas.length) throw new HttpError(400, 'Elige alguna pieza');
+  const lote = randomBytes(6).toString('hex'), ids = [];
+  for (const p of piezas) {
+    const cant = Math.round(Number(p.cantidad));
+    const pista = [`Esta pieza sale de una foto con varias. Allí se vio como «${texto(p.nombre, 200) || 'pieza sin identificar'}»`,
+      texto(p.descripcion, 300) ? ` (${texto(p.descripcion, 300)})` : '', '.', cant >= 1 ? ` Unidades que se veían: ${cant}.` : '',
+      t.texto ? ` Lo que dije de la foto entera: ${t.texto}` : ''].join('');
+    ids.push(await nuevaTareaFoto('alta', {texto: pista, foto: p.foto, modelo: t.modelo_pedido || undefined, lote}));
+  }
+  db.prepare("UPDATE ia_tareas SET estado = 'aplicada', propuesta = json_set(propuesta, '$.lote', ?) WHERE id = ?").run(lote, t.id);
+  await borrarFoto(t.foto); // la foto grande ya no hace falta: cada pieza lleva su recorte
+  apuntar({quien: 'ia', accion: 'ia.detectar', objeto: 'ia', id: t.id, modelo: t.modelo, nombre: 'Foto con varias piezas',
+    resumen: `${ids.length} pieza${ids.length === 1 ? '' : 's'} de una foto, a identificar`, detalle: {tarea: t.id, lote}});
+  ids.forEach(encolarIA);
+  return {lote, tareas: ids};
+}
+// guarda de una vez las propuestas marcadas de un lote de piezas nuevas, tal como las propuso el modelo (las que el
+// usuario quiera corregir las abre una a una). Si dos piezas proponen el mismo tipo nuevo, se crea una sola ficha.
+async function guardarLoteAltas(lote, b) {
+  const ids = new Set((Array.isArray(b.ids) ? b.ids : []).map(Number));
+  const ts = tareasLote(lote).filter((t) => t.clase === 'alta' && t.estado === 'propuesta' && ids.has(t.id));
+  if (!ts.length) throw new HttpError(400, 'Marca alguna pieza');
+  const guardadas = [], fallos = [];
+  for (const t of ts) {
+    const p = t.propuesta;
+    const cuerpo = {nombre: p.nombre, tipo: p.tipo_existente || (p.tipo_nuevo ? '__nuevo' : null), tipo_nuevo: p.tipo_nuevo,
+      datos_pieza: p.datos_pieza, cantidad: p.cantidad ?? 1, varios: false};
+    if (cuerpo.tipo === '__nuevo') { // ¿ya hay un tipo con ese nombre (de antes o de otra pieza de este lote)?
+      const ya = db.prepare('SELECT id FROM tipos WHERE lower(nombre) = lower(?) AND archivado = 0').get(p.tipo_nuevo.nombre);
+      if (ya) { cuerpo.tipo = ya.id; cuerpo.tipo_nuevo = null; }
+    }
+    try { guardadas.push((await aplicarAlta(t.id, cuerpo)).componente.id); }
+    catch (e) { fallos.push({id: t.id, nombre: p.nombre, error: e.message}); }
+  }
+  return {guardadas, fallos};
 }
 
 // el usuario confirma la propuesta (quizá corregida): ficha nueva si hace falta, pieza, sus datos y la foto
@@ -559,6 +621,80 @@ async function api(req, res, path) {
     return send(res, 201, {id, nombre, categoria: b.categoria});
   }
 
+  // ---- Proyectos (v8): la receta, el estado y lo que el usuario apunta (bitácora, tablero, archivos) ----
+  const apuntarPro = (p, accion, resumen, extra = {}) => apuntar({accion, objeto: 'proyecto', id: p.id, nombre: p.nombre, resumen, ...extra});
+  if (m === 'POST' && path === '/api/proyectos') {
+    const p = pro.crear(db, await leerJson(req));
+    apuntarPro(p, 'proyecto.alta', 'Proyecto creado');
+    return send(res, 201, p);
+  }
+  if ((r = path.match(/^\/api\/proyectos\/([a-z0-9-]+)$/))) {
+    if (m === 'GET') return send(res, 200, pro.detalle(db, r[1]));
+    if (m === 'PUT') {
+      const {antes, despues} = pro.editar(db, r[1], await leerJson(req));
+      const cambios = pro.cambios(antes, despues, nombresTipo(), Object.fromEntries(db.prepare('SELECT nivel, nombre FROM dificultades').all().map((d) => [d.nivel, d.nombre])));
+      if (cambios.length) apuntarPro(despues, 'proyecto.editar', aud.resumenCambios('Proyecto editado', cambios), {cambios});
+      return send(res, 200, despues);
+    }
+    if (m === 'PATCH') {
+      const x = pro.cambiarEstado(db, r[1], (await leerJson(req)).estado);
+      if (x.antes !== x.despues) apuntarPro({id: r[1], nombre: x.nombre}, 'proyecto.estado', `Estado: ${pro.NOMBRE_ESTADO[x.antes]} → ${pro.NOMBRE_ESTADO[x.despues]}`);
+      return send(res, 200, pro.uno(db, r[1]));
+    }
+    if (m === 'DELETE') {
+      const x = await pro.borrar(db, FOTOS, r[1]);
+      apuntarPro({id: r[1], nombre: x.nombre}, 'proyecto.borrar', 'Proyecto borrado (con su bitácora, su tablero y sus archivos)');
+      return send(res, 200, x);
+    }
+  }
+  if ((r = path.match(/^\/api\/proyectos\/([a-z0-9-]+)\/notas$/)) && m === 'POST') {
+    let b;
+    try { b = JSON.parse((await leerCuerpo(req, MAX_FOTO * 1.4)).toString('utf8') || '{}'); } catch (e) {
+      if (e instanceof HttpError) throw e;
+      throw new HttpError(400, 'JSON no válido');
+    }
+    const x = await pro.anadirNota(db, FOTOS, r[1], b);
+    apuntarPro(x.proyecto, 'proyecto.nota', `Nota en la bitácora${x.nota.foto ? ' (con foto)' : ''}`, {detalle: {texto: x.nota.texto.slice(0, 200)}});
+    return send(res, 201, pro.detalle(db, r[1]));
+  }
+  if ((r = path.match(/^\/api\/proyectos\/([a-z0-9-]+)\/notas\/(\d+)$/)) && m === 'DELETE') {
+    const x = await pro.borrarNota(db, FOTOS, r[1], r[2]);
+    apuntarPro(x.proyecto, 'proyecto.nota', 'Nota de la bitácora borrada', {detalle: {texto: x.nota.texto.slice(0, 200)}});
+    return send(res, 200, pro.detalle(db, r[1]));
+  }
+  if ((r = path.match(/^\/api\/proyectos\/([a-z0-9-]+)\/tareas$/)) && m === 'POST') {
+    const x = pro.anadirTareas(db, r[1], await leerJson(req));
+    apuntarPro(x.proyecto, 'proyecto.tarea', x.textos.length === 1 ? `Tarea añadida: ${x.textos[0]}` : `${x.textos.length} tareas añadidas al tablero (los pasos)`);
+    return send(res, 201, pro.detalle(db, r[1]));
+  }
+  if ((r = path.match(/^\/api\/proyectos\/([a-z0-9-]+)\/tareas\/(\d+)$/))) {
+    if (m === 'PATCH') {
+      const x = pro.cambiarTarea(db, r[1], r[2], await leerJson(req));
+      const cambios = [x.antes.texto !== x.despues.texto ? {campo: 'Tarea', antes: x.antes.texto, despues: x.despues.texto} : null,
+        x.antes.columna !== x.despues.columna ? {campo: x.despues.texto, antes: pro.NOMBRE_COLUMNA[x.antes.columna], despues: pro.NOMBRE_COLUMNA[x.despues.columna]} : null].filter(Boolean);
+      if (cambios.length) apuntarPro(x.proyecto, 'proyecto.tarea', aud.resumenCambios('Tarea cambiada', cambios), {cambios});
+      return send(res, 200, pro.detalle(db, r[1]));
+    }
+    if (m === 'DELETE') {
+      const x = pro.borrarTarea(db, r[1], r[2]);
+      apuntarPro(x.proyecto, 'proyecto.tarea', `Tarea borrada: ${x.tarea.texto}`);
+      return send(res, 200, pro.detalle(db, r[1]));
+    }
+  }
+  // el archivo llega tal cual en el cuerpo (imagen o PDF); su nombre, en ?nombre=
+  if ((r = path.match(/^\/api\/proyectos\/([a-z0-9-]+)\/archivos$/)) && m === 'POST') {
+    const tipo = (req.headers['content-type'] || '').split(';')[0];
+    if (!pro.ARCHIVO_EXT[tipo]) throw new HttpError(415, 'El archivo tiene que ser una imagen (JPG, PNG o WebP) o un PDF');
+    const x = await pro.anadirArchivo(db, FOTOS, r[1], {tipo, nombre: new URL(req.url, 'http://x').searchParams.get('nombre'), datos: await leerCuerpo(req, pro.MAX_ARCHIVO)});
+    apuntarPro(x.proyecto, 'proyecto.archivo', `Archivo añadido: ${x.archivo.nombre}`);
+    return send(res, 201, pro.detalle(db, r[1]));
+  }
+  if ((r = path.match(/^\/api\/proyectos\/([a-z0-9-]+)\/archivos\/(\d+)$/)) && m === 'DELETE') {
+    const x = await pro.borrarArchivo(db, FOTOS, r[1], r[2]);
+    apuntarPro(x.proyecto, 'proyecto.archivo', `Archivo borrado: ${x.archivo.nombre}`);
+    return send(res, 200, pro.detalle(db, r[1]));
+  }
+
   // ---- IA ----
   // configuración desde la web: se ve el estado (la clave solo por sus 4 últimos caracteres), se cambia con PUT
   if (m === 'GET' && path === '/api/ia/config') return send(res, 200, estado(db));
@@ -573,7 +709,7 @@ async function api(req, res, path) {
     if (e2.modelo !== antes.modelo) apuntar({accion: 'ia.config', objeto: 'ia', resumen: `Modelo de siempre: ${antes.modelo || '—'} → ${e2.modelo || '—'}`});
     return send(res, 200, e2);
   }
-  // modelos de OpenCode Go que entienden fotos y devuelven salida estructurada (del catálogo público de Go)
+  // modelos de chat de OpenCode Go (del catálogo público de Go), cada uno con lo que sabe hacer: «vision» y «estructurada»
   if (m === 'GET' && path === '/api/ia/modelos') {
     let lista;
     try { lista = await modelos(); } catch (e) { throw new HttpError(502, e.message); }
@@ -584,6 +720,9 @@ async function api(req, res, path) {
     return send(res, 200, lista.map((x) => ({...x, recomendado: x.id === MODELO_RECOMENDADO, coste_medio: medias[x.id] || null})));
   }
   if (m === 'POST' && path === '/api/ia/alta') return send(res, 202, await crearAlta(req));
+  if (m === 'POST' && path === '/api/ia/detectar') return send(res, 202, await crearDeteccion(req));
+  if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)\/crear-piezas$/)) && m === 'POST') return send(res, 202, await crearPiezasDetectadas(r[1], req));
+  if ((r = path.match(/^\/api\/ia\/lotes\/([a-f0-9]{12})\/guardar$/)) && m === 'POST') return send(res, 200, await guardarLoteAltas(r[1], await leerJson(req)));
   if (m === 'POST' && path === '/api/ia/revisar') return send(res, 202, await crearRevision(req));
   if (m === 'POST' && path === '/api/ia/revisar-lote') return send(res, 202, await corregirLote(await leerJson(req)));
   if ((r = path.match(/^\/api\/ia\/lotes\/([a-f0-9]{12})$/)) && m === 'GET') return send(res, 200, tareasLote(r[1]));
@@ -607,6 +746,7 @@ async function api(req, res, path) {
       const o = t.objetivo || {};
       apuntar({accion: 'ia.descartar', modelo: t.modelo, detalle: {tarea: t.id},
         ...(t.clase === 'revisar' ? {objeto: o.componente_id ? 'pieza' : 'tipo', id: o.componente_id ?? o.tipo_id, nombre: t.objetivo_nombre, resumen: 'Correcciones de la IA descartadas'}
+          : t.clase === 'detectar' ? {objeto: 'ia', id: t.id, nombre: 'Foto con varias piezas', resumen: 'Foto con varias piezas descartada'}
           : {objeto: 'ia', id: t.id, nombre: t.propuesta?.nombre || t.texto || null, resumen: 'Propuesta de pieza de la IA descartada'})});
     }
     return send(res, 200, {ok: true});
@@ -622,6 +762,22 @@ async function api(req, res, path) {
 
   // ---- Ajustes: catálogo, sitios y datos (fase B) ----
   if (m === 'GET' && path === '/api/ajustes/resumen') return send(res, 200, resumen());
+  // el editor de pines manda sus filas cuando alguien escribe varios pines en una («GPIO 16 · 17»): vuelven una por pin
+  if (m === 'POST' && path === '/api/pines/separar') {
+    const filas = ((await leerJson(req)).pines || []).filter(Array.isArray).slice(0, 200).map((p) => p.slice(0, 4).map((x) => texto(x, 200)));
+    return send(res, 200, {pines: separarPines(filas).slice(0, 200)});
+  }
+  // Ajustes → Uniformar formato: lo que cambiaría (sin llamar al modelo) y aplicar lo que el usuario marque
+  if (m === 'GET' && path === '/api/ajustes/formato') return send(res, 200, uniformar.pendientes(db));
+  if (m === 'POST' && path === '/api/ajustes/formato') {
+    let hechos;
+    try { hechos = uniformar.aplicar(db, (await leerJson(req)).ids); } catch (e) { if (e.code === 400) throw new HttpError(400, e.message); throw e; }
+    for (const o of hechos) {
+      const cambios = o.cambios.map((c) => ({campo: c.etiqueta, antes: c.antes, despues: c.despues}));
+      apuntar({accion: `${o.objeto}.formato`, objeto: o.objeto, id: o.id, nombre: o.nombre, resumen: aud.resumenCambios('Formato uniformado', cambios), cambios});
+    }
+    return send(res, 200, {ok: true, aplicados: hechos.reduce((n, o) => n + o.cambios.length, 0), ...uniformar.pendientes(db)});
+  }
   if (m === 'POST' && path === '/api/copias') {
     const op = opcionesCopias(DATA);
     const ruta = copiar(db, DATA, {...op, max: op.max || 14}, true);
@@ -855,7 +1011,7 @@ const server = createServer(async (req, res) => {
     if (path === '/' || path === '/index.html') return await paginaPrincipal(res);
     return await estatico(res, PUB, path, 'no-cache');
   } catch (e) {
-    let code = e instanceof HttpError || e instanceof cat.ErrorCatalogo || e instanceof respaldo.ErrorRespaldo ? e.code : 500;
+    let code = e instanceof HttpError || e instanceof cat.ErrorCatalogo || e instanceof respaldo.ErrorRespaldo || e instanceof pro.ErrorProyecto ? e.code : 500;
     if (/constraint failed/i.test(e.message)) code = 400; // reglas de la base de datos (CHECK, FOREIGN KEY, UNIQUE)
     if (code === 500) console.error(e);
     res.motivo = String(e.message || '').slice(0, 200);

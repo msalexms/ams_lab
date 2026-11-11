@@ -7,7 +7,9 @@
 // (@ai-sdk/openai-compatible) y messages (@ai-sdk/anthropic).
 //
 // Guardarraíles:
-//   1. solo se ofrecen modelos que el catálogo marca con imagen de entrada y salida estructurada;
+//   1. se ofrecen todos los modelos de chat del catálogo, cada uno con lo que sabe hacer: «vision» (entiende fotos) y
+//      «estructurada» (salida con formato fijo). A uno sin fotos no se le manda la foto (hace falta texto); a uno sin
+//      formato fijo se le pide JSON en el texto y se aprovecha con rescatar() (falla más: se avisa al elegirlo);
 //   2. salida estructurada con un esquema cerrado (zod): categorías, funciones de pin y tipos existentes son enums
 //      sacados de la base de datos; si la respuesta no cumple el esquema, el SDK la rechaza y se reintenta una vez;
 //   3. normalizar() recorta longitudes y limpia lo que llega (también lo que corrige el usuario antes de guardar);
@@ -20,6 +22,8 @@ import {generateText, Output, NoObjectGeneratedError, NoOutputGeneratedError, AP
 import {createOpenAICompatible} from '@ai-sdk/openai-compatible';
 import {createAnthropic} from '@ai-sdk/anthropic';
 import {z} from 'zod';
+import {fichaUniforme, datosUniformes, guiaEstilo, separarPines} from './formato.mjs';
+import {vocabularios} from './uniformar.mjs';
 
 const GO = 'https://opencode.ai/inference/go';
 const BASE = (process.env.IA_BASE || GO).replace(/\/$/, '');
@@ -71,13 +75,15 @@ export async function modelos({forzar = false} = {}) {
     const api = APIS.find((k) => m.api?.[k]?.base_url);
     const vision = arr(m.modalities?.input).includes('image/jpeg');
     // fuera: los gratuitos (solo funcionan dentro de OpenCode) y los «contributor» (entrenan con lo que les mandas)
-    if (!api || !vision || m.capabilities?.structured_output !== true || m.type !== 'chat' || /free|contributor/.test(m.id)) return null;
+    if (!api || m.type !== 'chat' || /free|contributor/.test(m.id)) return null;
     return {id: m.id, nombre: m.name || m.id, descripcion: txt(m.description, 200), api, base_url: rebase(m.api[api].base_url),
+      vision, estructurada: m.capabilities?.structured_output === true, // lo que sabe hacer: la web lo avisa al elegirlo
       precio: {entrada: m.cost?.text?.input?.price ?? null, salida: m.cost?.text?.output?.price ?? null},
       // modelos que «piensan» antes de responder: el esfuerzo más bajo que admiten (el catálogo los da de menos a más)
       razona: m.capabilities?.reasoning?.supported === true, esfuerzos: arr(m.capabilities?.reasoning?.effort).map(String),
       max_salida: Number(m.limit?.output) || null};
-  }).filter(Boolean).sort((a, b) => (a.precio.entrada ?? 99) - (b.precio.entrada ?? 99) || a.nombre.localeCompare(b.nombre));
+  }).filter(Boolean).sort((a, b) => (b.vision + b.estructurada) - (a.vision + a.estructurada)
+    || (a.precio.entrada ?? 99) - (b.precio.entrada ?? 99) || a.nombre.localeCompare(b.nombre));
   cache = {t: Date.now(), lista};
   return lista;
 }
@@ -93,7 +99,7 @@ function crearModelo(m, clave, sesion) {
     return fetch(url, {...init, headers: h});
   };
   if (m.api === 'chat-completions')
-    return createOpenAICompatible({name: 'opencode-go', baseURL: m.base_url, apiKey: clave, supportsStructuredOutputs: true, fetch: fetchPropio})(m.id);
+    return createOpenAICompatible({name: 'opencode-go', baseURL: m.base_url, apiKey: clave, supportsStructuredOutputs: m.estructurada, fetch: fetchPropio})(m.id);
   return createAnthropic({baseURL: m.base_url, apiKey: clave, fetch: fetchPropio})(m.id);
 }
 
@@ -143,14 +149,34 @@ export class SinRespuesta extends Error {
 function salidaDe(r) {
   try { return r.output; } catch (e) { if (NoOutputGeneratedError.isInstance(e)) throw new SinRespuesta(r); throw e; }
 }
-const reintentable = (e) => NoObjectGeneratedError.isInstance(e) || e instanceof SinRespuesta || NoOutputGeneratedError.isInstance(e);
+// un modelo sin formato fijo respondió, pero no con el JSON pedido (lleva el texto y el uso, como NoObjectGeneratedError)
+export class SinFormato extends Error { constructor(text, usage) { super('La respuesta no es el JSON pedido'); this.text = text; this.usage = usage; } }
+const reintentable = (e) => NoObjectGeneratedError.isInstance(e) || e instanceof SinFormato || e instanceof SinRespuesta || NoOutputGeneratedError.isInstance(e);
+
+// una llamada al modelo que devuelve un objeto. Con salida estructurada, el SDK valida el esquema. Sin ella, se le pide
+// JSON dentro del texto (con el esquema escrito en las instrucciones) y se saca de ahí: quien llama lo limpia.
+const formaJson = (schema) => { try { return JSON.stringify(z.toJSONSchema(schema)); } catch { return ''; } };
+async function llamar(m, clave, sesion, {system, messages, schema, name, description}, nivel) {
+  const base = {model: crearModelo(m, clave, sesion), messages, ...opcionesLlamada(m, nivel), maxRetries: 1};
+  if (m.estructurada) {
+    const r = await generateText({...base, system, output: Output.object({schema, name, description})});
+    return {salida: salidaDe(r), uso: r.totalUsage ?? r.usage};
+  }
+  const forma = formaJson(schema);
+  const r = await generateText({...base, system: `${system}\n\nResponde SOLO con un objeto JSON válido, sin texto alrededor ni \`\`\`.${forma ? `\nTiene que cumplir este esquema JSON:\n${forma}` : ''}`});
+  const uso = r.totalUsage ?? r.usage;
+  if (!String(r.text || '').trim()) throw new SinRespuesta(r);
+  const salida = extraerJson(r.text);
+  if (!salida || typeof salida !== 'object') throw new SinFormato(r.text, uso);
+  return {salida, uso};
+}
 const anotarSinRespuesta = (m, e, intento) => console.warn(`[ia] ${m.id}: sin respuesta (intento ${intento}; fin: ${e.fin ?? '?'}; `
   + `razonamiento: ${e.razonamiento ?? '?'} tokens; texto: ${(e.texto || '').length} caracteres)`);
 
 // errores en español y sin detalles internos
 function explicar(e) {
   if (e?.lastError) e = e.lastError; // RetryError del SDK («Failed after N attempts»): interesa el último error real
-  if (NoObjectGeneratedError.isInstance(e)) return 'El modelo no devolvió una ficha con el formato correcto (2 intentos). Prueba otra vez u otro modelo.';
+  if (NoObjectGeneratedError.isInstance(e) || e instanceof SinFormato) return 'El modelo no devolvió una respuesta con el formato correcto (2 intentos). Prueba otra vez u otro modelo.';
   if (e instanceof SinRespuesta || NoOutputGeneratedError.isInstance(e)) return e.fin === 'length'
     ? 'El modelo se quedó sin espacio pensando y no llegó a escribir la respuesta (2 intentos). Prueba otra vez o elige otro modelo en Ajustes → IA.'
     : 'El modelo terminó sin dar ninguna respuesta (2 intentos). Prueba otra vez o elige otro modelo en Ajustes → IA.';
@@ -171,6 +197,7 @@ function contexto(db) {
     funciones: db.prepare('SELECT id, nombre FROM funciones_pin ORDER BY orden').all(),
     tipos: db.prepare(`SELECT t.id, t.nombre, t.categoria_id AS categoria, group_concat(a.alias, ' / ') AS alias
       FROM tipos t LEFT JOIN tipo_alias a ON a.tipo_id = t.id WHERE t.archivado = 0 GROUP BY t.id ORDER BY t.categoria_id, t.nombre`).all(),
+    estilo: vocabularios(db).estilo, // cómo están escritos ya las interfaces y los nombres de datos (guía de estilo)
   };
 }
 
@@ -186,6 +213,9 @@ Reglas:
   Solo datos útiles y conocidos: nada de «no aplica», «desconocido» ni notas sobre cómo la has identificado.
 - Pines en el orden del conector si se ve; "pin" es el nombre serigrafiado (VCC, DATA, GND…); si solo hay números,
   «1 (VCC)». "uso" en 2–4 palabras. Piezas sin pines (tornillos, cables, herramientas): pines vacíos.
+- UN pin por entrada: nunca varios juntos («GPIO 16 · 17») ni rangos («GPIO 32–39»). Si un pin sirve para dos cosas,
+  es una sola entrada: su uso principal en "uso" y lo demás en "nota" («También: UART2 RX», «Solo entrada»,
+  «En alto al arrancar»). "nota" vacía si no hay nada que añadir.
 - "voltaje" corto («3,3–5 V», «5 V · señal a 3,3 V»). "cantidad": las unidades que se ven, o null.
 - NO INVENTES. Si no estás seguro de un pinout, una tensión o un dato, déjalo vacío y pregúntalo en "dudas":
   un pinout o una tensión inventados pueden quemar una placa.
@@ -198,7 +228,9 @@ Reglas:
 Funciones de pin: ${ctx.funciones.map((f) => `${f.id} = ${f.nombre}`).join(' · ')}
 Categorías: ${ctx.categorias.map((c) => `${c.id} = ${c.nombre}`).join(' · ')}
 Tipos que ya existen (id | nombre | categoría | alias):
-${ctx.tipos.map((t) => `${t.id} | ${t.nombre} | ${t.categoria}${t.alias ? ` | ${t.alias}` : ''}`).join('\n')}`;
+${ctx.tipos.map((t) => `${t.id} | ${t.nombre} | ${t.categoria}${t.alias ? ` | ${t.alias}` : ''}`).join('\n')}
+
+${guiaEstilo(ctx.estilo)}`;
 }
 
 // esquema cerrado: lo que no esté en la base de datos no se puede devolver. Sin límites de longitud en el esquema
@@ -211,7 +243,7 @@ function esquema(ctx) {
     tipo_nuevo: z.object({
       nombre: z.string(), categoria: z.enum(ctx.categorias.map((c) => c.id)), resumen: z.string(), voltaje: z.string(),
       interfaz: z.array(z.string()), alias: z.array(z.string()),
-      pines: z.array(z.object({pin: z.string(), uso: z.string(), funcion: z.enum(ctx.funciones.map((f) => f.id))})),
+      pines: z.array(z.object({pin: z.string().describe('UN solo pin'), uso: z.string(), funcion: z.enum(ctx.funciones.map((f) => f.id)), nota: z.string().describe('Algo más de ese pin, o vacío')})),
       datos: z.array(dato), ojo: z.string().describe('Advertencia para no romper nada, o vacío'),
     }).nullable(),
     datos_pieza: z.array(dato),
@@ -227,6 +259,7 @@ export function normalizar(db, p) {
   const cats = new Set(db.prepare('SELECT id FROM categorias').all().map((r) => r.id));
   const funcs = new Set(db.prepare('SELECT id FROM funciones_pin').all().map((r) => r.id));
   const dudas = arr(p.dudas).map((d) => txt(d, 300)).filter(Boolean).slice(0, 12);
+  const vocab = vocabularios(db);
   let existente = p.tipo_existente ? String(p.tipo_existente) : null;
   if (existente && !db.prepare('SELECT 1 FROM tipos WHERE id = ? AND archivado = 0').get(existente)) { // archivados: ocultos
     dudas.push(`El tipo «${existente}» no existe.`);
@@ -241,15 +274,17 @@ export function normalizar(db, p) {
       nombre: txt(t.nombre, 120), categoria, resumen: txt(t.resumen, 400), voltaje: txt(t.voltaje, 120),
       interfaz: arr(t.interfaz).map((i) => txt(i, 40)).filter(Boolean).slice(0, 12),
       alias: arr(t.alias).map((a) => txt(a, 80)).filter(Boolean).slice(0, 10),
-      pines: arr(t.pines).map((x) => (Array.isArray(x) ? x : [x?.pin, x?.uso, x?.funcion]))
-        .map(([pin, uso, fn]) => [txt(pin, 60), txt(uso, 60), funcs.has(String(fn)) ? String(fn) : 'otro']).filter(([pin]) => pin).slice(0, 60),
+      // un pin por fila: si el modelo junta varios, se separan; si repite uno, el segundo uso pasa a su nota
+      pines: separarPines(arr(t.pines).map((x) => (Array.isArray(x) ? x : [x?.pin, x?.uso, x?.funcion, x?.nota]))
+        .map(([pin, uso, fn, nota]) => [txt(pin, 60), txt(uso, 60), funcs.has(String(fn)) ? String(fn) : 'otro', txt(nota, 200)]).filter(([pin]) => pin)).slice(0, 120),
       datos: paresDe(t.datos), ojo: txt(t.ojo ?? t.advertencias, 400),
     };
+    nuevo = fichaUniforme(nuevo, vocab.tipo); // la forma de escribir la pone la app (formato.mjs)
   }
   const cant = Number(p.cantidad);
   return {
     nombre: txt(p.nombre, 200) || nuevo?.nombre || '', tipo_existente: existente, tipo_nuevo: nuevo,
-    datos_pieza: paresDe(p.datos_pieza),
+    datos_pieza: datosUniformes(paresDe(p.datos_pieza), vocab.pieza),
     cantidad: p.cantidad !== null && p.cantidad !== '' && Number.isFinite(cant) && cant >= 0 ? Math.min(99999, Math.round(cant)) : null,
     dudas, confianza: ['alta', 'media', 'baja'].includes(p.confianza) ? p.confianza : 'baja',
   };
@@ -262,18 +297,22 @@ async function modeloElegido(db, idTarea = null) {
   if (!c.clave) throw new Error('Falta la clave de OpenCode Go: ponla en Ajustes → IA.');
   const id = idTarea || c.modelo;
   const m = (await modelos()).find((x) => x.id === id);
-  if (!m) throw new Error(`El modelo «${id}» no está en el catálogo de OpenCode Go con fotos y salida estructurada: elige otro en la configuración.`);
+  if (!m) throw new Error(`El modelo «${id}» no está en el catálogo de OpenCode Go: elige otro en la configuración.`);
   return {m, clave: c.clave};
 }
 // para validar el modelo que pide la web para una pieza concreta
 export const modeloValido = async (id) => (await modelos()).some((x) => x.id === id);
+// lo que sabe hacer el modelo que se va a usar (el pedido o el de siempre); null si no se puede saber (sin catálogo)
+export async function infoModelo(db, id = null) {
+  try { return (await modelos()).find((x) => x.id === (id || config(db).modelo)) || null; } catch { return null; }
+}
 export const MODELO_RECOMENDADO = MODELO_DEF;
 
 // una propuesta interna ([pin, uso, función], [dato, valor]) con la forma del esquema, para dársela al modelo como
 // «su» respuesta anterior en una vuelta de revisión
 const aSalida = (p) => ({
   nombre: p.nombre, tipo_existente: p.tipo_existente,
-  tipo_nuevo: p.tipo_nuevo ? {...p.tipo_nuevo, pines: arr(p.tipo_nuevo.pines).map(([pin, uso, funcion]) => ({pin, uso, funcion})),
+  tipo_nuevo: p.tipo_nuevo ? {...p.tipo_nuevo, pines: arr(p.tipo_nuevo.pines).map(([pin, uso, funcion, nota]) => ({pin, uso, funcion, nota: nota || ''})),
     datos: arr(p.tipo_nuevo.datos).map(([dato, valor]) => ({dato, valor}))} : null,
   datos_pieza: arr(p.datos_pieza).map(([dato, valor]) => ({dato, valor})), cantidad: p.cantidad, dudas: p.dudas, confianza: p.confianza,
 });
@@ -294,7 +333,8 @@ async function proponer(db, entrada, foto, sesion) {
   const {m, clave} = await modeloElegido(db, entrada.modelo);
   const ctx = contexto(db);
   const contenido = [{type: 'text', text: entrada.texto || 'Identifica la pieza de la foto.'}];
-  if (foto) contenido.push({type: 'file', mediaType: 'image/jpeg', data: {type: 'data', data: foto}});
+  if (foto && m.vision) contenido.push({type: 'file', mediaType: 'image/jpeg', data: {type: 'data', data: foto}});
+  else if (!entrada.texto) throw new Error(`${m.nombre} no ve fotos: escribe qué es la pieza o elige otro modelo.`);
   // vueltas de revisión: la propuesta (ya corregida por el usuario) como respuesta del modelo + las respuestas del usuario
   const mensajes = [{role: 'user', content: contenido}];
   for (const r of arr(entrada.rondas)) {
@@ -304,12 +344,12 @@ async function proponer(db, entrada, foto, sesion) {
   let error, nivel = nivelRazonar(db);
   for (let intento = 1; intento <= 2; intento++) {
     try {
-      const r = await generateText({
-        model: crearModelo(m, clave, sesion), system: instrucciones(ctx), messages: mensajes,
-        output: Output.object({schema: esquema(ctx), name: 'pieza', description: 'Propuesta para dar de alta una pieza de electrónica'}),
-        ...opcionesLlamada(m, nivel), maxRetries: 1,
-      });
-      return {propuesta: {...normalizar(db, salidaDe(r)), coste: coste(m, r.totalUsage ?? r.usage)}, modelo: m.id};
+      const r = await llamar(m, clave, sesion, {system: instrucciones(ctx), messages: mensajes, schema: esquema(ctx), name: 'pieza',
+        description: 'Propuesta para dar de alta una pieza de electrónica'}, nivel);
+      // sin formato fijo, la respuesta pasa por el rescate (envoltorios, campos que faltan: cada arreglo queda como duda)
+      const propuesta = m.estructurada ? normalizar(db, r.salida) : rescatarObjeto(db, ctx, r.salida);
+      if (!propuesta) throw new SinFormato(JSON.stringify(r.salida), r.uso);
+      return {propuesta: {...propuesta, coste: coste(m, r.uso)}, modelo: m.id};
     } catch (e) {
       error = e;
       if (rechazaPensar(e, m, nivel)) { console.warn(`[ia] ${m.id}: no admite razonar «${nivel}» con formato fijo; se repite en «poco»`); nivel = 'poco'; continue; }
@@ -339,8 +379,8 @@ export function extraerJson(texto) {
 
 // segunda barrera: si la respuesta no cumple el esquema estricto pero es aprovechable, se normaliza y cada corrección
 // queda como «duda» para que el usuario la vea al revisar. Solo se rechaza si no hay ni un nombre.
-export function rescatar(db, ctx, texto) {
-  let p = extraerJson(texto);
+export const rescatar = (db, ctx, texto) => rescatarObjeto(db, ctx, extraerJson(texto));
+function rescatarObjeto(db, ctx, p) {
   if (!p || typeof p !== 'object') return null;
   // envoltorios típicos: {"pieza": {...}}, {"data": {...}}, {"properties": {...}}
   for (let i = 0; i < 2 && !('nombre' in p); i++) {
@@ -371,7 +411,7 @@ export function rescatar(db, ctx, texto) {
 export async function probar(clave, modeloId) {
   if (!CLAVE_OK.test(clave || '')) throw new Error('La clave no tiene buen formato (16–300 caracteres, sin espacios).');
   const m = (await modelos()).find((x) => x.id === modeloId);
-  if (!m) throw new Error('Ese modelo no está en el catálogo de OpenCode Go con fotos y salida estructurada.');
+  if (!m) throw new Error('Ese modelo no está en el catálogo de OpenCode Go.');
   try {
     await generateText({model: crearModelo(m, clave, 'ams-lab-prueba'), prompt: 'Responde solo: ok', maxOutputTokens: 200, maxRetries: 0,
       abortSignal: AbortSignal.timeout(60_000)});
@@ -413,6 +453,9 @@ Reglas:
 - Si el usuario pide algo concreto, céntrate en eso.
 - Pines: "pin" es el nombre serigrafiado; "uso" en 2–4 palabras; la función tiene que ser uno de estos ids:
   ${ctx.funciones.map((f) => `${f.id} = ${f.nombre}`).join(' · ')}.
+  UN pin por entrada (nunca «GPIO 16 · 17» ni «GPIO 32–39»). Si un pin sirve para dos cosas, es una sola entrada: su
+  uso principal en "uso" y lo demás en "nota" («También: UART2 RX», «Solo entrada»); "nota" vacía si no hay nada.
+  Si la ficha guardada tiene varios pines en una fila, sepáralos.
 - "datos" del tipo: lo que es igual en todas las piezas del tipo. ${conPieza ? '"datos_pieza": lo propio de esta pieza.' : ''}
   Clave corta y valor concreto; no repitas lo que ya dicen los pines. Nada de «no aplica» ni «desconocido».${conPieza ? `
 - "notas" son las notas PERSONALES del usuario sobre su pieza, escritas por él. No las reescribas ni pongas en ellas
@@ -432,7 +475,10 @@ Reglas:
 - NO INVENTES: si no estás seguro de un pinout, una tensión o un dato, déjalo como está y pregúntalo en "dudas"
   (preguntas cortas que el usuario pueda contestar). Un pinout o una tensión inventados pueden quemar una placa.
 - Categorías: ${ctx.categorias.map((c) => `${c.id} = ${c.nombre}`).join(' · ')}
-- Textos cortos y llanos, sin emojis.`;
+- Textos cortos y llanos, sin emojis.
+- Un texto que ya dice lo correcto no se cambia por escribirlo de otra manera (mayúsculas, puntuación, sinónimos, orden).
+
+${guiaEstilo(ctx.estilo)}`;
 }
 
 function esquemaRevision(ctx, conPieza, conTipo = true) {
@@ -440,7 +486,7 @@ function esquemaRevision(ctx, conPieza, conTipo = true) {
   const ficha = z.object({
     nombre: z.string(), categoria: z.enum(ctx.categorias.map((c) => c.id)), resumen: z.string(), voltaje: z.string(),
     interfaz: z.array(z.string()), alias: z.array(z.string()),
-    pines: z.array(z.object({pin: z.string(), uso: z.string(), funcion: z.enum(ctx.funciones.map((f) => f.id))})),
+    pines: z.array(z.object({pin: z.string().describe('UN solo pin'), uso: z.string(), funcion: z.enum(ctx.funciones.map((f) => f.id)), nota: z.string().describe('Algo más de ese pin, o vacío')})),
     datos: z.array(dato), ojo: z.string(),
   });
   const forma = {
@@ -457,7 +503,7 @@ function esquemaRevision(ctx, conPieza, conTipo = true) {
 
 // la ficha y la pieza en la forma del esquema (pines y datos como objetos), para dárselas al modelo
 const fichaSalida = (f) => ({nombre: f.nombre, categoria: f.categoria, resumen: f.resumen, voltaje: f.voltaje, interfaz: f.interfaz, alias: f.alias,
-  pines: f.pines.map(([pin, uso, funcion]) => ({pin, uso, funcion})), datos: f.datos.map(([dato, valor]) => ({dato, valor})), ojo: f.ojo});
+  pines: f.pines.map(([pin, uso, funcion, nota]) => ({pin, uso, funcion, nota: nota || ''})), datos: f.datos.map(([dato, valor]) => ({dato, valor})), ojo: f.ojo});
 
 // pide la revisión y devuelve {propuesta: {objetivo, actual, nueva, cambios, motivos, dudas, confianza, coste}, modelo}
 async function proponerRevision(db, entrada, foto, sesion) {
@@ -476,16 +522,14 @@ async function proponerRevision(db, entrada, foto, sesion) {
     ...(r.extra ? [`- Además: ${r.extra}`] : [])].join('\n')).filter(Boolean);
   const respuestas = vueltas.length ? `Respuestas a tus dudas de antes (tenlas en cuenta y no vuelvas a preguntarlas):\n${vueltas.join('\n')}\n\n` : '';
   const contenido = [{type: 'text', text: `${entrada.texto ? `Lo que quiero que revises: ${entrada.texto}\n\n` : 'Revisa la ficha entera.\n\n'}${respuestas}Lo que hay guardado:\n${datosTexto}`}];
-  if (foto) contenido.push({type: 'file', mediaType: 'image/jpeg', data: {type: 'data', data: foto}});
+  if (foto && m.vision) contenido.push({type: 'file', mediaType: 'image/jpeg', data: {type: 'data', data: foto}});
   let error, nivel = nivelRazonar(db);
   for (let intento = 1; intento <= 2; intento++) {
     try {
-      const r = await generateText({
-        model: crearModelo(m, clave, sesion), system: instruccionesRevision(ctx, conPieza, conTipo), messages: [{role: 'user', content: contenido}],
-        output: Output.object({schema: esquemaRevision(ctx, conPieza, conTipo), name: 'revision', description: 'Ficha corregida'}),
-        ...opcionesLlamada(m, nivel), maxRetries: 1,
-      });
-      const o = salidaDe(r);
+      const r = await llamar(m, clave, sesion, {system: instruccionesRevision(ctx, conPieza, conTipo), messages: [{role: 'user', content: contenido}],
+        schema: esquemaRevision(ctx, conPieza, conTipo), name: 'revision', description: 'Ficha corregida'}, nivel);
+      const o = r.salida;
+      if (!o.tipo && !o.pieza) throw new SinFormato(JSON.stringify(o), r.uso); // sin formato fijo: ni ficha ni pieza
       // la ficha propuesta pasa por la misma limpieza que un alta (categorías y funciones válidas, longitudes, «no aplica»…)
       const limpia = normalizar(db, {nombre: o.tipo?.nombre || 'x', tipo_nuevo: o.tipo || null, datos_pieza: o.pieza?.datos_pieza, dudas: o.dudas, confianza: o.confianza});
       // tipo de la pieza: a otro que ya existe, o uno nuevo (que se crea al aplicar); null = se queda como está
@@ -508,7 +552,7 @@ async function proponerRevision(db, entrada, foto, sesion) {
         propuesta: {
           objetivo: obj, cambios: diferencias(actual, nueva, {categorias, funciones, tipos: Object.fromEntries(ctx.tipos.map((t) => [t.id, t.nombre]))}),
           motivos: arr(o.motivos).map((x) => ({campo: txt(x.campo, 60), motivo: txt(x.motivo, 300)})).filter((x) => x.motivo).slice(0, 20),
-          dudas: limpia.dudas, confianza: limpia.confianza, coste: coste(m, r.totalUsage ?? r.usage),
+          dudas: limpia.dudas, confianza: limpia.confianza, coste: coste(m, r.uso),
         },
       };
     } catch (e) {
@@ -523,14 +567,85 @@ async function proponerRevision(db, entrada, foto, sesion) {
   throw new Error(explicar(error));
 }
 
-// ejecuta una tarea ya creada (estado 'pendiente'): alta o revisión; deja 'propuesta' o 'error'. No lanza excepciones.
+// ---------- foto con varias piezas: el modelo dice qué piezas hay y dónde está cada una ----------
+// Solo las separa (nombre aproximado y recuadro). La ficha de cada una sale después, con su propio recorte, por el
+// camino de siempre («alta»): así cada pieza se identifica de cerca y el usuario confirma una a una o todas juntas.
+export const MAX_DETECTADAS = 40;
+const INSTRUCCIONES_DETECTAR = `Eres el asistente de un almacén personal de componentes de electrónica. El usuario te enseña UNA foto con VARIAS
+piezas (módulos, sensores, placas, pasivos, cables, tornillería…) para darlas de alta. Di qué piezas hay y dónde está cada una.
+Todo en español de España.
+
+Reglas:
+- Una entrada por cada pieza distinta. Piezas iguales que están juntas (un montón de resistencias iguales, una tira de
+  pines) son UNA entrada con su "cantidad". Dos piezas iguales separadas en la foto: una entrada con cantidad 2 y el
+  recuadro de la que mejor se vea.
+- "nombre": lo que se pueda decir con seguridad mirando la foto («Módulo ultrasonidos HC-SR04», «Placa azul de 4 pines
+  sin identificar»). No inventes modelos: si no se lee, descríbela.
+- "descripcion": una frase con lo que se ve y ayude a identificarla después (serigrafía, color, número de pines, conector).
+- Recuadro de la pieza en milésimas de la imagen (enteros de 0 a 1000): "x" e "y" son la esquina de arriba a la
+  izquierda, "ancho" y "alto" su tamaño. Ajustado a la pieza entera, con sus pines.
+- No cuentes el fondo, la mesa, las manos ni las sombras. Como mucho ${MAX_DETECTADAS} piezas: si hay más, las más claras.
+- "dudas": como mucho 3 frases cortas si algo de la foto impide separarlas bien (piezas tapadas, foto movida).
+- Textos cortos y llanos, sin emojis.`;
+const esquemaDetectar = z.object({
+  piezas: z.array(z.object({nombre: z.string(), descripcion: z.string(), cantidad: z.number().nullable(),
+    x: z.number(), y: z.number(), ancho: z.number(), alto: z.number()})),
+  dudas: z.array(z.string()),
+});
+// limpia lo que devuelve el modelo: recuadros dentro de la imagen (en milésimas), nombres con tope, sin entradas vacías
+export function normalizarDeteccion(o) {
+  const lista = arr(Array.isArray(o) ? o : o?.piezas).filter((p) => p && typeof p === 'object');
+  // algunos modelos dan fracciones (0–1) aunque se les pidan milésimas
+  const nums = lista.flatMap((p) => [p.x, p.y, p.ancho, p.alto].map(Number)).filter(Number.isFinite);
+  const escala = nums.length && Math.max(...nums) <= 1 ? 1000 : 1;
+  const piezas = lista.map((p) => {
+    const nombre = txt(p.nombre, 200);
+    if (!nombre) return null;
+    const [x, y, an, al] = [p.x, p.y, p.ancho ?? p.width, p.alto ?? p.height].map((v) => Math.round(Number(v) * escala));
+    const x0 = Math.min(1000, Math.max(0, x)), y0 = Math.min(1000, Math.max(0, y));
+    const ancho = Math.min(1000 - x0, an), alto = Math.min(1000 - y0, al);
+    const cant = Number(p.cantidad);
+    return {nombre, descripcion: txt(p.descripcion, 300),
+      cantidad: p.cantidad != null && Number.isFinite(cant) && cant >= 1 ? Math.min(99999, Math.round(cant)) : null,
+      caja: [x0, y0, ancho, alto].every(Number.isFinite) && ancho >= 10 && alto >= 10 ? {x: x0, y: y0, ancho, alto} : null}; // sin recuadro: la foto entera
+  }).filter(Boolean).slice(0, MAX_DETECTADAS);
+  return {piezas, dudas: arr(o?.dudas).map((d) => txt(d, 300)).filter(Boolean).slice(0, 5)};
+}
+async function detectar(db, entrada, foto, sesion) {
+  const {m, clave} = await modeloElegido(db, entrada.modelo);
+  if (!m.vision) throw new Error(`${m.nombre} no ve fotos: para separar las piezas de una foto elige un modelo que las entienda.`);
+  if (!foto) throw new Error('Falta la foto');
+  const contenido = [{type: 'text', text: entrada.texto ? `Lo que sé de estas piezas: ${entrada.texto}` : 'Separa las piezas de la foto.'},
+    {type: 'file', mediaType: 'image/jpeg', data: {type: 'data', data: foto}}];
+  let error, nivel = nivelRazonar(db);
+  for (let intento = 1; intento <= 2; intento++) {
+    try {
+      const r = await llamar(m, clave, sesion, {system: INSTRUCCIONES_DETECTAR, messages: [{role: 'user', content: contenido}], schema: esquemaDetectar,
+        name: 'piezas', description: 'Las piezas que hay en la foto y dónde está cada una'}, nivel);
+      const d = normalizarDeteccion(r.salida);
+      if (!d.piezas.length) throw new Error('El modelo no ha encontrado piezas en la foto. Prueba con otra foto (más cerca y con luz) o con otro modelo.');
+      return {propuesta: {...d, coste: coste(m, r.uso)}, modelo: m.id};
+    } catch (e) {
+      error = e;
+      if (rechazaPensar(e, m, nivel)) { nivel = 'poco'; continue; }
+      if (!reintentable(e)) break;
+      if (e instanceof SinRespuesta) { anotarSinRespuesta(m, e, intento); continue; }
+      console.warn(`[ia] ${m.id}: detección con formato no válido (intento ${intento}): ${txt(e.cause?.message || e.message, 300)}`);
+      const d = normalizarDeteccion(extraerJson(e.text)); // rescate: casi lo pedido
+      if (d.piezas.length) return {propuesta: {...d, coste: coste(m, e.usage)}, modelo: m.id};
+    }
+  }
+  throw new Error(explicar(error));
+}
+
+// ejecuta una tarea ya creada (estado 'pendiente'): alta, revisión o detección; deja 'propuesta' o 'error'. No lanza excepciones.
 export async function ejecutarAlta(db, fotosDir, id) {
   const t = db.prepare('SELECT * FROM ia_tareas WHERE id = ?').get(id);
   const entrada = JSON.parse(t.entrada);
   try {
     const foto = entrada.foto ? await readFile(`${fotosDir}/${entrada.foto}`) : null;
-    const {propuesta, modelo} = t.clase === 'revisar'
-      ? await proponerRevision(db, entrada, foto, `ams-lab-tarea-${id}`)
+    const {propuesta, modelo} = t.clase === 'detectar' ? await detectar(db, entrada, foto, `ams-lab-tarea-${id}`)
+      : t.clase === 'revisar' ? await proponerRevision(db, entrada, foto, `ams-lab-tarea-${id}`)
       : await proponer(db, entrada, foto, `ams-lab-tarea-${id}`);
     db.prepare("UPDATE ia_tareas SET estado = 'propuesta', propuesta = ?, modelo = ?, error = NULL WHERE id = ? AND estado = 'pendiente'")
       .run(JSON.stringify(propuesta), modelo, id);
