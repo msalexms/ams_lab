@@ -88,54 +88,63 @@ function confirmar(texto, {si = 'Aceptar', no = 'Cancelar', peligro = false} = {
   });
 }
 
-// ---------- campo de foto con el aspecto de la app ----------
-// el <input type=file> sigue ahí (FormData lo lee igual) pero oculto; se ve un botón, el nombre y una miniatura
-const campoFoto = (etiqueta, ayuda = '', {varias = 0} = {}) => `<div class="campo">${etiqueta}
-  <div class="archivo">
-    <label class="archivo-elegir"><input type="file" name="foto" accept="image/*" class="archivo-input"${varias ? ` multiple data-max="${varias}"` : ''}><span class="btn">${varias ? 'Elegir fotos' : 'Elegir foto'}</span></label>
-    <span class="archivo-nombre gris">Ninguna</span>
-    <button class="btn mini archivo-quitar" type="button" hidden>Quitar</button>
+// ---------- campo de fotos con el aspecto de la app ----------
+// Una tira de miniaturas: cada foto con su ✕ y, al final, un recuadro «+» para añadir otra (hasta «max»). Las fotos
+// elegidas viven en el propio <input type=file> (FormData y fotosDelCampo() las leen como siempre): elegir más las SUMA
+// a las que había, no las sustituye. «principal»: marca la primera (la que se queda la pieza). «compacto»: en una línea,
+// para la foto de una respuesta.
+const campoFoto = (etiqueta, ayuda = '', {varias = 0, principal = false, compacto = false} = {}) => {
+  const max = varias || 1;
+  return `<div class="campo${compacto ? ' campo-compacto' : ''}">${etiqueta ? `<span class="campo-t">${etiqueta}</span>` : ''}
+  <div class="archivo${compacto ? ' compacto' : ''}"${principal ? ' data-principal="1"' : ''}>
+    <div class="archivo-lista"></div>
+    <label class="archivo-mas"><input type="file" name="foto" accept="image/*" class="archivo-input"${max > 1 ? ' multiple' : ''} data-max="${max}">
+      <span class="archivo-cruz" aria-hidden="true">+</span><span class="archivo-mas-t">${compacto ? 'Foto' : max > 1 ? 'Añadir fotos' : 'Añadir foto'}</span></label>
   </div>${ayuda ? `<span class="ayuda">${ayuda}</span>` : ''}</div>`;
+};
 const pesoTxt = (bytes) => { const kb = bytes / 1024; return kb < 1024 ? `${Math.max(1, Math.round(kb))} KB` : `${(kb / 1024).toFixed(1).replace('.', ',')} MB`; };
+const ARCHIVOS = new WeakMap(); // input → las fotos elegidas hasta ahora, en orden
+function ponerArchivos(input, lista) {
+  ARCHIVOS.set(input, lista);
+  const dt = new DataTransfer();
+  lista.forEach((f) => dt.items.add(f));
+  input.files = dt.files;
+  pintarArchivo(input);
+}
+// al elegir en el diálogo del navegador: lo nuevo se añade a lo que había (o lo sustituye, si el campo es de una sola)
+function alElegirArchivos(input) {
+  const max = Number(input.dataset.max) || 1, antes = ARCHIVOS.get(input) || [];
+  const nuevas = [...input.files].filter((f) => f.size && f.type.startsWith('image/'));
+  if (input.files.length && !nuevas.length) toast('Eso no es una imagen', true);
+  let lista = max === 1 ? (nuevas.length ? nuevas.slice(0, 1) : antes) : [...antes, ...nuevas];
+  lista = lista.filter((f, i) => lista.findIndex((x) => x.name === f.name && x.size === f.size && x.lastModified === f.lastModified) === i); // sin repetir
+  if (lista.length > max) { toast(`Como mucho ${max} fotos: me quedo con las ${max} primeras`); lista = lista.slice(0, max); }
+  ponerArchivos(input, lista);
+}
 function pintarArchivo(input) {
   const caja = input.closest('.archivo'), max = Number(input.dataset.max) || 1;
-  if (input.files.length > max) { // más de las que caben: se quedan las primeras
-    const dt = new DataTransfer();
-    [...input.files].slice(0, max).forEach((f) => dt.items.add(f));
-    input.files = dt.files;
-    toast(`Como mucho ${max} fotos: me quedo con las ${max} primeras`);
-  }
-  const fs = [...input.files], f = fs[0];
-  const nombre = caja.querySelector('.archivo-nombre'), quitar = caja.querySelector('.archivo-quitar'), boton = caja.querySelector('.archivo-elegir .btn');
-  caja.querySelectorAll('.archivo-mini').forEach((x) => x.remove());
-  caja.classList.toggle('con', !!f);
-  if (!f) { nombre.textContent = 'Ninguna'; nombre.classList.add('gris'); quitar.hidden = true; boton.textContent = max > 1 ? 'Elegir fotos' : 'Elegir foto'; return; }
-  nombre.innerHTML = fs.length === 1
-    ? `<span class="archivo-fichero" title="${esc(f.name)}">${esc(f.name)}</span><span class="archivo-peso gris">${pesoTxt(f.size)}</span>`
-    : `<span class="archivo-fichero">${fs.length} fotos</span><span class="archivo-peso gris">${pesoTxt(fs.reduce((n, x) => n + x.size, 0))}</span>`;
-  nombre.classList.remove('gris');
-  quitar.hidden = false;
-  boton.textContent = 'Cambiar';
-  for (const x of fs.slice().reverse()) { // miniaturas en el orden elegido (la primera, delante)
-    if (!x.type.startsWith('image/')) continue;
-    const img = document.createElement('img');
-    img.className = 'archivo-mini';
-    img.alt = '';
-    img.src = URL.createObjectURL(x);
-    img.onload = () => URL.revokeObjectURL(img.src);
-    caja.prepend(img);
-  }
+  if (!input.files.length) ARCHIVOS.set(input, []); // vaciado desde fuera (input.value = '')
+  const fs = ARCHIVOS.get(input) || [];
+  (caja.urls || []).forEach((u) => URL.revokeObjectURL(u));
+  caja.urls = fs.map((f) => URL.createObjectURL(f));
+  caja.classList.toggle('con', fs.length > 0);
+  caja.classList.toggle('lleno', fs.length >= max);
+  const principal = caja.dataset.principal && fs.length > 1;
+  caja.querySelector('.archivo-lista').innerHTML = fs.map((f, i) => `<span class="archivo-foto" title="${esc(f.name)} · ${pesoTxt(f.size)}"><img src="${caja.urls[i]}" alt="">
+    ${principal && i === 0 ? '<span class="archivo-pral">de la pieza</span>' : ''}
+    <button class="archivo-x" type="button" data-i="${i}" aria-label="Quitar la foto ${i + 1}">✕</button></span>`).join('');
+  const t = caja.querySelector('.archivo-mas-t');
+  if (t && !caja.classList.contains('compacto')) t.textContent = fs.length ? 'Otra' : max > 1 ? 'Añadir fotos' : 'Añadir foto';
 }
 // fotos de un campo, reducidas a 1600 px en JPEG (las que solo ve el modelo: no hace falta encuadrarlas)
 const reducida = async (file) => base64(await jpeg(await lienzoDe(file, 1600)));
 const fotosDelCampo = (input) => [...(input?.files || [])].filter((f) => f.size);
-document.addEventListener('change', (e) => { if (e.target.classList?.contains('archivo-input')) pintarArchivo(e.target); });
+document.addEventListener('change', (e) => { if (e.target.classList?.contains('archivo-input')) alElegirArchivos(e.target); });
 document.addEventListener('click', (e) => {
-  const q = e.target.closest?.('.archivo-quitar');
-  if (!q) return;
-  const input = q.closest('.archivo').querySelector('.archivo-input');
-  input.value = '';
-  pintarArchivo(input);
+  const x = e.target.closest?.('.archivo-x');
+  if (!x) return;
+  const input = x.closest('.archivo').querySelector('.archivo-input');
+  ponerArchivos(input, (ARCHIVOS.get(input) || []).filter((_, i) => i !== Number(x.dataset.i)));
 });
 
 function toast(msg, mal = false, accion = null) {
@@ -1485,6 +1494,13 @@ const avisoIA = (tipo, conBoton = false) => `<div class="nota nota-ia"><p><span 
 const ESTADO_IA = {pendiente: 'Analizando…', propuesta: 'Esperando a que la mires', error: 'Error', aplicada: 'Guardada', descartada: 'Descartada'};
 const comas = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
+// las dos formas de añadir con IA, como pestañas (misma cabecera en las dos pantallas)
+const modosIA = (actual) => `<nav class="ia-modos" aria-label="Qué quieres añadir">${[['#/ia', 'Una pieza', 'una'], ['#/ia/varias', 'Varias piezas en una foto', 'varias']]
+  .map(([h, t, k]) => `<a class="f ${k === actual ? 'on' : ''}" href="${h}"${k === actual ? ' aria-current="page"' : ''}>${t}</a>`).join('')}</nav>`;
+// nombre de una tarea de la IA en las listas. Una pieza que sale de una foto con varias aún no tiene propuesta: se
+// enseña el nombre con el que se la vio (va en la pista que se le da al modelo), no la pista entera
+const nombreTareaIA = (t) => (t.clase === 'revisar' ? `Correcciones para «${t.objetivo_nombre || '¿?'}»` : t.clase === 'detectar' ? 'Foto con varias piezas'
+  : t.propuesta?.nombre || (String(t.texto || '').match(/^Esta pieza sale de una foto con varias\. Allí se vio como «([^»]+)»/) || [])[1] || t.texto || 'Pieza sin nombre');
 function vIA(id) {
   if (id === 'ajustes') return `<a class="back" href="#/ia">← Añadir con IA</a><article class="hoja" id="ia-ajustes"><p class="gris pad">Cargando…</p></article>`;
   if (id === 'varias') return vIAVarias();
@@ -1492,14 +1508,14 @@ function vIA(id) {
   if (!D.ia?.activa) return `<a class="back" href="#/">← Inventario</a>${vacio('Falta la clave de OpenCode Go. <a class="btn prim" href="#/ia/ajustes">Configurar</a>')}`;
   return `<a class="back" href="#/">← Inventario</a>
     <article class="hoja">
-      ${cabecera('Añadir con IA', '', 'Haz una foto de la pieza (mejor si se lee la serigrafía) y añade lo que sepas. La IA propone el nombre, el tipo y la ficha; tú lo miras y corriges antes de guardar.')}
-      <p class="ia-atajo">Modelo de siempre: <span id="ia-modelo-siempre">${esc(nombreModelo(D.ia.modelo))}</span> · <a href="#/ia/ajustes">Cambiar modelo o clave</a></p>
-      <p class="ia-atajo"><a href="#/ia/varias">¿Muchas piezas? Súbelas en una sola foto y la IA las separa →</a></p>
+      ${cabecera('Añadir con IA', '', '')}
+      ${modosIA('una')}
+      <p class="ia-intro">Haz una foto de la pieza y añade lo que sepas. La IA propone el nombre, el tipo y la ficha; tú lo miras y lo corriges antes de guardar.</p>
       <form id="form-ia" class="form" autocomplete="off">
-        ${campoFoto('Fotos', 'Mejor si se lee la serigrafía. Puedes elegir hasta 4 (por delante, por detrás, de cerca): la primera será la foto de la pieza.', {varias: 4})}
-        <label>Lo que sepas (opcional)<textarea name="texto" rows="3" maxlength="1000" placeholder="Sensor de humedad del kit de Freenove, 3 pines"></textarea></label>
-        <label>Modelo para esta pieza<select name="modelo" id="ia-modelo-alta"><option value="">El de siempre (${esc(nombreModelo(D.ia.modelo))})</option></select>
-          <span class="ayuda">Por si una pieza difícil merece otro modelo. No cambia el de siempre.</span></label>
+        ${campoFoto('Fotos', 'Hasta 4: por delante, por detrás, la serigrafía de cerca. La primera será la foto de la pieza.', {varias: 4, principal: true})}
+        <label>Lo que sepas (opcional)<textarea name="texto" rows="2" maxlength="1000" placeholder="Sensor de humedad del kit de Freenove, 3 pines"></textarea></label>
+        <label>Modelo<select name="modelo" id="ia-modelo-alta"><option value="">El de siempre (${esc(nombreModelo(D.ia.modelo))})</option></select>
+          <span class="ayuda">Solo para esta pieza, por si una difícil merece otro. El de siempre y la clave se cambian en <a href="#/ia/ajustes">Ajustes → IA</a>.</span></label>
         <p class="nota" id="ia-aviso-modelo" hidden></p>
         <div class="acciones"><button class="btn prim" type="submit">Analizar</button></div>
       </form>
@@ -1664,14 +1680,16 @@ function avisoModeloAlta() {
 // ---------- foto con varias piezas: el modelo las separa, tú eliges cuáles, y cada una se identifica con su recorte ----------
 function vIAVarias() {
   if (!D.ia?.activa) return `<a class="back" href="#/">← Inventario</a>${vacio('Falta la clave de OpenCode Go. <a class="btn prim" href="#/ia/ajustes">Configurar</a>')}`;
-  return `<a class="back" href="#/ia">← Añadir con IA</a>
+  return `<a class="back" href="#/">← Inventario</a>
     <article class="hoja">
-      ${cabecera('Varias piezas en una foto', '', 'Pon las piezas separadas sobre un fondo liso y hazles una foto desde arriba. La IA las separa; tú eliges cuáles dar de alta y luego identifica cada una con su recorte. Nada se guarda hasta que lo confirmes.')}
+      ${cabecera('Añadir con IA', '', '')}
+      ${modosIA('varias')}
+      <p class="ia-intro">Pon las piezas separadas sobre un fondo liso y hazles una foto desde arriba. La IA las separa, tú eliges cuáles dar de alta y después identifica cada una con su recorte. Nada se guarda hasta que lo confirmes.</p>
       <form id="form-ia-varias" class="form" autocomplete="off">
         ${campoFoto('Foto con las piezas', 'Mejor pocas y que se lean (hasta 40). Con muchas piezas pequeñas, haz varias fotos.')}
         <label>Lo que sepas de ellas (opcional)<textarea name="texto" rows="2" maxlength="1000" placeholder="Son del kit de sensores de Freenove"></textarea></label>
         <label>Modelo<select name="modelo" id="ia-modelo-alta" data-solo-fotos="1"><option value="">El de siempre (${esc(nombreModelo(D.ia.modelo))})</option></select>
-          <span class="ayuda">Solo los que ven fotos. Gasta una consulta para separarlas y otra por cada pieza que elijas.</span></label>
+          <span class="ayuda">Solo salen los que ven fotos. Gasta una consulta para separarlas y otra por cada pieza que elijas.</span></label>
         <p class="nota" id="ia-aviso-modelo" hidden></p>
         <div class="acciones"><button class="btn prim" type="submit">Separar las piezas</button></div>
       </form>
@@ -1803,11 +1821,11 @@ async function iaAbiertas() {
   const zona = $('#ia-abiertas');
   if (!zona) return;
   try {
-    const ts = await api('GET', 'api/ia/tareas');
-    zona.innerHTML = ts.length ? `<section class="grupo"><h3 class="grupo-t">Sin terminar<span class="n">${ts.length}</span></h3><p class="sub"><a href="#/pendientes">Ver todo en «Cambios pendientes»</a></p>${ts.map((t) => `
-      <div class="fila"><a class="fila-main" href="#/ia/${t.id}">${t.foto ? `<img class="thumb" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : ''}
-        <div><div class="nombre">${esc(t.clase === 'revisar' ? `Correcciones para «${t.objetivo_nombre || '¿?'}»` : t.clase === 'detectar' ? 'Foto con varias piezas' : t.propuesta?.nombre || t.texto || 'Pieza sin nombre')}</div><div class="sub">${esc(t.creada)}</div></div></a>
-        <div class="der">${t.estado === 'error' ? '<span class="mal">Error</span>' : esc(ESTADO_IA[t.estado])}</div></div>`).join('')}</section>` : '';
+    const p = await api('GET', 'api/ia/pendientes'), n = p.lotes.length + p.tareas.length, MAX = 6;
+    const filas = [...p.lotes.map(filaLotePendiente), ...p.tareas.map(filaPendiente)];
+    zona.innerHTML = n ? `<section class="grupo"><h3 class="grupo-t">Sin terminar<span class="n">${n}</span></h3>${filas.slice(0, MAX).join('')}
+      <p class="sub ia-abiertas-mas"><a href="#/pendientes">${n > MAX ? `Ver las ${n} en «Cambios pendientes»` : 'Verlo en «Cambios pendientes»'} →</a></p></section>` : '';
+    if (p.lotes.some((l) => l.estados.pendiente) || p.tareas.some((t) => t.estado === 'pendiente')) setTimeout(() => { if (location.hash === '#/ia') iaAbiertas(); }, 4000);
   } catch {}
 }
 
@@ -1937,19 +1955,27 @@ function tiraFotos(t, todas = false) {
 }
 const costeTexto = (c) => (c && c.dolares != null ? `≈ ${c.dolares < 0.0001 ? '<0,0001' : c.dolares.toFixed(4).replace('.', ',')} $` : '');
 
-// dudas del modelo con un hueco para contestar cada una; «Responder y repensar» le manda las respuestas y lo que hayas
-// corregido en el formulario, y el modelo rehace la propuesta (como mucho 5 vueltas)
+// dudas del modelo, cada una con su hueco para contestar y, si el modelo ve fotos, su foto («¿qué pone en la
+// serigrafía?» → la foto de la serigrafía). Debajo, lo que quieras añadir y más fotos sueltas. «Responder y repensar»
+// le manda todo junto con lo que hayas corregido en el formulario, y el modelo rehace la propuesta (como mucho 5 vueltas)
 function dudasIA(t, p) {
   const quedan = (t.rondas || 0) < 5, correccion = t.clase === 'revisar';
-  const m = modeloIA(t.modelo_pedido || t.modelo), puedeFotos = quedan && (!m || m.vision) && (t.fotos?.length || 0) < 8;
-  return `<section class="ia-dudas pad" id="ia-dudas">
-    <h3>${p.dudas?.length ? 'Dudas del modelo' : '¿Algo que aclarar?'}</h3>
-    ${p.dudas?.length ? `<ol class="ia-preguntas">${p.dudas.map((d) => `<li><p>${esc(d)}</p>
-      <input class="ia-resp" data-duda="${esc(d)}" maxlength="500" placeholder="Tu respuesta (opcional)" autocomplete="off"></li>`).join('')}</ol>` : ''}
-    ${puedeFotos ? campoFoto('Fotos (opcional)', `Si se ve mejor que se explica: la serigrafía de cerca, la otra cara… Hasta 4; lleva ${t.fotos?.length || 0} de 8.`, {varias: Math.min(4, 8 - (t.fotos?.length || 0))}) : ''}
-    <textarea id="ia-extra" rows="2" maxlength="1000" placeholder="${correccion ? 'Algo más que deba corregir o saber (opcional): «tiene 16 MB de flash», «añade el consumo»…' : 'Algo más que deba saber (opcional): «tiene 3 pines», «es la versión en placa»…'}"></textarea>
+  const m = modeloIA(t.modelo_pedido || t.modelo), usadas = t.fotos?.length || 0, libres = Math.min(4, 8 - usadas);
+  const puedeFotos = quedan && (!m || m.vision) && libres > 0;
+  // lo que no es una pregunta (avisos de la app: «se han corregido solos algunos campos») no lleva hueco para contestar
+  const avisos = (p.dudas || []).filter((d) => !d.includes('?'));
+  p = {...p, dudas: (p.dudas || []).filter((d) => d.includes('?'))};
+  return `<section class="ia-dudas pad" id="ia-dudas" data-libres="${puedeFotos ? libres : 0}">
+    <h3>${p.dudas?.length ? `Dudas del modelo<span class="n">${p.dudas.length}</span>` : '¿Algo que aclarar?'}</h3>
+    ${avisos.map((d) => `<p class="ia-aviso">${esc(d)}</p>`).join('')}
+    ${p.dudas?.length ? `<ol class="ia-preguntas">${p.dudas.map((d, i) => `<li><p>${esc(d)}</p>
+      <div class="ia-resp-fila"><input class="ia-resp" data-duda="${esc(d)}" maxlength="500" placeholder="Tu respuesta" autocomplete="off" aria-label="Respuesta a la duda ${i + 1}">
+        ${puedeFotos ? campoFoto('', '', {compacto: true}) : ''}</div></li>`).join('')}</ol>` : ''}
+    <label class="ia-extra">${p.dudas?.length ? 'Algo más (opcional)' : correccion ? 'Qué más tiene que corregir o saber' : 'Qué más tiene que saber'}
+      <textarea id="ia-extra" rows="2" maxlength="1000" placeholder="${correccion ? 'Tiene 16 MB de flash · Añade el consumo' : 'Tiene 3 pines · Es la versión en placa'}"></textarea></label>
+    ${puedeFotos ? campoFoto(p.dudas?.length ? 'Más fotos (opcional)' : 'Fotos (opcional)', `La serigrafía de cerca, la otra cara… Hasta ${libres} en esta vuelta${p.dudas?.length ? ', contando las de las respuestas' : ''}${usadas ? ` (la consulta lleva ${usadas} de 8)` : ''}.`, {varias: libres}) : ''}
     <div class="acciones">${quedan
-      ? `<button class="btn" type="button" id="ia-responder" data-id="${t.id}">Responder y repensar</button>
+      ? `<button class="btn prim" type="button" id="ia-responder" data-id="${t.id}">Responder y repensar</button>
          <span class="ayuda">${correccion ? 'La IA vuelve a mirar la ficha con tus respuestas y rehace los cambios. Gasta otra consulta.' : 'Rehace la propuesta con tus respuestas y con lo que hayas corregido abajo. Gasta otra consulta.'}</span>`
       : `<span class="ayuda">Ya van 5 vueltas: ${correccion ? 'aplica lo que te sirva y corrige a mano el resto' : 'corrige a mano lo que falte y guarda'}.</span>`}</div>
   </section>`;
@@ -1999,13 +2025,19 @@ function verVistaIA(vista) {
 }
 
 async function responderIA(boton) {
-  const respuestas = [...document.querySelectorAll('.ia-resp')].map((i) => ({duda: i.dataset.duda, respuesta: i.value.trim()})).filter((r) => r.respuesta);
+  const zona = $('#ia-dudas');
+  // cada duda con su respuesta y su foto (una foto sola ya es una respuesta)
+  const dudas = [...zona.querySelectorAll('.ia-preguntas li')].map((li) => ({duda: li.querySelector('.ia-resp').dataset.duda,
+    respuesta: li.querySelector('.ia-resp').value.trim(), archivos: fotosDelCampo(li.querySelector('.archivo-input'))})).filter((r) => r.respuesta || r.archivos.length);
   const extra = ($('#ia-extra')?.value || '').trim();
-  const archivos = fotosDelCampo($('#ia-dudas .archivo-input'));
-  if (!respuestas.length && !extra && !archivos.length) throw new Error('Contesta alguna duda, escribe algo más o añade una foto antes de repensar');
+  const sueltas = fotosDelCampo([...zona.querySelectorAll('.archivo-input')].find((i) => !i.closest('.ia-preguntas')));
+  const nFotos = sueltas.length + dudas.reduce((n, r) => n + r.archivos.length, 0), libres = Number(zona.dataset.libres) || 0;
+  if (!dudas.length && !extra && !nFotos) throw new Error('Contesta alguna duda, escribe algo más o añade una foto antes de repensar');
+  if (nFotos > libres) throw new Error(`En esta vuelta caben ${libres} fotos y has puesto ${nFotos}: quita ${nFotos - libres}`);
   boton.disabled = true;
-  toast(archivos.length ? `Repensando con tus respuestas y ${archivos.length === 1 ? 'la foto' : `${archivos.length} fotos`}…` : 'Repensando con tus respuestas…');
-  const fotos = await Promise.all(archivos.map(reducida));
+  toast(nFotos ? `Repensando con tus respuestas y ${nFotos === 1 ? 'la foto' : `${nFotos} fotos`}…` : 'Repensando con tus respuestas…');
+  const respuestas = await Promise.all(dudas.map(async (r) => ({duda: r.duda, respuesta: r.respuesta, fotos: await Promise.all(r.archivos.map(reducida))})));
+  const fotos = await Promise.all(sueltas.map(reducida));
   const form = $('#form-ia-ok'); // solo en un alta: lo que el usuario ya ha corregido de la propuesta
   await api('POST', `api/ia/tareas/${boton.dataset.id}/responder`, {respuestas, extra, fotos, ...(form ? {propuesta: leerFormIA(form)} : {})});
   iaTarea(boton.dataset.id); // vuelve a «Analizando…» y se actualiza sola
@@ -2056,7 +2088,7 @@ function estadoTarea(t) {
   return n ? plural(n, 'cambio') : 'Nada que cambiar';
 }
 function filaPendiente(t) {
-  const nombre = t.clase === 'revisar' ? `Correcciones para «${t.objetivo_nombre || '¿?'}»` : t.clase === 'detectar' ? 'Foto con varias piezas' : t.propuesta?.nombre || t.texto || 'Pieza sin nombre';
+  const nombre = nombreTareaIA(t);
   const modelo = nombreModelo(t.modelo || t.modelo_pedido || D.ia?.modelo);
   return `<div class="fila"><a class="fila-main" href="#/ia/${t.id}">${t.foto ? `<img class="thumb" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : ''}
       <div><div class="nombre">${esc(nombre)}</div><div class="sub">${esc(cuando(t.creada))}${modelo ? ` · ${esc(modelo)}` : ''}${t.texto && t.clase === 'revisar' ? ` · «${esc(t.texto)}»` : ''}</div></div></a>
@@ -2098,6 +2130,7 @@ async function descartarPendiente(valor) {
   for (const t of ids) await api('POST', `api/ia/tareas/${t}/descartar`).catch(() => {});
   CUENTA_PEND = null;
   await cargarPendientes();
+  await iaAbiertas(); // la lista «Sin terminar» de «Añadir con IA», si es la que está en pantalla
   toast(ids.length === 1 ? 'Descartada' : `${ids.length} descartadas`);
 }
 
@@ -2619,7 +2652,7 @@ function panelRevisar(objetivo, id, ayuda) {
     <form id="form-revisar" class="form sin-pad" autocomplete="off" data-objetivo="${objetivo}" data-id="${esc(id)}">
       <p class="ayuda">${esc(ayuda)} Te enseña solo lo que cambiaría y tú eliges qué aplicar.</p>
       <label>Qué corregir (opcional)<textarea name="texto" rows="2" maxlength="1000" placeholder="Los pines están al revés · Añade el consumo"></textarea></label>
-      ${campoFoto('Fotos (opcional)', 'Hasta 4. Si no pones ninguna, la IA mira la foto que ya tiene la pieza.', {varias: 4})}
+      ${campoFoto('Fotos (opcional)', 'Hasta 4. Sin ninguna, la IA mira la foto que ya tiene la pieza.', {varias: 4})}
       <div class="acciones"><button class="btn prim" type="submit">Pedir correcciones</button></div>
     </form></details>`;
 }

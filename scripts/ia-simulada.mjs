@@ -17,13 +17,15 @@ const DETECCION = {piezas: [
   {nombre: 'Módulo verde con conector', descripcion: 'Placa verde con un conector de tornillo.', cantidad: 2, x: 560, y: 560, ancho: 340, alto: 330}], dudas: []};
 // a propósito mal escrito («5v», «i2c», «corriente máxima»): la app tiene que dejarlo con su formato
 const relé = {nombre: 'Relé de 5 V (1 canal)', categoria: 'otro', resumen: 'Interruptor controlado por una señal de 5 V.', voltaje: '5v', interfaz: ['1 pin digital', 'i2c (0x20)'], alias: ['SRD-05VDC'],
-  pines: [{pin: 'VCC', uso: 'Alimentación 5v', funcion: 'vcc'}, {pin: 'GND', uso: 'Masa', funcion: 'gnd'}, {pin: 'IN', uso: 'Señal de control', funcion: 'dig'}],
+  pines: [{pin: 'VCC', uso: 'Alimentación 5v', funcion: 'vcc', nota: ''}, {pin: 'GND', uso: 'Masa', funcion: 'gnd', nota: ''}, {pin: 'IN', uso: 'Señal de control', funcion: 'dig', nota: ''}],
   datos: [{dato: 'corriente máxima', valor: '10A'}, {dato: 'Bobina:', valor: '70 ohm'}], ojo: 'No toques los bornes con red conectada.'};
 function pieza(texto, conFoto) {
   const t = texto.toLowerCase();
   if (t.includes('hc-sr04')) return {nombre: 'HC-SR04', tipo_existente: 'hc-sr04', tipo_nuevo: null, datos_pieza: [], cantidad: 1, dudas: [], confianza: 'alta'};
   if (t.includes('resistencia')) return {nombre: 'Resistencias de 220 Ω', tipo_existente: 'resistencia', tipo_nuevo: null, datos_pieza: [{dato: 'Valor', valor: '220 Ω'}], cantidad: 6, dudas: ['¿De qué valor son? No se leen bien las bandas.'], confianza: 'media'};
-  return {nombre: `Módulo relé de 5 V${conFoto ? '' : ' (sin foto)'}`, tipo_existente: null, tipo_nuevo: relé, datos_pieza: [], cantidad: t.includes('verde') ? 2 : 1, dudas: [], confianza: 'media'};
+  return {nombre: `Módulo relé de 5 V${conFoto ? '' : ' (sin foto)'}`, tipo_existente: null, tipo_nuevo: relé, datos_pieza: [], cantidad: t.includes('verde') ? 2 : 1,
+    // dos dudas la primera vez; cuando el usuario contesta («Respuestas a tus dudas»), ninguna
+    dudas: /Respuestas a tus dudas|Preguntaste/.test(texto) ? [] : ['¿Qué pone en la serigrafía del relé?', '¿Cuántos pines tiene el conector?'], confianza: 'media'};
 }
 
 createServer((req, res) => {
@@ -43,7 +45,9 @@ createServer((req, res) => {
     else salida = pieza(b.messages.filter((m) => m.role === 'user').map((m) => (Array.isArray(m.content) ? m.content.filter((p) => p.type === 'text').map((p) => p.text).join(' ') : m.content)).join(' '), conFoto);
     // sin formato fijo: el JSON va envuelto en texto y con ```json, como hacen muchos modelos
     const contenido = typeof salida === 'string' ? salida : formato ? JSON.stringify(salida) : `Aquí tienes:\n\`\`\`json\n${JSON.stringify({pieza: salida})}\n\`\`\``;
-    console.log(`[simulado] ${b.model} · formato: ${formato || 'texto'} · foto: ${conFoto}`);
+    const ultimo = b.messages.filter((m) => m.role === 'user').pop();
+    console.log(`[simulado] ${b.model} · formato: ${formato || 'texto'} · fotos: ${partes.filter((p) => p.type !== 'text').length}`
+      + ` · último mensaje: ${(Array.isArray(ultimo?.content) ? ultimo.content.filter((p) => p.type === 'text').map((p) => p.text).join(' ') : ultimo?.content || '').replace(/\s+/g, ' ').slice(0, 260)}`);
     setTimeout(() => enviar(200, {id: 'x', object: 'chat.completion', created: 1, model: b.model,
       choices: [{index: 0, message: {role: 'assistant', content: contenido}, finish_reason: 'stop'}], usage: {prompt_tokens: 1200, completion_tokens: 300, total_tokens: 1500}}), 400);
   });
