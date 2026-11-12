@@ -293,10 +293,15 @@ async function responderAlta(id, b) {
   const t = tarea(id);
   if (t.estado !== 'propuesta') throw new HttpError(409, `Esta propuesta ya está ${ESTADO[t.estado] || t.estado}: no se puede repensar`);
   if (t.rondas >= MAX_RONDAS) throw new HttpError(409, `Ya van ${MAX_RONDAS} vueltas: ${t.clase === 'revisar' ? 'aplica lo que te sirva y corrige a mano el resto' : 'corrige a mano y guarda'}`);
-  const respuestas = (Array.isArray(b.respuestas) ? b.respuestas : []).slice(0, 12)
-    .map((x) => ({duda: texto(x?.duda, 300), respuesta: texto(x?.respuesta, 500)})).filter((x) => x.duda && x.respuesta);
+  // cada respuesta puede llevar su foto («¿qué pone en la serigrafía?» → la foto de la serigrafía); una foto sola ya contesta
+  const contestadas = (Array.isArray(b.respuestas) ? b.respuestas : []).slice(0, 12)
+    .map((x) => ({duda: texto(x?.duda, 300), respuesta: texto(x?.respuesta, 500), fotos: fotosDe(x?.fotos, MAX_FOTOS_RONDA)})).filter((x) => x.duda && (x.respuesta || x.fotos.length));
   const extra = texto(b.extra, 1000);
-  const nuevas = fotosDe(b.fotos, MAX_FOTOS_RONDA);
+  // primero las de las respuestas, en su orden, y después las sueltas: así se numeran dentro de la vuelta
+  const nuevas = [...contestadas.flatMap((x) => x.fotos), ...fotosDe(b.fotos, MAX_FOTOS_RONDA)];
+  if (nuevas.length > MAX_FOTOS_RONDA) throw new HttpError(400, `Como mucho ${MAX_FOTOS_RONDA} fotos en cada vuelta (has puesto ${nuevas.length})`);
+  let numero = 0;
+  const respuestas = contestadas.map((x) => ({duda: x.duda, respuesta: x.respuesta, ...(x.fotos.length ? {fotos: x.fotos.map(() => ++numero)} : {})}));
   if (!respuestas.length && !extra && !nuevas.length) throw new HttpError(400, 'Contesta alguna duda, escribe algo más o añade una foto');
   if (nuevas.length) {
     const m = await infoModelo(db, t.modelo_pedido);
