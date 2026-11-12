@@ -320,7 +320,9 @@ const aSalida = (p) => ({
 });
 const textoRonda = (r) => ['He revisado tu propuesta (la de arriba ya lleva mis correcciones).',
   ...(r.fotos?.length ? [`Te mando ${r.fotos.length === 1 ? 'una foto más' : `${r.fotos.length} fotos más`} de la pieza.`] : []),
-  ...(r.respuestas.length ? ['Respuestas a tus dudas:', ...r.respuestas.map((x) => `- «${x.duda}» → ${x.respuesta}`)] : []),
+  // una respuesta puede llevar su foto: se le dice cuál es (x.fotos: su número dentro de las de este mensaje)
+  ...(r.respuestas.length ? ['Respuestas a tus dudas:', ...r.respuestas.map((x) => `- «${x.duda}» → ${x.respuesta || 'te lo enseño en la foto'}${
+    x.fotos?.length && r.fotos?.length ? ` (mira la foto ${x.fotos.join(' y ')} de este mensaje)` : ''}`)] : []),
   ...(r.extra ? [`Además: ${r.extra}`] : []),
   'Rehaz la propuesta completa con esto en cuenta.'].join('\n');
 
@@ -526,8 +528,10 @@ async function proponerRevision(db, entrada, foto, sesion, mas = {}) {
     pieza: conPieza ? {nombre: actual.pieza.nombre, tipo_actual: actual.pieza.tipo_id || null, notas: actual.pieza.notas,
       datos_pieza: actual.pieza.datos_pieza.map(([dato, valor]) => ({dato, valor}))} : undefined});
   // vueltas anteriores: lo que preguntó el modelo y lo que contestó el usuario (para rehacer las correcciones con eso)
-  const vueltas = arr(entrada.rondas).map((r) => [...arr(r.respuestas).map((x) => `- Preguntaste «${x.duda}» → ${x.respuesta}`),
-    ...(r.extra ? [`- Además: ${r.extra}`] : []), ...(r.fotos?.length && m.vision ? [`- Te mando ${r.fotos.length === 1 ? 'una foto más' : `${r.fotos.length} fotos más`}.`] : [])].join('\n')).filter(Boolean);
+  let antes = (foto && m.vision ? 1 + arr(mas.extra).length : 0); // fotos que van delante de las de cada vuelta
+  const vueltas = arr(entrada.rondas).map((r) => { const base = antes; antes += m.vision ? arr(r.fotos).length : 0; return [...arr(r.respuestas).map((x) =>
+    `- Preguntaste «${x.duda}» → ${x.respuesta || 'te lo enseño en una foto'}${x.fotos?.length && m.vision ? ` (es la foto nº ${x.fotos.map((n) => base + n).join(' y ')} de las que te mando)` : ''}`),
+    ...(r.extra ? [`- Además: ${r.extra}`] : []), ...(r.fotos?.length && m.vision ? [`- Te mando ${r.fotos.length === 1 ? 'una foto más' : `${r.fotos.length} fotos más`}.`] : [])].join('\n'); }).filter(Boolean);
   const respuestas = vueltas.length ? `Respuestas a tus dudas de antes (tenlas en cuenta y no vuelvas a preguntarlas):\n${vueltas.join('\n')}\n\n` : '';
   const contenido = [{type: 'text', text: `${entrada.texto ? `Lo que quiero que revises: ${entrada.texto}\n\n` : 'Revisa la ficha entera.\n\n'}${respuestas}Lo que hay guardado:\n${datosTexto}`}];
   // la foto (y las otras que mandó el usuario al pedirla), y después las que añadió al contestar las dudas, en orden
