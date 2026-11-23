@@ -1719,6 +1719,7 @@ table.t.t-pines tr.tachado .pin { text-decoration: none; }
 .pin-grupo-pines { font: 500 .92rem/1.35 var(--mono); color: var(--tinta); overflow-wrap: anywhere; }
 .pin-grupo-notas { grid-column: auto; font-size: .72rem; line-height: 1.3; padding: 1px 7px; }
 .pin-grupo-cuerpo { border-top: var(--ancho-fino) solid var(--linea); background: color-mix(in srgb, var(--bg) 55%, var(--hoja)); }
+.pin-grupo-cuerpo .pin-chip { background: var(--hoja); }
 .pin-grupo-cuerpo table.t.t-pines td:first-child { padding-left: 14px; }
 .pin-grupo-cuerpo table.t.t-pines tr:last-child td { border-bottom: 0; }
 
