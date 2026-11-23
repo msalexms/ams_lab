@@ -1271,6 +1271,7 @@ main:has(> .inv), main:has(> .fi), main:has(.fi), main:has(> .ia-plano), main:ha
 /* ---------- ficha ---------- */
 .migas { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 16px; font-size: .9rem; color: var(--gris); }
 .migas a { color: var(--tinta); font-weight: 600; text-decoration: none; }
+.migas a.back { display: inline; min-height: 0; margin: 0; color: var(--tinta); font-size: inherit; }
 .migas a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .migas-sep { color: var(--gris); }
 .fi { display: grid; grid-template-columns: minmax(300px, 440px) minmax(0, 1fr); gap: 28px; align-items: start; }
