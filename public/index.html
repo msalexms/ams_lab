@@ -1,26 +1,28 @@
 <!doctype html>
-<html lang="es" data-fuente="jetbrains">
+<html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
-  <meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#171716" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#222229" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="AMS lab">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
-  <title>[AMS] lab</title>
+  <title>AMS lab</title>
+  <!-- estilo AMSTech: letras, colores y componentes compartidos (public/amstech-ui, ver su README) y lo propio de la app en style.css -->
+  <link rel="stylesheet" href="amstech-ui/fuentes.css">
+  <link rel="stylesheet" href="amstech-ui/tokens.css">
+  <link rel="stylesheet" href="amstech-ui/componentes.css">
   <link rel="stylesheet" href="style.css">
-  <!-- la letra elegida (tabla ajustes) se recuerda en el dispositivo solo para no parpadear al abrir; manda la del servidor -->
-  <script>try { const f = localStorage.getItem('ams-fuente'); if (f) document.documentElement.dataset.fuente = f; } catch {}</script>
-  <link rel="preload" href="fuentes/jetbrains-mono-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="amstech-ui/fuentes/figtree-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 </head>
 <body>
   <header class="top">
-    <a class="logo" href="#/">[AMS]<span> lab</span></a>
+    <a class="logo" href="#/" aria-label="AMS lab, inicio"><svg class="ams-thor" width="30" height="30" viewBox="-2 -2 52 52" aria-hidden="true"><path class="cabeza" d="M10 4L21 14h6L38 4l5 14q1 2 1 6v12q0 8-8 8H12q-8 0-8-8V24q0-4 1-6z"/><path class="prompt" d="M13 25l6 5-6 5M24 36h10"/></svg>lab<span>amstech</span></a>
     <nav id="nav">
       <a href="#/" data-v="inventario">Inventario<span class="n" id="n-inv"></span></a>
       <a href="#/proyectos" data-v="proyectos">Proyectos<span class="n" id="n-pro"></span></a>
@@ -28,7 +30,8 @@
       <a href="#/ajustes" data-v="ajustes">Ajustes</a>
     </nav>
     <div class="top-der">
-      <input id="q" type="search" placeholder="Buscar piezas, pines…" autocomplete="off" spellcheck="false" enterkeyhint="search" aria-label="Buscar (tecla /)">
+      <label class="buscar"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><input id="q" type="search" placeholder="Buscar piezas, pines…" autocomplete="off" spellcheck="false" enterkeyhint="search" aria-label="Buscar (tecla /)"><kbd aria-hidden="true">/</kbd></label>
+      <button id="buscar-abrir" class="btn icono buscar-abrir" type="button" aria-label="Buscar"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg></button>
       <button id="tema" class="tema" type="button" title="Cambiar tema">Tema</button>
     </div>
   </header>
@@ -43,12 +46,12 @@
     <a href="#/ajustes" data-v="ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Ajustes</a>
   </nav>
   <div id="fab-menu" class="fab-menu" role="menu" hidden>
-    <label class="fab-op" role="menuitem">Foto con IA<span class="sub">abre la cámara y la analiza</span>
+    <label class="fab-op" role="menuitem"><span class="fab-ico prim"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span><span>Foto con IA<span class="sub">abre la cámara y la analiza</span></span>
       <input type="file" accept="image/*" capture="environment" id="fab-camara" hidden></label>
-    <label class="fab-op" role="menuitem">Elegir foto con IA<span class="sub">de la galería</span>
+    <label class="fab-op" role="menuitem"><span class="fab-ico"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M5 18l5-5 3 3 2-2 4 4"/></svg></span><span>Elegir foto con IA<span class="sub">de la galería</span></span>
       <input type="file" accept="image/*" id="fab-galeria" hidden></label>
-    <a class="fab-op" role="menuitem" href="#/ia/varias">Varias piezas en una foto<span class="sub">la IA las separa y las identifica</span></a>
-    <a class="fab-op" role="menuitem" href="#/nuevo">A mano<span class="sub">rellenas tú la ficha</span></a>
+    <a class="fab-op" role="menuitem" href="#/ia/varias"><span class="fab-ico"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="7" height="7" rx="1"/><rect x="13" y="11" width="7" height="7" rx="1"/><path d="M4 17h6M14 7h6"/></svg></span><span>Varias piezas en una foto<span class="sub">la IA las separa y las identifica</span></span></a>
+    <a class="fab-op" role="menuitem" href="#/nuevo"><span class="fab-ico"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19l1-4L16 5l3 3L9 18z"/><path d="M14 7l3 3"/></svg></span><span>A mano<span class="sub">rellenas tú la ficha</span></span></a>
   </div>
   <div id="toast" role="status"></div>
   <script src="app.js"></script>
