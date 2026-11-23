@@ -2,59 +2,73 @@
   "categorias": [
     {
       "id": "micro",
-      "nombre": "Microcontroladores"
+      "nombre": "Microcontroladores",
+      "color": "#7CC4FF"
     },
     {
       "id": "sensor",
-      "nombre": "Sensores"
+      "nombre": "Sensores",
+      "color": "#6FD08C"
     },
     {
       "id": "entrada",
-      "nombre": "Pulsadores y mandos"
+      "nombre": "Pulsadores y mandos",
+      "color": "#FFD23F"
     },
     {
       "id": "pantalla",
-      "nombre": "Pantallas y LED"
+      "nombre": "Pantallas y LED",
+      "color": "#B48CFF"
     },
     {
       "id": "actuador",
-      "nombre": "Motores y sonido"
+      "nombre": "Motores y sonido",
+      "color": "#FF9F4A"
     },
     {
       "id": "comunicacion",
-      "nombre": "Comunicación"
+      "nombre": "Comunicación",
+      "color": "#FF8FB8"
     },
     {
       "id": "modulo",
-      "nombre": "Módulos y placas"
+      "nombre": "Módulos y placas",
+      "color": "#9FD8D0"
     },
     {
       "id": "alimentacion",
-      "nombre": "Alimentación"
+      "nombre": "Alimentación",
+      "color": "#FF8A80"
     },
     {
       "id": "semi",
-      "nombre": "Semiconductores"
+      "nombre": "Semiconductores",
+      "color": "#A9B4FF"
     },
     {
       "id": "pasivo",
-      "nombre": "Pasivos"
+      "nombre": "Pasivos",
+      "color": "#D9C2A0"
     },
     {
       "id": "conector",
-      "nombre": "Conectores y cables"
+      "nombre": "Conectores y cables",
+      "color": "#E9C9A0"
     },
     {
       "id": "montaje",
-      "nombre": "Tornillería y montaje"
+      "nombre": "Tornillería y montaje",
+      "color": "#BFC6CF"
     },
     {
       "id": "herramienta",
-      "nombre": "Herramientas"
+      "nombre": "Herramientas",
+      "color": "#F2B880"
     },
     {
       "id": "otro",
-      "nombre": "Otros"
+      "nombre": "Otros",
+      "color": "#C9C6DA"
     }
   ],
   "funciones_pin": [
@@ -125,7 +139,6 @@
   "ajustes": {
     "tema": "auto",
     "vista_inventario": "lista",
-    "fuente": "jetbrains",
     "ia_razonar": "poco"
   }
 }

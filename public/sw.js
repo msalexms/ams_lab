@@ -12,8 +12,12 @@ const FOTOS = 'ams-fotos';
 const BASE = self.registration.scope;
 const u = (p) => new URL(p, BASE).href;
 const DATOS = u('api/datos');
-const LETRAS = ['jetbrains-mono', 'ibm-plex-mono', 'ibm-plex-sans'].flatMap((f) => [400, 500, 600].map((w) => `fuentes/${f}-${w}.woff2`));
-const PRECARGA = ['./', 'index.html', conV('app.js'), conV('style.css'), 'icon.svg', 'manifest.webmanifest', ...LETRAS].map(u);
+// letras y estilos compartidos de AMSTech (public/amstech-ui): latín y latín extendido
+const LETRAS = ['bricolage-grotesque-latin-opsz-normal', 'bricolage-grotesque-latin-ext-opsz-normal',
+  ...[400, 500, 600, 700, 800].flatMap((w) => [`figtree-latin-${w}-normal`, `figtree-latin-ext-${w}-normal`]),
+  ...[400, 500].flatMap((w) => [`dm-mono-latin-${w}-normal`, `dm-mono-latin-ext-${w}-normal`])].map((f) => `amstech-ui/fuentes/${f}.woff2`);
+const ESTILOS = ['amstech-ui/fuentes.css', 'amstech-ui/tokens.css', 'amstech-ui/componentes.css', 'style.css'].map(conV);
+const PRECARGA = ['./', 'index.html', conV('app.js'), ...ESTILOS, 'icon.svg', 'manifest.webmanifest', ...LETRAS].map(u);
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(WEB).then((c) => c.addAll(PRECARGA)).then(() => self.skipWaiting()));
