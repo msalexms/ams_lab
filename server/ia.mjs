@@ -27,7 +27,11 @@ import {vocabularios} from './uniformar.mjs';
 
 const GO = 'https://opencode.ai/inference/go';
 const BASE = (process.env.IA_BASE || GO).replace(/\/$/, '');
-const UA = 'ams-lab/1.0 (inventario de electronica; ai-sdk)'; // OpenCode pide que los clientes se identifiquen con su nombre
+const UA = 'circuitbin/1.0 (electronics inventory; ai-sdk)'; // OpenCode pide que los clientes se identifiquen con su nombre
+const idiomaDe = (db) => (db.prepare("SELECT valor FROM ajustes WHERE clave = 'idioma'").get()?.valor === 'es' ? 'es' : 'en');
+const reglaIdioma = (lang) => (lang === 'es'
+  ? 'Todo en español de España.'
+  : 'Write ALL human-readable fields (component name, summary, pin uses, pin notes, warnings, data keys/values, doubts, and quick-reply options) in clear, concise English.');
 const MODELO_DEF = 'claude-haiku-5-5';
 const ESPERA_MS = 150_000;
 const APIS = ['chat-completions', 'messages'];
@@ -208,9 +212,9 @@ const GUIA_OPCIONES = `- En cada duda, "opciones": si la respuesta es una de poc
   con un toque («Sí, soldados» · «Solo los agujeros»; «ABX00027» · «ABX00032»). Vacío si la respuesta es libre
   (lo que pone una serigrafía que no se lee). El usuario siempre puede escribir otra respuesta.`;
 
-function instrucciones(ctx) {
+function instrucciones(ctx, lang = 'en') {
   return `Eres el asistente de un almacén personal de componentes de electrónica (ESP32, sensores, módulos, pasivos, tornillería…).
-El usuario te enseña UNA pieza (foto y/o texto). Identifícala y propón cómo darla de alta. Todo en español de España.
+El usuario te enseña UNA pieza (foto y/o texto). Identifícala y propón cómo darla de alta. ${reglaIdioma(lang)}
 
 Reglas:
 - Si la pieza encaja en un tipo de la lista, pon su id en "tipo_existente" y "tipo_nuevo" a null. Crea un tipo nuevo solo si ninguno encaja.
@@ -372,7 +376,7 @@ async function proponer(db, entrada, foto, sesion, mas = {}) {
   let error, nivel = nivelRazonar(db);
   for (let intento = 1; intento <= 2; intento++) {
     try {
-      const r = await llamar(m, clave, sesion, {system: instrucciones(ctx), messages: mensajes, schema: esquema(ctx), name: 'pieza',
+      const r = await llamar(m, clave, sesion, {system: instrucciones(ctx, idiomaDe(db)), messages: mensajes, schema: esquema(ctx), name: 'pieza',
         description: 'Propuesta para dar de alta una pieza de electrónica'}, nivel);
       // sin formato fijo, la respuesta pasa por el rescate (envoltorios, campos que faltan: cada arreglo queda como duda)
       const propuesta = m.estructurada ? normalizar(db, r.salida) : rescatarObjeto(db, ctx, r.salida);
@@ -441,7 +445,7 @@ export async function probar(clave, modeloId) {
   const m = (await modelos()).find((x) => x.id === modeloId);
   if (!m) throw new Error('Ese modelo no está en el catálogo de OpenCode Go.');
   try {
-    await generateText({model: crearModelo(m, clave, 'ams-lab-prueba'), prompt: 'Responde solo: ok', maxOutputTokens: 200, maxRetries: 0,
+    await generateText({model: crearModelo(m, clave, 'circuitbin-prueba'), prompt: 'Responde solo: ok', maxOutputTokens: 200, maxRetries: 0,
       abortSignal: AbortSignal.timeout(60_000)});
   } catch (e) { throw new Error(explicar(e)); }
   return m;
@@ -470,10 +474,10 @@ export async function guardarConfig(db, {clave, modelo, quitarClave} = {}) {
 }
 
 // ---------- «Corregir con IA»: el modelo corrige una ficha existente (y la pieza, si se revisa desde una pieza) ----------
-function instruccionesRevision(ctx, conPieza, conTipo = true) {
+function instruccionesRevision(ctx, conPieza, conTipo = true, lang = 'en') {
   return `Eres el asistente de un almacén personal de componentes de electrónica. Te paso ${conTipo ? 'la FICHA de un tipo de componente' : ''}
 ${conPieza ? `${conTipo ? 'y ' : ''}los datos de UNA pieza concreta${conTipo ? ' de ese tipo' : ' (todavía sin tipo)'} ` : ''}tal como están guardados, y quizá una foto y lo que el usuario quiere que revises.
-Devuelve ${conTipo ? 'la ficha' : ''}${conPieza ? `${conTipo ? ' y ' : ''}la pieza` : ''} COMPLETA y corregida. Todo en español de España.
+Devuelve ${conTipo ? 'la ficha' : ''}${conPieza ? `${conTipo ? ' y ' : ''}la pieza` : ''} COMPLETA y corregida. ${reglaIdioma(lang)}
 
 Reglas:
 - Corrige errores y completa lo que falte, pero NO cambies lo que ya está bien ni reescribas por estilo: cada cambio
@@ -559,7 +563,7 @@ async function proponerRevision(db, entrada, foto, sesion, mas = {}) {
   let error, nivel = nivelRazonar(db);
   for (let intento = 1; intento <= 2; intento++) {
     try {
-      const r = await llamar(m, clave, sesion, {system: instruccionesRevision(ctx, conPieza, conTipo), messages: [{role: 'user', content: contenido}],
+      const r = await llamar(m, clave, sesion, {system: instruccionesRevision(ctx, conPieza, conTipo, idiomaDe(db)), messages: [{role: 'user', content: contenido}],
         schema: esquemaRevision(ctx, conPieza, conTipo), name: 'revision', description: 'Ficha corregida'}, nivel);
       const o = r.salida;
       if (!o.tipo && !o.pieza) throw new SinFormato(JSON.stringify(o), r.uso); // sin formato fijo: ni ficha ni pieza
@@ -604,9 +608,9 @@ async function proponerRevision(db, entrada, foto, sesion, mas = {}) {
 // Solo las separa (nombre aproximado y recuadro). La ficha de cada una sale después, con su propio recorte, por el
 // camino de siempre («alta»): así cada pieza se identifica de cerca y el usuario confirma una a una o todas juntas.
 export const MAX_DETECTADAS = 40;
-const INSTRUCCIONES_DETECTAR = `Eres el asistente de un almacén personal de componentes de electrónica. El usuario te enseña UNA foto con VARIAS
+const instruccionesDetectar = (lang = 'en') => `Eres el asistente de un almacén personal de componentes de electrónica. El usuario te enseña UNA foto con VARIAS
 piezas (módulos, sensores, placas, pasivos, cables, tornillería…) para darlas de alta. Di qué piezas hay y dónde está cada una.
-Todo en español de España.
+${reglaIdioma(lang)}
 
 Reglas:
 - Una entrada por cada pieza distinta. Piezas iguales que están juntas (un montón de resistencias iguales, una tira de
@@ -653,7 +657,7 @@ async function detectar(db, entrada, foto, sesion) {
   let error, nivel = nivelRazonar(db);
   for (let intento = 1; intento <= 2; intento++) {
     try {
-      const r = await llamar(m, clave, sesion, {system: INSTRUCCIONES_DETECTAR, messages: [{role: 'user', content: contenido}], schema: esquemaDetectar,
+      const r = await llamar(m, clave, sesion, {system: instruccionesDetectar(idiomaDe(db)), messages: [{role: 'user', content: contenido}], schema: esquemaDetectar,
         name: 'piezas', description: 'Las piezas que hay en la foto y dónde está cada una'}, nivel);
       const d = normalizarDeteccion(r.salida);
       if (!d.piezas.length) throw new Error('El modelo no ha encontrado piezas en la foto. Prueba con otra foto (más cerca y con luz) o con otro modelo.');
@@ -680,9 +684,9 @@ export async function ejecutarAlta(db, fotosDir, id) {
     // las otras fotos del principio y las de cada respuesta (si alguna ya no está, se sigue sin ella)
     const leer = (lista) => Promise.all(arr(lista).map((n) => readFile(`${fotosDir}/${n}`).catch(() => null))).then((l) => l.filter(Boolean));
     const mas = {extra: await leer(entrada.fotos_extra), rondas: await Promise.all(arr(entrada.rondas).map((r) => leer(r.fotos)))};
-    const {propuesta, modelo} = t.clase === 'detectar' ? await detectar(db, entrada, foto, `ams-lab-tarea-${id}`)
-      : t.clase === 'revisar' ? await proponerRevision(db, entrada, foto, `ams-lab-tarea-${id}`, mas)
-      : await proponer(db, entrada, foto, `ams-lab-tarea-${id}`, mas);
+    const {propuesta, modelo} = t.clase === 'detectar' ? await detectar(db, entrada, foto, `circuitbin-tarea-${id}`)
+      : t.clase === 'revisar' ? await proponerRevision(db, entrada, foto, `circuitbin-tarea-${id}`, mas)
+      : await proponer(db, entrada, foto, `circuitbin-tarea-${id}`, mas);
     db.prepare("UPDATE ia_tareas SET estado = 'propuesta', propuesta = ?, modelo = ?, error = NULL WHERE id = ? AND estado = 'pendiente'")
       .run(JSON.stringify(propuesta), modelo, id);
   } catch (e) {

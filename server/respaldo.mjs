@@ -115,7 +115,7 @@ export function comprobarBase(ruta) {
     const version = db.prepare('PRAGMA user_version').get().user_version;
     if (version > VERSION) fallo(400, `Es de una versión más nueva de la app (datos v${version}; esta usa v${VERSION}): actualiza la app antes de restaurarla`);
     const hay = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name));
-    if (!hay.has('componentes') || !hay.has('tipos')) fallo(400, 'Esa base de datos no es de ams_lab (faltan las tablas de piezas y tipos)');
+    if (!hay.has('componentes') || !hay.has('tipos')) fallo(400, 'Esa base de datos no es de CircuitBin (faltan las tablas de piezas y tipos)');
     const integridad = db.prepare('PRAGMA integrity_check').get();
     if (Object.values(integridad)[0] !== 'ok') fallo(400, 'La base de datos está dañada (falla la comprobación de integridad)');
     const n = (tabla) => (hay.has(tabla) ? db.prepare(`SELECT COUNT(*) AS n FROM ${tabla}`).get().n : 0);
@@ -134,7 +134,7 @@ export async function exportar(db, dataDir, res) {
       .map((f) => ({f, st: statSync(join(dirFotos, f))})).filter((x) => x.st.isFile());
     const resumen = comprobarBase(tmp);
     const ahora = Date.now();
-    const manifiesto = Buffer.from(JSON.stringify({app: 'ams-lab', formato: 1, exportado: new Date(ahora).toISOString(),
+    const manifiesto = Buffer.from(JSON.stringify({app: 'circuitbin', formato: 1, exportado: new Date(ahora).toISOString(),
       modelo: resumen.version, piezas: resumen.piezas, tipos: resumen.tipos, proyectos: resumen.proyectos, fotos: fotos.length}, null, 2));
     const entradas = [
       {nombre: 'manifiesto.json', bytes: manifiesto.length, mtime: ahora, contenido: manifiesto},
@@ -143,7 +143,7 @@ export async function exportar(db, dataDir, res) {
     ];
     const fecha = new Date(ahora).toISOString().slice(0, 10);
     res.writeHead(200, {'content-type': 'application/gzip', 'cache-control': 'no-store',
-      'content-disposition': `attachment; filename="ams-lab-${fecha}.tar.gz"`});
+      'content-disposition': `attachment; filename="circuitbin-${fecha}.tar.gz"`});
     await pipeline(Readable.from(tar(entradas)), createGzip({level: 6}), res);
   } finally {
     try { unlinkSync(tmp); } catch {}
@@ -188,7 +188,7 @@ export async function prepararSubida(req, dataDir) {
       renameSync(subida, join(dir, 'lab.db'));
       return resumenEtapa(token, dir, {origen: 'base', fotos: 0, exportado: null});
     }
-    fallo(400, 'Ese archivo no es una copia de ams_lab: sube el .tar.gz que exporta la app o un .db');
+    fallo(400, 'Ese archivo no es una copia de CircuitBin: sube el .tar.gz que exporta la app o un .db');
   } catch (e) {
     rmSync(dir, {recursive: true, force: true});
     throw e;

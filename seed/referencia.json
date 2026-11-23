@@ -139,6 +139,7 @@
   "ajustes": {
     "tema": "auto",
     "vista_inventario": "lista",
-    "ia_razonar": "poco"
+    "ia_razonar": "poco",
+    "idioma": "en"
   }
 }

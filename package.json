@@ -1,11 +1,11 @@
 {
-  "name": "ams-lab",
-  "description": "Almacén digital de componentes electrónicos para homelab: inventario con fotos, fichas de pines, proyectos e identificación con IA",
+  "name": "circuitbin",
+  "description": "Self-hosted electronics component inventory with real photos, color-coded pinouts, stock-matched projects & AI part identification",
   "license": "MIT",
-  "homepage": "https://github.com/msalexms/ams_lab#readme",
+  "homepage": "https://github.com/msalexms/circuitbin#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/msalexms/ams_lab.git"
+    "url": "git+https://github.com/msalexms/circuitbin.git"
   },
   "private": true,
   "type": "module",

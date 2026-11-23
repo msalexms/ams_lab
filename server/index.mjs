@@ -24,7 +24,7 @@ import {estado, ejecutarAlta, normalizar, cerrarInterrumpidas, modelos, guardarC
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUB = join(ROOT, 'public');
-const DATA = process.env.AMS_LAB_DATA || join(ROOT, 'data');
+const DATA = process.env.CIRCUITBIN_DATA || process.env.AMS_LAB_DATA || join(ROOT, 'data');
 const FOTOS = join(DATA, 'fotos');
 const PORT = Number(process.env.PORT) || 4321;
 const MAX_FOTO = 10 * 1024 * 1024;
@@ -164,8 +164,8 @@ function guardarDatosPieza(id, datos) {
 }
 
 // preferencias que se pueden cambiar desde la web y sus valores válidos (los valores por defecto están en seed/referencia.json)
-const NOMBRE_AJUSTE = {tema: 'Tema', vista_inventario: 'Vista del inventario', fuente: 'Letra', ia_razonar: 'Cuánto razona la IA'}; // «Letra» ya no se elige (estilo AMSTech), pero sale en el historial antiguo
-const AJUSTES = {tema: ['auto', 'claro', 'noche'], vista_inventario: ['lista', 'cuadricula'], ia_razonar: ['poco', 'medio', 'mucho']};
+const NOMBRE_AJUSTE = {tema: 'Tema', vista_inventario: 'Vista del inventario', fuente: 'Letra', ia_razonar: 'Cuánto razona la IA', idioma: 'Idioma'}; // «Letra» ya no se elige (estilo AMSTech), pero sale en el historial antiguo
+const AJUSTES = {tema: ['auto', 'claro', 'noche'], vista_inventario: ['lista', 'cuadricula'], ia_razonar: ['poco', 'medio', 'mucho'], idioma: ['en', 'es']};
 
 // ---------- restaurar una copia (Ajustes → Datos) ----------
 // antes de nada, copia completa del estado actual (base de datos + fotos) en la carpeta de copias, fuera de la rotación.
@@ -637,7 +637,7 @@ async function api(req, res, path) {
   if (m === 'GET' && path === '/api/historial') return send(res, 200, db.prepare('SELECT * FROM historial ORDER BY id DESC LIMIT 200').all());
   if (m === 'GET' && path === '/api/exportar')
     return send(res, 200, JSON.stringify({exportado: new Date().toISOString(), ...todo()}, null, 2), 'application/json; charset=utf-8',
-      {'content-disposition': `attachment; filename="ams-lab-${new Date().toISOString().slice(0, 10)}.json"`});
+      {'content-disposition': `attachment; filename="circuitbin-${new Date().toISOString().slice(0, 10)}.json"`});
 
   if (m === 'POST' && path === '/api/componentes') {
     const b = await leerJson(req), c = limpiar(b, false);
@@ -1007,7 +1007,7 @@ async function api(req, res, path) {
 // ---------- ficheros ----------
 // huella de la web: cambia cuando cambian app.js, style.css o sw.js. index.html los pide con «?v=<huella>», así que un
 // proxy que guarde los .js y .css (Nginx Proxy Manager con «Cache Assets») o el navegador nunca sirven una versión vieja.
-const WEB_HUELLA = ['app.js', 'style.css', 'sw.js', 'amstech-ui/fuentes.css', 'amstech-ui/tokens.css', 'amstech-ui/componentes.css'];
+const WEB_HUELLA = ['i18n.js', 'app.js', 'style.css', 'sw.js', 'amstech-ui/fuentes.css', 'amstech-ui/tokens.css', 'amstech-ui/componentes.css'];
 let huellaWeb = {clave: '', valor: ''};
 function huella() {
   const rutas = WEB_HUELLA.map((f) => join(PUB, f));
@@ -1022,7 +1022,7 @@ function huella() {
 async function paginaPrincipal(res) {
   const v = huella();
   const html = (await readFile(join(PUB, 'index.html'), 'utf8'))
-    .replace(/href="((?:amstech-ui\/)?[\w-]+\.css)"/g, `href="$1?v=${v}"`).replace('src="app.js"', `src="app.js?v=${v}"`)
+    .replace(/href="((?:amstech-ui\/)?[\w-]+\.css)"/g, `href="$1?v=${v}"`).replace(/src="(i18n|app)\.js"/g, `src="$1.js?v=${v}"`)
     .replace('</head>', `  <meta name="version-web" content="${v}">\n</head>`);
   send(res, 200, html, TYPES['.html'], {'cache-control': 'no-cache'});
 }
@@ -1062,13 +1062,13 @@ const server = createServer(async (req, res) => {
   }
 }).listen(PORT, '0.0.0.0', () => {
   const ips = Object.values(networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address);
-  console.log(`[AMS] lab → http://localhost:${PORT}`);
+  console.log(`CircuitBin → http://localhost:${PORT}`);
   ips.forEach((ip) => console.log(`         móvil → http://${ip}:${PORT}`));
 });
 
 // cierre limpio (docker stop, Ctrl+C): deja de aceptar peticiones y cierra la base de datos (vuelca el WAL)
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => {
-  console.log(`[AMS] lab: cerrando (${sig})`);
+  console.log(`CircuitBin: cerrando (${sig})`);
   server.close();
   server.closeAllConnections();
   try { db.close(); } catch {}
