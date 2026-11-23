@@ -316,7 +316,7 @@ async function responderAlta(id, b) {
   } else {
     // alta: la propuesta tal como la tiene el usuario (con sus correcciones), con la misma limpieza que al guardar
     const pb = b.propuesta && typeof b.propuesta === 'object' ? b.propuesta : {};
-    const actual = normalizar(db, {...t.propuesta, ...pb, dudas: t.propuesta.dudas, confianza: t.propuesta.confianza,
+    const actual = normalizar(db, {...t.propuesta, ...pb, dudas: t.propuesta.dudas, opciones: t.propuesta.opciones, confianza: t.propuesta.confianza,
       tipo_existente: pb.tipo === '__nuevo' ? null : pb.tipo ?? t.propuesta.tipo_existente,
       tipo_nuevo: pb.tipo === '__nuevo' ? pb.tipo_nuevo : pb.tipo ? null : t.propuesta.tipo_nuevo});
     entrada.rondas = [...(entrada.rondas || []), {propuesta: actual, respuestas, extra, ...(fotos.length ? {fotos} : {})}];
