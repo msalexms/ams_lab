@@ -823,7 +823,8 @@ const imagenGrande = ({foto = '', tipo = '', cat, pie}) => `<figure class="fi-im
   <figcaption>${pie}</figcaption></figure>`;
 const notaOjo = (f) => (f.ojo ? `<div class="ams-aviso aviso-ojo"><b>${ICO.aviso}Ojo</b><p>${esc(f.ojo)}</p></div>` : '');
 // pines y, al lado, la ficha del tipo (tensión, pines, interfaces, estado, datos y proyectos). Las placas con muchos pines
-// (agrupados por función) ocupan todo el ancho y la ficha del tipo va debajo
+// (agrupados por función) ocupan toda la columna derecha y la ficha del tipo pasa a la izquierda, bajo la imagen y
+// «Esta pieza» (en el móvil, debajo de los pines). Devuelve {der, izq}: lo de cada columna.
 function fichaDelTipo(f, tipo, ps, pie = '') {
   const pines = tablaPines(f), nPines = list(f.pines).length;
   const celdas = [['Tensión', esc(voltajeDe(f)) || '—'], ['Pines', nPines || '—'],
@@ -831,11 +832,12 @@ function fichaDelTipo(f, tipo, ps, pie = '') {
     ...list(f.datos).map(([k, v]) => [esc(k), esc(v)]),
     list(f.alias).length ? ['Otros nombres', esc(list(f.alias).join(', ')), true] : null,
     ['Estado', f.revisado === 0 ? '<span class="aviso">Sin comprobar</span>' : 'Comprobada ✓']];
-  return `<div class="fi-dos${!pines || nPines > PINES_AGRUPAR ? ' una' : ''}">
-    ${pines ? `<section class="fi-pines"><h2 class="rotulo">Pines</h2><div class="caja">${pines}</div></section>` : ''}
-    <section class="fi-tipo"><h2 class="rotulo">Ficha del tipo</h2><div class="caja fi-tipo-caja">${cajetin(celdas)}
+  const secPines = pines ? `<section class="fi-pines"><h2 class="rotulo">Pines</h2><div class="caja">${pines}</div></section>` : '';
+  const secTipo = `<section class="fi-tipo"><h2 class="rotulo">Ficha del tipo</h2><div class="caja fi-tipo-caja">${cajetin(celdas)}
       ${ps.length ? `<h3 class="fi-h">Proyectos que la usan</h3><div class="fi-proyectos">${listaProyectos(ps)}</div>` : ''}
-      ${pie ? `<p class="meta">${pie}</p>` : ''}</div></section></div>`;
+      ${pie ? `<p class="meta">${pie}</p>` : ''}</div></section>`;
+  if (nPines > PINES_AGRUPAR) return {der: `<div class="fi-dos una">${secPines}</div>`, izq: secTipo};
+  return {der: `<div class="fi-dos${pines ? '' : ' una'}">${secPines}${secTipo}</div>`, izq: ''};
 }
 
 function vComponente(id) {
@@ -844,6 +846,8 @@ function vComponente(id) {
   const f = g(c.tipo), conTipo = !!(c.tipo && D.tipos[c.tipo]), cat = catOf(c), ia = D.ia?.activa;
   const delTipo = conTipo ? D.componentes.filter((x) => x.tipo === c.tipo).length : 0;
   const ps = conTipo ? proyectosDe(c.tipo) : [];
+  const ft = conTipo ? fichaDelTipo(f, c.tipo, ps, `${delTipo > 1 ? `La comparten tus ${delTipo} piezas de este tipo` : 'Común a todas las piezas de este tipo'} ·
+    <a href="#/g/${esc(c.tipo)}/editar">Editar la ficha del tipo</a>`) : {der: '', izq: ''};
   const datos = list(c.datos).length ? c.datos.map(([k, v]) => [esc(k), esc(v)]) : [['Datos propios', '—']];
   const esta = `<section class="caja fi-esta"><div class="fi-esta-cab"><h2 class="rotulo">Esta pieza</h2>
       ${c.revisar ? '<button class="btn mini" id="quitar-pendiente" type="button">Hecho: quitar «pendiente»</button>'
@@ -860,6 +864,7 @@ function vComponente(id) {
           pie: `<span>${c.foto ? 'Foto de la pieza' : conTipo ? 'Dibujo del tipo · aún sin foto' : 'Aún sin foto'}</span>
             <label class="btn mini">${ICO.camara}${c.foto ? 'Cambiar foto' : 'Añadir foto'}<input type="file" accept="image/*" id="foto2" hidden></label>`})}
         ${esta}
+        ${ft.izq}
       </div>
       <div class="fi-der">
         <header class="fi-cab">${etqCat(cat, 'etq-cat')}<h1>${esc(c.nombre)}${c.revisar ? ' <span class="etq-pend">pendiente</span>' : ''}</h1>
@@ -876,8 +881,7 @@ function vComponente(id) {
         ${panelRevisar('pieza', c.id, c.tipo ? 'La IA repasa esta pieza y la ficha de su tipo.' : 'La IA repasa esta pieza.')}
         ${conTipo ? notaOjo(f) : ''}
         ${conTipo && f.revisado === 0 ? avisoIA(c.tipo, true) : ''}
-        ${conTipo ? fichaDelTipo(f, c.tipo, ps, `${delTipo > 1 ? `La comparten tus ${delTipo} piezas de este tipo` : 'Común a todas las piezas de este tipo'} ·
-            <a href="#/g/${esc(c.tipo)}/editar">Editar la ficha del tipo</a>`)
+        ${conTipo ? ft.der
           : '<p class="gris">Esta pieza no tiene tipo. Ponle uno en «Editar» y verás aquí sus pines, su tensión y sus datos.</p>'}
         <div class="plegables">${plegableHist('pieza', c.id, conTipo ? c.tipo : '')}</div>
         <p class="meta">Actualizado ${esc(c.actualizado)}</p>
@@ -890,6 +894,7 @@ function vTipo(tipo) {
   if (!f) return vacio('Ese tipo no está en el glosario.');
   const cs = D.componentes.filter((c) => c.tipo === tipo).sort(byName);
   const ps = proyectosDe(tipo), cat = f.categoria || 'otro';
+  const ft = fichaDelTipo(f, tipo, ps, `Ficha ${{seed: 'del catálogo base', ia: 'de la IA', usuario: 'escrita por ti'}[f.origen] || ''}`);
   const tuyas = `<section class="caja fi-esta"><div class="fi-esta-cab"><h2 class="rotulo">Tus piezas de este tipo</h2>
       <a class="btn mini" href="#/nuevo?tipo=${esc(tipo)}">${ICO.mas}Añadir</a></div>
     ${cs.length ? `<div class="lista-piezas">${cs.map(filaComp).join('')}</div>` : '<p class="gris">No tienes ninguna todavía.</p>'}</section>`;
@@ -898,6 +903,7 @@ function vTipo(tipo) {
       <div class="fi-izq">
         ${imagenGrande({tipo, cat, pie: `<span>Dibujo del tipo${stock(tipo) ? ` · tienes ${stockText(tipo)}` : ''}</span>`})}
         ${tuyas}
+        ${ft.izq}
       </div>
       <div class="fi-der">
         <header class="fi-cab">${etqCat(cat, 'etq-cat')}<h1>${esc(f.nombre)}</h1>${f.resumen ? `<p class="fi-resumen">${esc(f.resumen)}</p>` : ''}</header>
@@ -913,7 +919,7 @@ function vTipo(tipo) {
         ${f.archivado ? `<p class="nota">Archivado: no sale en el glosario ni al elegir tipo. <button class="btn mini" data-tipo-archivar="${esc(tipo)}" data-v="0">Recuperar</button></p>` : ''}
         ${notaOjo(f)}
         ${f.revisado === 0 ? avisoIA(tipo, true) : ''}
-        ${fichaDelTipo(f, tipo, ps, `Ficha ${{seed: 'del catálogo base', ia: 'de la IA', usuario: 'escrita por ti'}[f.origen] || ''}`)}
+        ${ft.der}
         <div class="plegables">${plegableHist('tipo', tipo)}</div>
       </div>
     </article>`;
