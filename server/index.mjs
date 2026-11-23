@@ -107,7 +107,7 @@ const datosDe = (filas) => {
 
 const todo = () => ({
   ia: estado(db), // nunca la clave entera
-  categorias: db.prepare('SELECT id, nombre FROM categorias ORDER BY orden').all(),
+  categorias: db.prepare('SELECT id, nombre, color FROM categorias ORDER BY orden').all(),
   funciones: db.prepare('SELECT id, nombre, color_claro, color_oscuro, tachado FROM funciones_pin ORDER BY orden').all(),
   ajustes: Object.fromEntries(db.prepare('SELECT clave, valor FROM ajustes').all().map((a) => [a.clave, a.valor])),
   dificultades: db.prepare('SELECT nivel, nombre FROM dificultades ORDER BY nivel').all(),
@@ -164,8 +164,8 @@ function guardarDatosPieza(id, datos) {
 }
 
 // preferencias que se pueden cambiar desde la web y sus valores válidos (los valores por defecto están en seed/referencia.json)
-const NOMBRE_AJUSTE = {tema: 'Tema', vista_inventario: 'Vista del inventario', fuente: 'Letra', ia_razonar: 'Cuánto razona la IA'};
-const AJUSTES = {tema: ['auto', 'claro', 'noche'], vista_inventario: ['lista', 'cuadricula'], fuente: ['jetbrains', 'mixta', 'plex-mono', 'mono-sistema', 'plex-sans', 'sistema'], ia_razonar: ['poco', 'medio', 'mucho']};
+const NOMBRE_AJUSTE = {tema: 'Tema', vista_inventario: 'Vista del inventario', fuente: 'Letra', ia_razonar: 'Cuánto razona la IA'}; // «Letra» ya no se elige (estilo AMSTech), pero sale en el historial antiguo
+const AJUSTES = {tema: ['auto', 'claro', 'noche'], vista_inventario: ['lista', 'cuadricula'], ia_razonar: ['poco', 'medio', 'mucho']};
 
 // ---------- restaurar una copia (Ajustes → Datos) ----------
 // antes de nada, copia completa del estado actual (base de datos + fotos) en la carpeta de copias, fuera de la rotación.
@@ -1007,7 +1007,7 @@ async function api(req, res, path) {
 // ---------- ficheros ----------
 // huella de la web: cambia cuando cambian app.js, style.css o sw.js. index.html los pide con «?v=<huella>», así que un
 // proxy que guarde los .js y .css (Nginx Proxy Manager con «Cache Assets») o el navegador nunca sirven una versión vieja.
-const WEB_HUELLA = ['app.js', 'style.css', 'sw.js'];
+const WEB_HUELLA = ['app.js', 'style.css', 'sw.js', 'amstech-ui/fuentes.css', 'amstech-ui/tokens.css', 'amstech-ui/componentes.css'];
 let huellaWeb = {clave: '', valor: ''};
 function huella() {
   const rutas = WEB_HUELLA.map((f) => join(PUB, f));
@@ -1022,7 +1022,7 @@ function huella() {
 async function paginaPrincipal(res) {
   const v = huella();
   const html = (await readFile(join(PUB, 'index.html'), 'utf8'))
-    .replace('href="style.css"', `href="style.css?v=${v}"`).replace('src="app.js"', `src="app.js?v=${v}"`)
+    .replace(/href="((?:amstech-ui\/)?[\w-]+\.css)"/g, `href="$1?v=${v}"`).replace('src="app.js"', `src="app.js?v=${v}"`)
     .replace('</head>', `  <meta name="version-web" content="${v}">\n</head>`);
   send(res, 200, html, TYPES['.html'], {'cache-control': 'no-cache'});
 }
