@@ -823,7 +823,8 @@ const imagenGrande = ({foto = '', tipo = '', cat, pie}) => `<figure class="fi-im
   <figcaption>${pie}</figcaption></figure>`;
 const notaOjo = (f) => (f.ojo ? `<div class="ams-aviso aviso-ojo"><b>${ICO.aviso}Ojo</b><p>${esc(f.ojo)}</p></div>` : '');
 // pines y, al lado, la ficha del tipo (tensión, pines, interfaces, estado, datos y proyectos). Las placas con muchos pines
-// (agrupados por función) ocupan todo el ancho y la ficha del tipo va debajo
+// (agrupados por función) ocupan toda la columna derecha y la ficha del tipo pasa a la izquierda, bajo la imagen y
+// «Esta pieza» (en el móvil, debajo de los pines). Devuelve {der, izq}: lo de cada columna.
 function fichaDelTipo(f, tipo, ps, pie = '') {
   const pines = tablaPines(f), nPines = list(f.pines).length;
   const celdas = [['Tensión', esc(voltajeDe(f)) || '—'], ['Pines', nPines || '—'],
@@ -831,11 +832,12 @@ function fichaDelTipo(f, tipo, ps, pie = '') {
     ...list(f.datos).map(([k, v]) => [esc(k), esc(v)]),
     list(f.alias).length ? ['Otros nombres', esc(list(f.alias).join(', ')), true] : null,
     ['Estado', f.revisado === 0 ? '<span class="aviso">Sin comprobar</span>' : 'Comprobada ✓']];
-  return `<div class="fi-dos${!pines || nPines > PINES_AGRUPAR ? ' una' : ''}">
-    ${pines ? `<section class="fi-pines"><h2 class="rotulo">Pines</h2><div class="caja">${pines}</div></section>` : ''}
-    <section class="fi-tipo"><h2 class="rotulo">Ficha del tipo</h2><div class="caja fi-tipo-caja">${cajetin(celdas)}
+  const secPines = pines ? `<section class="fi-pines"><h2 class="rotulo">Pines</h2><div class="caja">${pines}</div></section>` : '';
+  const secTipo = `<section class="fi-tipo"><h2 class="rotulo">Ficha del tipo</h2><div class="caja fi-tipo-caja">${cajetin(celdas)}
       ${ps.length ? `<h3 class="fi-h">Proyectos que la usan</h3><div class="fi-proyectos">${listaProyectos(ps)}</div>` : ''}
-      ${pie ? `<p class="meta">${pie}</p>` : ''}</div></section></div>`;
+      ${pie ? `<p class="meta">${pie}</p>` : ''}</div></section>`;
+  if (nPines > PINES_AGRUPAR) return {der: `<div class="fi-dos una">${secPines}</div>`, izq: secTipo};
+  return {der: `<div class="fi-dos${pines ? '' : ' una'}">${secPines}${secTipo}</div>`, izq: ''};
 }
 
 function vComponente(id) {
@@ -844,6 +846,8 @@ function vComponente(id) {
   const f = g(c.tipo), conTipo = !!(c.tipo && D.tipos[c.tipo]), cat = catOf(c), ia = D.ia?.activa;
   const delTipo = conTipo ? D.componentes.filter((x) => x.tipo === c.tipo).length : 0;
   const ps = conTipo ? proyectosDe(c.tipo) : [];
+  const ft = conTipo ? fichaDelTipo(f, c.tipo, ps, `${delTipo > 1 ? `La comparten tus ${delTipo} piezas de este tipo` : 'Común a todas las piezas de este tipo'} ·
+    <a href="#/g/${esc(c.tipo)}/editar">Editar la ficha del tipo</a>`) : {der: '', izq: ''};
   const datos = list(c.datos).length ? c.datos.map(([k, v]) => [esc(k), esc(v)]) : [['Datos propios', '—']];
   const esta = `<section class="caja fi-esta"><div class="fi-esta-cab"><h2 class="rotulo">Esta pieza</h2>
       ${c.revisar ? '<button class="btn mini" id="quitar-pendiente" type="button">Hecho: quitar «pendiente»</button>'
@@ -860,6 +864,7 @@ function vComponente(id) {
           pie: `<span>${c.foto ? 'Foto de la pieza' : conTipo ? 'Dibujo del tipo · aún sin foto' : 'Aún sin foto'}</span>
             <label class="btn mini">${ICO.camara}${c.foto ? 'Cambiar foto' : 'Añadir foto'}<input type="file" accept="image/*" id="foto2" hidden></label>`})}
         ${esta}
+        ${ft.izq}
       </div>
       <div class="fi-der">
         <header class="fi-cab">${etqCat(cat, 'etq-cat')}<h1>${esc(c.nombre)}${c.revisar ? ' <span class="etq-pend">pendiente</span>' : ''}</h1>
@@ -876,8 +881,7 @@ function vComponente(id) {
         ${panelRevisar('pieza', c.id, c.tipo ? 'La IA repasa esta pieza y la ficha de su tipo.' : 'La IA repasa esta pieza.')}
         ${conTipo ? notaOjo(f) : ''}
         ${conTipo && f.revisado === 0 ? avisoIA(c.tipo, true) : ''}
-        ${conTipo ? fichaDelTipo(f, c.tipo, ps, `${delTipo > 1 ? `La comparten tus ${delTipo} piezas de este tipo` : 'Común a todas las piezas de este tipo'} ·
-            <a href="#/g/${esc(c.tipo)}/editar">Editar la ficha del tipo</a>`)
+        ${conTipo ? ft.der
           : '<p class="gris">Esta pieza no tiene tipo. Ponle uno en «Editar» y verás aquí sus pines, su tensión y sus datos.</p>'}
         <div class="plegables">${plegableHist('pieza', c.id, conTipo ? c.tipo : '')}</div>
         <p class="meta">Actualizado ${esc(c.actualizado)}</p>
@@ -890,6 +894,7 @@ function vTipo(tipo) {
   if (!f) return vacio('Ese tipo no está en el glosario.');
   const cs = D.componentes.filter((c) => c.tipo === tipo).sort(byName);
   const ps = proyectosDe(tipo), cat = f.categoria || 'otro';
+  const ft = fichaDelTipo(f, tipo, ps, `Ficha ${{seed: 'del catálogo base', ia: 'de la IA', usuario: 'escrita por ti'}[f.origen] || ''}`);
   const tuyas = `<section class="caja fi-esta"><div class="fi-esta-cab"><h2 class="rotulo">Tus piezas de este tipo</h2>
       <a class="btn mini" href="#/nuevo?tipo=${esc(tipo)}">${ICO.mas}Añadir</a></div>
     ${cs.length ? `<div class="lista-piezas">${cs.map(filaComp).join('')}</div>` : '<p class="gris">No tienes ninguna todavía.</p>'}</section>`;
@@ -898,6 +903,7 @@ function vTipo(tipo) {
       <div class="fi-izq">
         ${imagenGrande({tipo, cat, pie: `<span>Dibujo del tipo${stock(tipo) ? ` · tienes ${stockText(tipo)}` : ''}</span>`})}
         ${tuyas}
+        ${ft.izq}
       </div>
       <div class="fi-der">
         <header class="fi-cab">${etqCat(cat, 'etq-cat')}<h1>${esc(f.nombre)}</h1>${f.resumen ? `<p class="fi-resumen">${esc(f.resumen)}</p>` : ''}</header>
@@ -913,7 +919,7 @@ function vTipo(tipo) {
         ${f.archivado ? `<p class="nota">Archivado: no sale en el glosario ni al elegir tipo. <button class="btn mini" data-tipo-archivar="${esc(tipo)}" data-v="0">Recuperar</button></p>` : ''}
         ${notaOjo(f)}
         ${f.revisado === 0 ? avisoIA(tipo, true) : ''}
-        ${fichaDelTipo(f, tipo, ps, `Ficha ${{seed: 'del catálogo base', ia: 'de la IA', usuario: 'escrita por ti'}[f.origen] || ''}`)}
+        ${ft.der}
         <div class="plegables">${plegableHist('tipo', tipo)}</div>
       </div>
     </article>`;
@@ -1839,27 +1845,31 @@ function htmlLoteAltas(ts) {
     const p = t.propuesta || {};
     const tipo = p.tipo_existente ? esc(g(p.tipo_existente).nombre) : p.tipo_nuevo ? `${esc(p.tipo_nuevo.nombre)} <span class="aviso">· tipo nuevo, sin comprobar</span>` : 'Sin tipo';
     const estado = {pendiente: 'identificando…', propuesta: `confianza ${p.confianza || '?'}`, aplicada: 'guardada', descartada: 'descartada', error: 'error'}[t.estado] || t.estado;
-    const mini = t.foto ? `<img class="thumb" src="fotos/${encodeURIComponent(t.foto)}" alt="">` : '';
+    const mini = `<span class="fila-img">${t.foto ? `<img src="fotos/${encodeURIComponent(t.foto)}" alt="" loading="lazy">` : ''}</span>`;
     const cuerpo = t.estado === 'error' ? `<p class="mal">${esc(t.error || 'Error')}</p>`
-      : t.estado === 'propuesta' ? `<p class="sub">${tipo} · ${p.cantidad ?? 1} ud.${p.dudas?.length ? ` · <span class="aviso">${plural(p.dudas.length, 'duda')}: ábrela para contestar</span>` : ''}</p>` : '';
+      : t.estado === 'propuesta' ? `<p class="sub">${tipo} · ${p.cantidad ?? 1} ud.</p>` : '';
+    // la confianza y las dudas como etiquetas; en las demás, su estado
+    const etqs = t.estado === 'propuesta' ? `${etqConfianza(p.confianza)}${p.dudas?.length ? `<span class="ams-etiqueta ams-etiqueta--amarilla">${plural(p.dudas.length, 'duda')}</span>` : ''}`
+      : `<span class="ams-etiqueta${t.estado === 'error' ? ' ams-etiqueta--mal' : t.estado === 'aplicada' ? ' ams-etiqueta--ok' : ''}">${esc(estado)}</span>`;
     const nombre = esc(p.nombre || 'Pieza sin identificar');
-    return `<section class="pad lote-tarea lote-alta lote-${t.estado}">
+    return `<section class="lote-tarea lote-alta lote-${t.estado}">
       ${t.estado === 'propuesta' ? `<input type="checkbox" class="lote-cambio" data-tarea="${t.id}" value="alta" aria-label="Guardar ${nombre}" ${LOTE.desmarcados.has(`${t.id}:alta`) ? '' : 'checked'}>` : '<span></span>'}
       ${mini}
-      <div><div class="lote-t">${t.estado === 'aplicada' && t.componente_id ? `<a class="nombre" href="#/c/${t.componente_id}">${nombre}</a>` : `<span class="nombre">${nombre}</span>`}
-        <span class="gris">· ${esc(estado)}</span>${t.estado === 'propuesta' ? `<a class="lote-abrir" href="#/ia/${t.id}">Abrir</a>` : ''}</div>${cuerpo}</div></section>`;
+      <div class="lote-alta-main"><div class="lote-t">${t.estado === 'aplicada' && t.componente_id ? `<a class="nombre" href="#/c/${t.componente_id}">${nombre}</a>` : `<span class="nombre">${nombre}</span>`}
+        <span class="lote-etqs">${etqs}</span></div>${cuerpo}</div>
+      ${t.estado === 'propuesta' ? `<a class="btn mini lote-abrir" href="#/ia/${t.id}">${p.dudas?.length ? 'Contestar' : 'Abrir'}</a>` : '<span></span>'}</section>`;
   };
   const quedan = ts.some((t) => t.estado === 'propuesta' || t.estado === 'error');
-  return `${cabecera(`${piezasTxt(ts.length)} de una foto`, '', listas < ts.length
+  return `<div class="ia-plano">${cabIA(`${piezasTxt(ts.length)} de una foto`, listas < ts.length
       ? `Identificando… ${listas} de ${ts.length} listas. Puedes ir mirando las que ya han llegado.`
       : 'Guarda las marcadas tal como están, o abre una para corregirla, contestar sus dudas o ponerle sitio. Las fichas nuevas quedan «sin comprobar».')}
     ${listas < ts.length ? '<div class="ia-progreso" role="progressbar" aria-label="La IA está identificando las piezas"><span></span></div>' : ''}
-    ${ts.map(tarea).join('')}
-    ${quedan ? `<div class="acciones pad lote-acciones">
+    <div class="caja lote-lista">${ts.map(tarea).join('')}</div>
+    ${quedan ? `<div class="acciones lote-acciones">
       <button class="btn prim" type="button" id="lote-guardar">Guardar las marcadas</button>
       <button class="btn" type="button" data-lote-marcar="todo">Marcar todas</button>
       <button class="btn" type="button" data-lote-marcar="nada">Ninguna</button>
-      <button class="btn peligro" type="button" id="lote-descartar">Descartar lo que quede</button></div>` : '<p class="pad gris">Ya no queda nada por revisar de esta foto.</p>'}`;
+      <button class="btn peligro" type="button" id="lote-descartar">Descartar lo que quede</button></div>` : '<p class="gris">Ya no queda nada por revisar de esta foto.</p>'}</div>`;
 }
 async function guardarLoteAltas(boton) {
   const ids = [...document.querySelectorAll('.lote-cambio:checked')].map((x) => Number(x.dataset.tarea));
@@ -1933,15 +1943,20 @@ async function iaTarea(id) {
   if (t.clase === 'revisar') { pintar(vistaCambios(t)); return; }
   if (t.clase === 'detectar') { pintar(vistaDeteccion(t)); pintarDeteccion(); return; }
   const p = t.propuesta, n = p.tipo_nuevo || {}, sel = p.tipo_existente || (p.tipo_nuevo ? '__nuevo' : '');
-  pintar(`${cabecera('Revisa la propuesta', '', 'Corrige lo que haga falta, mira cómo quedará y guarda. Nada se ha guardado todavía.')}
-    ${specs([['Confianza', esc(p.confianza)], ['Modelo', esc(nombreModelo(t.modelo))], ['Coste', esc(costeTexto(p.coste))], ['Vuelta', t.rondas ? String(t.rondas + 1) : '']])}
+  // como una ficha: la foto grande a la izquierda y, a la derecha, las dudas y el formulario en cajas
+  const meta = `<p class="ia-meta">${etqConfianza(p.confianza)}<span>${esc(nombreModelo(t.modelo))}</span>${costeTexto(p.coste) ? `<span>${esc(costeTexto(p.coste))}</span>` : ''}${t.rondas ? `<span>Vuelta ${t.rondas + 1}</span>` : ''}</p>`;
+  const tira = tiraFotos(t);
+  pintar(`<div class="ia-plano">${cabIA('Revisa la propuesta', 'Corrige lo que haga falta, mira cómo quedará y guarda. Nada se ha guardado todavía.', meta)}
+    <div class="ia-cuerpo${t.foto ? '' : ' sin-foto'}">
+    ${t.foto ? `<aside class="ia-lado"><figure class="fi-img con-foto"><a class="fi-img-marco" href="fotos/${encodeURIComponent(t.foto)}" target="_blank" rel="noopener" aria-label="Ver la foto grande"><img src="fotos/${encodeURIComponent(t.foto)}" alt=""></a>
+      ${tira ? `<figcaption>${tira}</figcaption>` : ''}</figure></aside>` : ''}
+    <div class="ia-principal">
     ${dudasIA(t, p)}
     <div class="filtros ia-pestanas"><div class="cats">
       <button class="f on" type="button" data-ia-vista="editar">Editar</button>
       <button class="f" type="button" data-ia-vista="previa">Vista previa</button></div></div>
     <div id="ia-previa" hidden></div>
-    <form id="form-ia-ok" class="form" autocomplete="off" data-id="${t.id}" data-foto="${t.foto ? `fotos/${encodeURIComponent(t.foto)}` : ''}">
-      ${foto}${tiraFotos(t)}
+    <form id="form-ia-ok" class="form caja" autocomplete="off" data-id="${t.id}" data-foto="${t.foto ? `fotos/${encodeURIComponent(t.foto)}` : ''}">
       <label>Nombre<input name="nombre" required maxlength="200" value="${esc(p.nombre)}"></label>
       <div class="campo"><span class="campo-t">Tipo</span>${selectorTipo(sel, p.tipo_nuevo ? `Nuevo: ${p.tipo_nuevo.nombre} (propuesto por la IA)` : 'Nuevo tipo…')}</div>
       <div id="nuevo-tipo" class="nuevo-tipo" ${sel === '__nuevo' ? '' : 'hidden'}>
@@ -1968,7 +1983,7 @@ async function iaTarea(id) {
         <button class="btn prim" type="submit">Guardar pieza</button>
         <button class="btn peligro" type="button" id="ia-descartar" data-id="${t.id}"${t.lote ? ` data-volver="#/ia/lote/${esc(t.lote)}"` : ''}>Descartar</button>
       </div>
-    </form>`);
+    </form></div></div></div>`);
 }
 
 async function enviarIA(form) {
@@ -2009,6 +2024,9 @@ function tiraFotos(t, todas = false) {
   return `<div class="ia-tira${todas ? ' pad' : ''}">${todas ? '' : '<span class="ayuda">También ha mirado:</span>'}${fs.map((f) =>
     `<a href="fotos/${encodeURIComponent(f)}" target="_blank" rel="noopener"><img src="fotos/${encodeURIComponent(f)}" alt="" loading="lazy"></a>`).join('')}</div>`;
 }
+// cabecera de las pantallas de la IA (fuera de caja, como la de una ficha) y la confianza como etiqueta
+const cabIA = (titulo, texto = '', extra = '') => `<header class="ia-cab"><h1>${titulo}</h1>${texto ? `<p>${esc(texto)}</p>` : ''}${extra}</header>`;
+const etqConfianza = (c) => `<span class="ams-etiqueta ${c === 'alta' ? 'ams-etiqueta--ok' : c === 'media' ? 'ams-etiqueta--amarilla' : 'ams-etiqueta--mal'}">Confianza ${esc(c || '?')}</span>`;
 const costeTexto = (c) => (c && c.dolares != null ? `≈ ${c.dolares < 0.0001 ? '<0,0001' : c.dolares.toFixed(4).replace('.', ',')} $` : '');
 
 // dudas del modelo, cada una con su hueco para contestar y, si el modelo ve fotos, su foto («¿qué pone en la
@@ -2021,11 +2039,15 @@ function dudasIA(t, p) {
   // lo que no es una pregunta (avisos de la app: «se han corregido solos algunos campos») no lleva hueco para contestar
   const avisos = (p.dudas || []).filter((d) => !d.includes('?'));
   p = {...p, dudas: (p.dudas || []).filter((d) => d.includes('?'))};
+  // las respuestas que propone el modelo para cada duda (propuesta.opciones[pregunta]): se eligen con un toque
+  const ops = (d) => list(p.opciones?.[d]);
   return `<section class="ia-dudas pad" id="ia-dudas" data-libres="${puedeFotos ? libres : 0}">
-    <h3>${p.dudas?.length ? `Dudas del modelo<span class="n">${p.dudas.length}</span>` : '¿Algo que aclarar?'}</h3>
+    <h3>${p.dudas?.length ? (p.dudas.length === 1 ? 'La IA tiene una duda' : `La IA tiene ${p.dudas.length} dudas`) : '¿Algo que aclarar?'}</h3>
     ${avisos.map((d) => `<p class="ia-aviso">${esc(d)}</p>`).join('')}
     ${p.dudas?.length ? `<ol class="ia-preguntas">${p.dudas.map((d, i) => `<li><p>${esc(d)}</p>
-      <div class="ia-resp-fila"><input class="ia-resp" data-duda="${esc(d)}" maxlength="500" placeholder="Tu respuesta" autocomplete="off" aria-label="Respuesta a la duda ${i + 1}">
+      ${ops(d).length ? `<div class="ia-ops" role="group" aria-label="Respuestas propuestas a la duda ${i + 1}">${ops(d).map((o) =>
+        `<button class="ia-op" type="button" data-op="${esc(o)}" aria-pressed="false">${esc(o)}</button>`).join('')}</div>` : ''}
+      <div class="ia-resp-fila"><input class="ia-resp" data-duda="${esc(d)}" maxlength="500" placeholder="${ops(d).length ? 'Elige una o escribe otra respuesta' : 'Tu respuesta'}" autocomplete="off" aria-label="Respuesta a la duda ${i + 1}">
         ${puedeFotos ? campoFoto('', '', {compacto: true}) : ''}</div></li>`).join('')}</ol>` : ''}
     <label class="ia-extra">${p.dudas?.length ? 'Algo más (opcional)' : correccion ? 'Qué más tiene que corregir o saber' : 'Qué más tiene que saber'}
       <textarea id="ia-extra" rows="2" maxlength="1000" placeholder="${correccion ? 'Tiene 16 MB de flash · Añade el consumo' : 'Tiene 3 pines · Es la versión en placa'}"></textarea></label>
@@ -2880,7 +2902,7 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-cuenta],[data-pf],[data-adj],#quitar-foto,#quitar-pendiente,#marcar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-rev-vista],[data-vista-inv],#sel-modo,[data-sel],[data-sel-acc],[data-lote-todas],[data-lote-marcar],#lote-aplicar,#lote-descartar,.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar],[data-pend-descartar],[data-hist-grupo],#hist-mas,[data-reg-nivel],#reg-copiar,[data-pro],#det-crear,[data-det-marcar],#lote-guardar,#filtros-abrir,#formato-aplicar,[data-formato-marcar],[data-pines-vista]');
+  const t = e.target.closest('[data-cat],[data-cuenta],[data-pf],[data-adj],#quitar-foto,#quitar-pendiente,#marcar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-rev-vista],[data-vista-inv],#sel-modo,[data-sel],[data-sel-acc],[data-lote-todas],[data-lote-marcar],#lote-aplicar,#lote-descartar,.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar],[data-pend-descartar],[data-hist-grupo],#hist-mas,[data-reg-nivel],#reg-copiar,[data-pro],#det-crear,[data-det-marcar],#lote-guardar,#filtros-abrir,#formato-aplicar,[data-formato-marcar],[data-pines-vista],[data-op]');
   if (!t || !app.contains(t)) return; // solo botones de la propia vista (no el <html>, que lleva data-* del tema)
   if (t.dataset.cuenta) { // móvil: el recuadro de la cantidad se convierte en − n + (y se queda así mientras ajustas)
     ui.cuentaAbierta = Number(t.dataset.cuenta);
@@ -2891,6 +2913,12 @@ app.addEventListener('click', async (e) => {
   }
   // sin redibujar la vista: el selector de tipo y las tablas editables viven dentro de formularios a medio rellenar
   if (t.classList.contains('combo-op')) { elegirTipo(t.closest('.combo'), t.dataset.valor); return; }
+  if (t.dataset.op != null) { // una respuesta propuesta por la IA: la pone en su campo (otra vez: la quita)
+    const li = t.closest('li'), campo = li.querySelector('.ia-resp');
+    campo.value = t.getAttribute('aria-pressed') === 'true' ? '' : t.dataset.op;
+    marcarOpciones(li);
+    return;
+  }
   if (t.id === 'ia-abrir') { // el panel de la IA se abre debajo de la fila de acciones
     const d = $('.ia-revisar');
     d.open = !d.open;
@@ -3125,6 +3153,12 @@ app.addEventListener('focusout', (e) => {
 });
 app.addEventListener('pointerdown', (e) => { if (e.target.closest('.combo-op')) e.preventDefault(); }); // que el campo no pierda el foco antes del clic
 app.addEventListener('input', (e) => { if (e.target.classList.contains('combo-q')) abrirCombo(e.target.closest('.combo')); });
+// respuesta a una duda escrita a mano: se marca la opción propuesta que coincide (o ninguna)
+function marcarOpciones(li) {
+  const v = norm(li.querySelector('.ia-resp').value.trim());
+  li.querySelectorAll('.ia-op').forEach((o) => o.setAttribute('aria-pressed', String(!!v && norm(o.dataset.op) === v)));
+}
+app.addEventListener('input', (e) => { if (e.target.classList.contains('ia-resp')) marcarOpciones(e.target.closest('li')); });
 // buscar en el historial y en el registro (con una pequeña espera para no preguntar en cada tecla)
 app.addEventListener('input', (e) => {
   if (e.target.id !== 'hist-q' && e.target.id !== 'reg-q') return;

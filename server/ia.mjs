@@ -203,6 +203,11 @@ function contexto(db) {
   };
 }
 
+// las dudas llevan las respuestas posibles para que el usuario elija con un toque (y siempre puede escribir otra)
+const GUIA_OPCIONES = `- En cada duda, "opciones": si la respuesta es una de pocas posibilidades, de 2 a 4 respuestas cortas para elegir
+  con un toque («Sí, soldados» · «Solo los agujeros»; «ABX00027» · «ABX00032»). Vacío si la respuesta es libre
+  (lo que pone una serigrafía que no se lee). El usuario siempre puede escribir otra respuesta.`;
+
 function instrucciones(ctx) {
   return `Eres el asistente de un almacén personal de componentes de electrónica (ESP32, sensores, módulos, pasivos, tornillería…).
 El usuario te enseña UNA pieza (foto y/o texto). Identifícala y propón cómo darla de alta. Todo en español de España.
@@ -221,8 +226,9 @@ Reglas:
 - "voltaje" corto («3,3–5 V», «5 V · señal a 3,3 V»). "cantidad": las unidades que se ven, o null.
 - NO INVENTES. Si no estás seguro de un pinout, una tensión o un dato, déjalo vacío y pregúntalo en "dudas":
   un pinout o una tensión inventados pueden quemar una placa.
-- "dudas": como mucho 5, escritas como PREGUNTAS cortas que el usuario pueda contestar mirando la pieza
+- "dudas": como mucho 5, cada una con su "pregunta" corta que el usuario pueda contestar mirando la pieza
   («¿Tiene 3 o 4 pines?», «¿Qué pone en la serigrafía?»). Nada de dudas que no cambien la ficha.
+${GUIA_OPCIONES}
 - Si el usuario ya ha revisado tu propuesta y te contesta, rehaz la propuesta COMPLETA: respeta lo que él ha
   corregido y lo que te ha respondido, y quita de "dudas" lo que ya esté resuelto.
 - Textos cortos y llanos, sin emojis.
@@ -234,6 +240,8 @@ ${ctx.tipos.map((t) => `${t.id} | ${t.nombre} | ${t.categoria}${t.alias ? ` | ${
 
 ${guiaEstilo(ctx.estilo)}`;
 }
+
+const DUDA = z.object({pregunta: z.string(), opciones: z.array(z.string()).describe('2–4 respuestas posibles para elegir, o vacío si es libre')});
 
 // esquema cerrado: lo que no esté en la base de datos no se puede devolver. Sin límites de longitud en el esquema
 // (algunos proveedores los rechazan en modo estricto): las longitudes las corta normalizar().
@@ -250,7 +258,7 @@ function esquema(ctx) {
     }).nullable(),
     datos_pieza: z.array(dato),
     cantidad: z.number().nullable(),
-    dudas: z.array(z.string()),
+    dudas: z.array(DUDA),
     confianza: z.enum(['alta', 'media', 'baja']),
   });
 }
@@ -260,7 +268,16 @@ export function normalizar(db, p) {
   if (!p || typeof p !== 'object') throw new Error('La propuesta no es un objeto');
   const cats = new Set(db.prepare('SELECT id FROM categorias').all().map((r) => r.id));
   const funcs = new Set(db.prepare('SELECT id FROM funciones_pin').all().map((r) => r.id));
-  const dudas = arr(p.dudas).map((d) => txt(d, 300)).filter(Boolean).slice(0, 12);
+  // cada duda es un texto (las de la app y las de modelos sin formato fijo) o {pregunta, opciones}; las respuestas
+  // posibles quedan aparte, por pregunta (opciones[pregunta] = [...]), para que «dudas» siga siendo una lista de textos
+  const opciones = {};
+  const previas = p.opciones && typeof p.opciones === 'object' && !Array.isArray(p.opciones) ? p.opciones : {};
+  const dudas = arr(p.dudas).map((d) => {
+    const pregunta = txt(typeof d === 'object' && d ? d.pregunta ?? d.duda : d, 300);
+    const ops = [...new Set(arr(typeof d === 'object' && d ? d.opciones : previas[pregunta]).map((o) => txt(o, 80)).filter(Boolean))].slice(0, 4);
+    if (pregunta && ops.length >= 2) opciones[pregunta] = ops;
+    return pregunta;
+  }).filter(Boolean).slice(0, 12);
   const vocab = vocabularios(db);
   let existente = p.tipo_existente ? String(p.tipo_existente) : null;
   if (existente && !db.prepare('SELECT 1 FROM tipos WHERE id = ? AND archivado = 0').get(existente)) { // archivados: ocultos
@@ -288,7 +305,7 @@ export function normalizar(db, p) {
     nombre: txt(p.nombre, 200) || nuevo?.nombre || '', tipo_existente: existente, tipo_nuevo: nuevo,
     datos_pieza: datosUniformes(paresDe(p.datos_pieza), vocab.pieza),
     cantidad: p.cantidad !== null && p.cantidad !== '' && Number.isFinite(cant) && cant >= 0 ? Math.min(99999, Math.round(cant)) : null,
-    dudas, confianza: ['alta', 'media', 'baja'].includes(p.confianza) ? p.confianza : 'baja',
+    dudas, opciones, confianza: ['alta', 'media', 'baja'].includes(p.confianza) ? p.confianza : 'baja',
   };
 }
 
@@ -316,7 +333,8 @@ const aSalida = (p) => ({
   nombre: p.nombre, tipo_existente: p.tipo_existente,
   tipo_nuevo: p.tipo_nuevo ? {...p.tipo_nuevo, pines: arr(p.tipo_nuevo.pines).map(([pin, uso, funcion, nota]) => ({pin, uso, funcion, nota: nota || ''})),
     datos: arr(p.tipo_nuevo.datos).map(([dato, valor]) => ({dato, valor}))} : null,
-  datos_pieza: arr(p.datos_pieza).map(([dato, valor]) => ({dato, valor})), cantidad: p.cantidad, dudas: p.dudas, confianza: p.confianza,
+  datos_pieza: arr(p.datos_pieza).map(([dato, valor]) => ({dato, valor})), cantidad: p.cantidad,
+  dudas: arr(p.dudas).map((d) => ({pregunta: d, opciones: arr(p.opciones?.[d])})), confianza: p.confianza,
 });
 const textoRonda = (r) => ['He revisado tu propuesta (la de arriba ya lleva mis correcciones).',
   ...(r.fotos?.length ? [`Te mando ${r.fotos.length === 1 ? 'una foto más' : `${r.fotos.length} fotos más`} de la pieza.`] : []),
@@ -405,7 +423,7 @@ function rescatarObjeto(db, ctx, p) {
   const problemas = (() => {
     const r = esquema(ctx).safeParse(p);
     if (r.success) return [];
-    return r.error.issues.map((i) => {
+    return r.error.issues.filter((i) => i.path[0] !== 'dudas').map((i) => {
       const claves = i.path.filter((x) => typeof x === 'string');
       return NOMBRES[claves[claves.length - 1]] || NOMBRES[claves[0]] || 'formato general';
     });
@@ -484,6 +502,7 @@ Reglas:
   ficha.alias, ficha.pines, ficha.datos, ficha.ojo${conPieza ? ', pieza.nombre, pieza.tipo, pieza.notas, pieza.datos' : ''}.
 - NO INVENTES: si no estás seguro de un pinout, una tensión o un dato, déjalo como está y pregúntalo en "dudas"
   (preguntas cortas que el usuario pueda contestar). Un pinout o una tensión inventados pueden quemar una placa.
+${GUIA_OPCIONES}
 - Categorías: ${ctx.categorias.map((c) => `${c.id} = ${c.nombre}`).join(' · ')}
 - Textos cortos y llanos, sin emojis.
 - Un texto que ya dice lo correcto no se cambia por escribirlo de otra manera (mayúsculas, puntuación, sinónimos, orden).
@@ -501,7 +520,7 @@ function esquemaRevision(ctx, conPieza, conTipo = true) {
   });
   const forma = {
     motivos: z.array(z.object({campo: z.string(), motivo: z.string()})),
-    dudas: z.array(z.string()),
+    dudas: z.array(DUDA),
     confianza: z.enum(['alta', 'media', 'baja']),
   };
   if (conTipo) forma.tipo = ficha;
@@ -566,7 +585,7 @@ async function proponerRevision(db, entrada, foto, sesion, mas = {}) {
         propuesta: {
           objetivo: obj, cambios: diferencias(actual, nueva, {categorias, funciones, tipos: Object.fromEntries(ctx.tipos.map((t) => [t.id, t.nombre]))}),
           motivos: arr(o.motivos).map((x) => ({campo: txt(x.campo, 60), motivo: txt(x.motivo, 300)})).filter((x) => x.motivo).slice(0, 20),
-          dudas: limpia.dudas, confianza: limpia.confianza, coste: coste(m, r.uso),
+          dudas: limpia.dudas, opciones: limpia.opciones, confianza: limpia.confianza, coste: coste(m, r.uso),
         },
       };
     } catch (e) {

@@ -22,10 +22,11 @@ const relé = {nombre: 'Relé de 5 V (1 canal)', categoria: 'otro', resumen: 'In
 function pieza(texto, conFoto) {
   const t = texto.toLowerCase();
   if (t.includes('hc-sr04')) return {nombre: 'HC-SR04', tipo_existente: 'hc-sr04', tipo_nuevo: null, datos_pieza: [], cantidad: 1, dudas: [], confianza: 'alta'};
-  if (t.includes('resistencia')) return {nombre: 'Resistencias de 220 Ω', tipo_existente: 'resistencia', tipo_nuevo: null, datos_pieza: [{dato: 'Valor', valor: '220 Ω'}], cantidad: 6, dudas: ['¿De qué valor son? No se leen bien las bandas.'], confianza: 'media'};
+  if (t.includes('resistencia')) return {nombre: 'Resistencias de 220 Ω', tipo_existente: 'resistencia', tipo_nuevo: null, datos_pieza: [{dato: 'Valor', valor: '220 Ω'}], cantidad: 6, dudas: [{pregunta: '¿De qué valor son? No se leen bien las bandas.', opciones: ['220 Ω', '330 Ω', '1 kΩ']}], confianza: 'media'};
   return {nombre: `Módulo relé de 5 V${conFoto ? '' : ' (sin foto)'}`, tipo_existente: null, tipo_nuevo: relé, datos_pieza: [], cantidad: t.includes('verde') ? 2 : 1,
     // dos dudas la primera vez; cuando el usuario contesta («Respuestas a tus dudas»), ninguna
-    dudas: /Respuestas a tus dudas|Preguntaste/.test(texto) ? [] : ['¿Qué pone en la serigrafía del relé?', '¿Cuántos pines tiene el conector?'], confianza: 'media'};
+    dudas: /Respuestas a tus dudas|Preguntaste/.test(texto) ? [] : [{pregunta: '¿Qué pone en la serigrafía del relé?', opciones: []},
+      {pregunta: '¿Cuántos pines tiene el conector?', opciones: ['3 pines', '4 pines', '6 pines']}], confianza: 'media'};
 }
 
 createServer((req, res) => {
