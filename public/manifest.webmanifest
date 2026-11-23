@@ -1,6 +1,6 @@
 {
-  "name": "AMS lab",
-  "short_name": "AMS lab",
+  "name": "CircuitBin",
+  "short_name": "CircuitBin",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FFF6E9",

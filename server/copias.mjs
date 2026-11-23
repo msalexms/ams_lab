@@ -9,8 +9,8 @@ import {join} from 'node:path';
 const PATRON = /^lab-\d{4}-\d{2}-\d{2}\.db$/; // las copias manuales con otro nombre (lab-antes-…) no se tocan nunca
 
 export function opcionesCopias(dataDir) {
-  const max = process.env.AMS_LAB_COPIAS_MAX;
-  return {dir: process.env.AMS_LAB_COPIAS || join(dataDir, 'copias'), max: max === undefined || max === '' ? 14 : Math.max(0, Number(max) || 0)};
+  const max = process.env.CIRCUITBIN_COPIAS_MAX ?? process.env.AMS_LAB_COPIAS_MAX;
+  return {dir: process.env.CIRCUITBIN_COPIAS || process.env.AMS_LAB_COPIAS || join(dataDir, 'copias'), max: max === undefined || max === '' ? 14 : Math.max(0, Number(max) || 0)};
 }
 
 const hoy = () => {

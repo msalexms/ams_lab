@@ -1,1 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="96" fill="#2B36D9"/><g transform="translate(80 76) scale(7.3)"><path d="M10 4L21 14h6L38 4l5 14q1 2 1 6v12q0 8-8 8H12q-8 0-8-8V24q0-4 1-6z" fill="#FFFFFF"/><path d="M13 25l6 5-6 5M24 36h10" fill="none" stroke="#2B36D9" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>CircuitBin</title>
+  <g fill="#FFE27A" stroke="#1E1B2E" stroke-width="2" stroke-linejoin="round">
+    <rect x="2" y="21" width="7" height="4.5" rx="1.5"/>
+    <rect x="2" y="30" width="7" height="4.5" rx="1.5"/>
+    <rect x="2" y="39" width="7" height="4.5" rx="1.5"/>
+    <rect x="55" y="21" width="7" height="4.5" rx="1.5"/>
+    <rect x="55" y="30" width="7" height="4.5" rx="1.5"/>
+    <rect x="55" y="39" width="7" height="4.5" rx="1.5"/>
+  </g>
+  <rect x="8" y="10" width="48" height="44" rx="10" fill="#2B36D9" stroke="#1E1B2E" stroke-width="3" stroke-linejoin="round"/>
+  <rect x="16" y="17" width="32" height="9" rx="3.5" fill="#FFE27A" stroke="#1E1B2E" stroke-width="2.2"/>
+  <path d="M20 42 H29 L35 35 H44" fill="none" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="20" cy="42" r="3" fill="#FFFFFF"/>
+  <circle cx="44" cy="35" r="3" fill="#FFFFFF"/>
+</svg>
