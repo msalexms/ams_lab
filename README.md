@@ -1,86 +1,277 @@
-# [AMS] lab
+<div align="center">
 
-Almacén digital personal de componentes electrónicos: inventario con stock y fotos, glosario y proyectos.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="public/amstech-ui/logo/thor-noche.svg">
+  <source media="(prefers-color-scheme: light)" srcset="public/amstech-ui/logo/thor.svg">
+  <img alt="Logo de AMSTech" src="public/amstech-ui/logo/thor.svg" width="68">
+</picture>
 
-- `npm start` → http://localhost:4321 · desde el móvil, la dirección «móvil →» que sale en la consola (misma Wi-Fi)
-- Sin contraseña: pensada solo para la red de casa (o Tailscale). No la publiques en internet tal cual.
-- Copia de seguridad: automática cada día (ver abajo), `npm run copia` para hacer una ya, y desde **Ajustes → Datos** se descarga una copia completa (`.tar.gz` con la base de datos y las fotos) o se restaura una
+<h1>[AMS] lab</h1>
 
-## Ajustes
+<p><strong>Almacén digital de componentes electrónicos para tu homelab</strong><br>
+Inventario con fotos reales, fichas de pines, proyectos conectados a tu stock e identificación con IA.</p>
 
-Pestaña **Ajustes**: IA (modelo y clave), **categorías** (renombrar, ordenar, añadir, borrar moviendo sus tipos), **tipos** (archivar, fusionar duplicados, borrar los que no usa nada; filtros «sin comprobar», «de la IA», «sin piezas», «archivados»), **sitios** (renombrar, juntar, borrar), **datos** (descargar una copia completa, restaurar desde un archivo o desde una copia del servidor, «hacer copia ahora»), **cambios pendientes**, **historial**, **registro** y tema. Lo que se borra del catálogo no vuelve al actualizar la imagen. Al borrar una pieza sale «Deshacer» unos segundos.
+<p>
+  <img alt="Node.js >=24" src="https://img.shields.io/badge/Node.js-%E2%89%A524-2B36D9?style=flat-square&logo=nodedotjs&logoColor=white">
+  <img alt="SQLite nativo" src="https://img.shields.io/badge/SQLite-node%3Asqlite-1E1B2E?style=flat-square&logo=sqlite&logoColor=white">
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-Compose-2B36D9?style=flat-square&logo=docker&logoColor=white">
+  <img alt="PWA sin conexión" src="https://img.shields.io/badge/PWA-Sin_conexi%C3%B3n-1E1B2E?style=flat-square">
+  <a href="LICENSE"><img alt="Licencia MIT" src="https://img.shields.io/badge/Licencia-MIT-FFE27A?style=flat-square&labelColor=1E1B2E"></a>
+</p>
 
-- **Historial** (Ajustes → Historial): todo lo que cambia, de lo más nuevo a lo más antiguo: qué, cuándo y quién (tú, la IA con el modelo que usó, o el sistema). Toca una línea para ver el antes y el después. Se filtra (piezas, fichas, IA, catálogo, copias y ajustes) y se busca por nombre o modelo. Cada pieza y cada ficha tienen el suyo en el desplegable «Historial».
-- **Registro** (Ajustes → Registro): los últimos mensajes del servidor (arranque, copias, lo que hace la IA, cada cambio que llega y los errores), con filtro de avisos y errores. Vive en memoria: se borra al reiniciar.
+<p>
+  <a href="#características">Características</a> ·
+  <a href="#capturas">Capturas</a> ·
+  <a href="#arranque-rápido">Arranque rápido</a> ·
+  <a href="#añadir-con-ia">Añadir con IA</a> ·
+  <a href="#copias-de-seguridad-y-modo-sin-conexión">Copias y sin conexión</a> ·
+  <a href="#arquitectura">Arquitectura</a>
+</p>
 
-## Uso diario
+<br>
 
-- **Pieza** = lo que tienes en el cajón: cantidad, sitio, foto, notas y sus datos propios («Valor» → «220 Ω»). **Ficha del tipo** = la hoja de datos común a todas las piezas iguales (pines, tensión, resumen, «Ojo», datos del tipo); está en el Glosario y, si la cambias, cambia para todas. La ficha de una pieza enseña arriba «Esta pieza» y debajo «Ficha del tipo».
-- Dos avisos distintos: **«pendiente»** es una marca tuya en una pieza («quiero mirar algo de esta pieza»; se quita con «Hecho: quitar la marca»). **«Sin comprobar»** sale en una ficha del tipo que escribió o cambió la IA; se quita con «Ya la he comprobado» (o al guardarla con «Editar ficha»).
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/capturas/inventario-noche.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/capturas/inventario-claro.png">
+  <img alt="Vista principal del inventario de AMS lab con fotos reales y tarjetas por categoría" src="docs/capturas/inventario-claro.png" width="100%">
+</picture>
 
-- **Ficha de una pieza** (y del tipo): arriba lo que se consulta con la pieza en la mano —cuántas, dónde, el tipo, los avisos («Ojo», «sin comprobar», «pendiente») y los pines—; las acciones en una fila (Editar, Foto, Corregir con IA y un menú «⋯» con lo que se usa poco); lo demás (resumen, datos del tipo, notas, proyectos) plegado.
-- **Aspecto**: el estilo de AMSTech (cajas con borde y sombra, botón principal azul, lo elegido en amarillo), en claro, noche o según el sistema (Ajustes → Tema). Cada categoría tiene su color: se ve en los filtros, en los grupos y de fondo en los dibujos de las piezas sin foto. Las letras (Bricolage Grotesque, Figtree y DM Mono, licencia SIL OFL) van dentro de la app, así que salen iguales en todos los dispositivos y sin conexión.
-- **Varias piezas a la vez** (Inventario → «Seleccionar»): eliges las piezas y, en la barra de abajo, «Editar juntas» (una tabla con nombre, cantidad, sitio, tipo y pendiente; «A todas» pone lo mismo a todas), marcar o quitar «pendiente», borrar (con «Deshacer») o «Corregir con IA» todas de una vez (máx. 30; una consulta por pieza, dos a la vez, y los cambios de todas en una pantalla).
-- **Inventario** en lista o en **cuadrícula con las fotos** (o el dibujo del tipo si no hay foto; se recuerda en la tabla `ajustes`, `vista_inventario`).
-- **Proyectos**: listado por estado (en marcha, en pausa, ideas, terminados) con las fotos de las piezas que usa cada uno. Cada proyecto tiene su ficha (material con tus piezas y dónde están, conexiones, pasos), un **tablero** (por hacer, en curso, hecho), una **bitácora** con notas y fotos de cómo avanza, y sus **archivos** (diagramas en imagen o PDF). Se pueden crear, editar y borrar desde la web.
-- **Varias piezas en una foto** (botón «+» o «Añadir con IA»): haces una foto a varias piezas separadas, la IA dice cuáles hay y dónde, eliges las que quieres y cada una se identifica con su recorte. Las revisas juntas y guardas las que marques.
-- **Modelos de la IA**: se puede elegir cualquier modelo de chat de OpenCode Go. Si uno no ve fotos, la app lo avisa y no deja subir foto con él; si no devuelve datos con formato fijo, avisa de que puede fallar más.
-- **Pines**: cada fila es un solo pin, con su uso, su función (el color) y una nota para lo demás («También: UART2 RX», «Solo entrada»). Si escribes varios en una fila («GPIO 16 · 17», «GPIO 32–39»), se separan solos, lo escriba la IA o tú. En las placas con muchos pines la ficha los agrupa por función en desplegables, y se pueden ver también en el orden de la placa.
-- **Formato uniforme**: la app escribe siempre igual las tensiones y las unidades («3,3 V», «20 mA»), las interfaces («I2C») y los nombres de los datos («Corriente máx.»), lo escriba la IA o lo escribas tú. Ajustes → Uniformar formato repasa lo que ya estaba guardado de otra manera.
-- **Buscar** (arriba, tecla `/`): en una lista la filtra y avisa si hay coincidencias en otras secciones; desde cualquier otro sitio, o con Intro, busca en todo (piezas, tipos —también por pines, alias, interfaces y datos— y proyectos).
-- **Editar ficha** de un tipo a mano: nombre, categoría, resumen, tensión, interfaces, alias, «Ojo» y las **tablas de pines y datos** (añadir, ordenar arrastrando por el asa ⠿, quitar). Al guardar pasa a ser tuya (`origen = 'usuario'`, comprobada) y `seed/` ya no la toca. Si la ficha cambió mientras la editabas (la IA u otra pestaña), no se pisa: hay que recargar.
-- **Datos de cada pieza** («Valor» → «220 Ω») en su formulario, también como tabla. El **tipo** se elige escribiendo (busca por nombre, alias, interfaz o categoría).
-- **Móvil**: barra de abajo (Inventario, Glosario, «+», Proyectos, Ajustes); el «+» abre el menú de añadir. Se esconde mientras escribes. En el iPhone queda mejor como app: Safari → Compartir → «Añadir a pantalla de inicio» (sin las barras de Safari).
-- **Fotos encuadradas**: al hacer o elegir una foto sale un recuadro 4:3 (el formato de las tarjetas); mueve, acerca o gira la foto para que la pieza quepa dentro. «Sin recortar» la sube entera.
+<p><em>Vista principal del inventario en cuadrícula con fotos reales, filtros laterales por categoría y acceso directo al asistente con IA (se adapta al tema claro u oscuro de GitHub).</em></p>
+
+</div>
+
+---
+
+## ¿Por qué [AMS] lab?
+
+- **Directo al grano, sin infraestructura pesada**: un único servicio en **Node.js 24+** con **SQLite nativo (`node:sqlite`)** y frontend en HTML, CSS y JavaScript sin frameworks ni paso de compilación. Todo persiste en una sola carpeta `./data`.
+- **Pieza física separada de su ficha técnica**: cada **pieza** guarda lo que tienes en tu taller (cantidad, sitio, foto real, notas y datos propios como el valor óhmico); la **ficha del tipo** vive en el Glosario y comparte pines, tensión, interfaces y avisos «Ojo» entre todas las piezas iguales.
+- **IA opcional siempre bajo tu control**: fotografia una pieza o una bandeja con varias, el modelo propone nombre, tipo y pines, resuelve dudas con opciones rápidas y enseña diferencias antes/después; **nada entra en el inventario sin que tú lo confirmes**.
+- **Pensado para el móvil y el homelab**: PWA instalable con modo sin conexión, tipografías locales (sin peticiones externas), estilo AMSTech claro/noche y copias de seguridad diarias automáticas.
+
+---
+
+## Características
+
+| Área | Qué incluye |
+| :--- | :--- |
+| **Inventario** | Vista en **cuadrícula** (con tu foto real o el dibujo SVG del tipo sobre el color de su categoría) o **lista** alineada por sitio, tensión e interfaces. Filtros por categoría, piezas marcadas como «pendiente», sin sitio o sin foto. Búsqueda global instantánea (`/`). Selección múltiple para editar en lote, marcar pendiente, borrar (con «Deshacer» 2 min) o corregir con IA hasta 30 piezas. |
+| **Fichas y pines** | Un pin por fila con función coloreada y nota adicional. En placas con más de 8 pines se agrupan por función en desplegables o se alternan en el orden de la placa. Editor manual con tablas reordenables arrastrando (`⠿`) y protección frente a ediciones simultáneas (`409`). |
+| **Formato uniforme** | Normalización automática al guardar o al pasar por **Ajustes → Uniformar formato**: magnitudes (`3,3 V`, `20 mA`), rangos, interfaces (`I2C`) y nombres de datos consistentes sin tocar serigrafías ni textos libres. |
+| **Proyectos** | Cruzados automáticamente con tu stock para ver qué proyectos **«Puedes hacer ya»** o en cuáles **«Te falta poco»**. Cada proyecto incluye lista de material con tus piezas y fotos, tabla de conexiones, pasos, **tablero Kanban** (`Por hacer`, `En curso`, `Hecho`), **bitácora** con fotos y repositorio de **archivos** (imágenes o PDF). |
+| **Asistente con IA** | Tres flujos integrados: alta de una pieza (1–4 fotos y/o texto), detección de **varias piezas en una foto** con recorte en el navegador, y **Corregir con IA** sobre piezas o fichas existentes (individual o en lote) con vista previa y selección de cambios campo a campo. |
+| **Trazabilidad y control** | Gestión de categorías, tipos (archivar, fusionar duplicados, borrar sin que el catálogo base los resucite) y sitios. **Historial de cambios** con el antes y el después de cada modificación (usuario, modelo de IA o sistema) y **Registro** del servidor en vivo. |
+
+---
+
+## Capturas
+
+### Ficha de pieza y mapa de pines
+
+Cada ficha reúne arriba lo que necesitas con la pieza en la mano —foto, cantidad, ubicación, tipo, avisos «Ojo» y pines agrupados por función— y deja debajo los proyectos que la utilizan y su historial.
+
+<p align="center">
+  <img alt="Ficha de pieza ESP32-WROOM-32 DevKit con foto real, datos de la pieza, aviso y mapa de pines por función" src="docs/capturas/ficha-esp32.png" width="100%">
+</p>
+
+### Proyectos conectados a tu inventario
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img alt="Listado de proyectos filtrable según el stock disponible" src="docs/capturas/proyectos.png" width="100%">
+      <br><sub><strong>Listado de proyectos</strong> · Filtra al instante por «Puedo hacerlo ya» o «Me falta poco» con las fotos de tus piezas.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img alt="Detalle del proyecto Monitor de calidad del aire con material, conexiones y pasos" src="docs/capturas/proyecto-detalle.png" width="100%">
+      <br><sub><strong>Ficha de proyecto</strong> · Material cruzado con tu inventario, tabla de conexiones, pasos, tablero, bitácora y archivos.</sub>
+    </td>
+  </tr>
+</table>
+
+### Tema claro y tema noche
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img alt="Inventario de AMS lab en tema claro AMSTech" src="docs/capturas/inventario-claro.png" width="100%">
+      <br><sub><strong>Tema claro</strong> · Fondo crema, bordes en tinta y tarjetas de categoría.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img alt="Inventario de AMS lab en tema noche AMSTech" src="docs/capturas/inventario-noche.png" width="100%">
+      <br><sub><strong>Tema noche</strong> · Grafito suave pensado para trabajar en el taller sin deslumbrar.</sub>
+    </td>
+  </tr>
+</table>
+
+### Experiencia móvil (PWA)
+
+Interfaz adaptada al pulgar con barra inferior, botón `+` directo para abrir la cámara con IA, encuadre 4:3 antes de subir la foto y consulta sin conexión.
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img alt="Inventario de AMS lab en pantalla móvil" src="docs/capturas/movil-inventario.png" width="280">
+      <br><sub><strong>Inventario en móvil</strong> · Tira de categorías y barra inferior con acceso rápido a cámara IA.</sub>
+    </td>
+    <td align="center">
+      <img alt="Ficha de ESP32-WROOM-32 en pantalla móvil" src="docs/capturas/movil-ficha.png" width="280">
+      <br><sub><strong>Ficha en móvil</strong> · Consulta rápida de avisos y pines junto a la protoboard.</sub>
+    </td>
+  </tr>
+</table>
+
+---
+
+## Arranque rápido
+
+### Con Docker Compose (homelab)
+
+```sh
+git clone https://github.com/msalexms/ams_lab.git
+cd ams_lab
+docker compose up -d --build
+```
+
+La aplicación queda escuchando en `http://<ip-del-servidor>:4321` (con endpoint de salud en `/salud`) y guarda la base de datos SQLite, las fotos y las copias diarias en `./data`.
+
+### En local con Node.js 24+
+
+```sh
+git clone https://github.com/msalexms/ams_lab.git
+cd ams_lab
+npm ci
+npm start
+```
+
+Abre `http://localhost:4321` en el ordenador o la dirección `móvil → http://<tu-ip>:4321` que imprime en consola desde la misma red Wi-Fi.
+
+Al arrancar por primera vez con una carpeta de datos vacía se crea un catálogo básico con **14 categorías**, **18 tipos comunes con sus pines**, **4 proyectos de ejemplo** y **6 piezas `(ejemplo)`** listas para probar y borrar cuando añadas las tuyas.
+
+> [!IMPORTANT]
+> **[AMS] lab no incluye inicio de sesión ni contraseña por diseño.** Está pensada para ejecutarse exclusivamente en tu red local, dentro de una red privada (como Tailscale o WireGuard) o detrás de un proxy inverso con autenticación. No la expongas directamente a internet sin protección delante.
+
+<details>
+<summary>Despliegue sin Compose, compilación para ARM64 (Raspberry Pi) y variables de entorno</summary>
+
+#### Contenedor Docker suelto
+
+```sh
+docker build -t ams-lab .
+docker run -d --name ams-lab --init -p 4321:4321 -v ./data:/data ams-lab
+```
+
+#### Raspberry Pi / servidores ARM64
+
+```sh
+docker buildx build --platform linux/arm64 -t ams-lab .
+```
+
+El contenedor se ejecuta como usuario `node` (UID 1000); el script de entrada ajusta los permisos de `/data` al arrancar.
+
+#### Variables de entorno
+
+| Variable | Por defecto | Descripción |
+| :--- | :--- | :--- |
+| `PORT` | `4321` | Puerto HTTP del servidor. |
+| `TZ` | `Europe/Madrid` | Zona horaria usada en fechas de copias e historial. |
+| `AMS_LAB_DATA` | `./data` (`/data` en Docker) | Carpeta donde viven `lab.db`, `fotos/` y `copias/`. |
+| `AMS_LAB_COPIAS` | `<datos>/copias` | Carpeta alternativa para copias diarias (útil en otro disco). |
+| `AMS_LAB_COPIAS_MAX` | `14` | Número máximo de copias diarias conservadas (`0` las desactiva). |
+| `IA_CLAVE` | — | Clave de respaldo para OpenCode Go si no hay ninguna guardada en la web. |
+| `IA_MODELO` | — | Modelo de respaldo si no se ha configurado desde la web. |
+
+</details>
+
+---
 
 ## Añadir con IA
 
-Botón «Añadir con IA»: foto y/o texto de una pieza → el modelo propone nombre, tipo (o una ficha nueva con pines y datos) → **tú lo revisas y guardas**. Nada entra en el inventario sin confirmar; las fichas nuevas quedan «sin comprobar» hasta que pulses «Ya la he comprobado».
+La IA es **totalmente opcional**: toda la aplicación funciona al 100 % de forma manual. Si quieres activarla, la configuración se hace directamente desde la web en **Añadir con IA → Configuración** (o **Ajustes → IA**):
 
-- Proveedor: OpenCode Go, con el AI SDK (el paquete que indica el catálogo de Go para cada modelo). **La clave y el modelo se ponen en la web**: «Añadir con IA» → Configuración. Solo salen los modelos que entienden fotos y devuelven datos con formato fijo, con su precio; al guardar se comprueba la clave con una llamada mínima.
-- La clave se guarda en la base de datos (la web solo enseña sus 4 últimos caracteres) y viaja en las copias de seguridad. `IA_CLAVE` / `IA_MODELO` (o un `.env` en local) solo se usan si en la web no hay nada.
-- Formato garantizado: el modelo responde con un esquema cerrado (categorías, funciones de pin y tipos existentes salen de la base de datos); si no lo cumple se reintenta una vez y si no, error.
-- Antes de guardar: **vista previa** de cómo quedará la ficha, y puedes **contestar las dudas** del modelo para que rehaga la propuesta (hasta 5 vueltas; cada una cuenta como una consulta). Se ve el coste aproximado de cada consulta.
-- **Cuánto razona** (Ajustes → IA): poco (por defecto, rápido y barato), medio o mucho (acierta más en piezas difíciles, pero tarda y cuesta más). La pantalla dice qué significa cada nivel con el modelo elegido.
-- **Modelo**: el de siempre se cambia con un toque en Configuración (sin volver a poner la clave), y al analizar se puede elegir otro solo para esa pieza. Cada modelo muestra lo que cuesta por pieza: la media real de tus consultas o una estimación.
-- **Móvil**: el botón «+» ofrece «Foto con IA» (abre la cámara y la analiza al momento), «Elegir foto con IA» o «A mano». Mientras el modelo piensa se ve qué pasa, cuántos segundos lleva y el esqueleto de la ficha.
-- **Corregir con IA**: en la ficha de cada pieza y de cada tipo; puede cambiar el nombre de la pieza y su tipo (a otro que ya existe o a uno nuevo, que se crea al aplicar, «sin comprobar»); si el modelo pregunta algo, lo contestas ahí mismo y rehace los cambios («Responder y repensar»). Dices qué corregir (opcional, también con foto; si no pones ninguna, la IA mira la que ya tiene la pieza) y el modelo propone cambios; ves **solo los cambios** (antes tachado, después en claro) y marcas cuáles aplicar; la pestaña «Vista previa» enseña cómo quedaría la ficha con solo los marcados. Si la ficha cambió mientras tanto, no se pisa nada.
-- Cada consulta se guarda en la tabla `ia_tareas`: si cierras la pestaña o vuelves al inventario mientras piensa, nada se pierde. **Cambios pendientes** (aviso en el Inventario y Ajustes → Cambios pendientes) junta todo lo que dejaste a medias: los lotes, las correcciones sueltas y las piezas nuevas, con lo que está listo, lo que aún piensa y lo que falló.
+- **Proveedor y modelos**: conectada a **OpenCode Go** mediante el AI SDK. La aplicación consulta los modelos disponibles e indica cuáles soportan **visión**, **salida estructurada** y su **coste estimado por consulta**, además de permitir elegir el nivel de razonamiento (`poco`, `medio` o `mucho`).
+- **Privacidad de la clave**: la clave se valida con una llamada mínima al guardarla, se almacena en SQLite (viaja en tus copias completas) y **nunca se devuelve por la API**; la interfaz solo muestra los últimos 4 caracteres. Como respaldo en local también puedes usar `.env` partiendo de [`.env.example`](.env.example).
+- **Tres flujos sin sorpresas**:
+  1. **Foto con IA**: sube de 1 a 4 fotos (con recorte 4:3 opcional en el navegador) y/o texto; el modelo devuelve una propuesta editable con vista previa y puede plantear preguntas con opciones rápidas y foto por duda (hasta 5 rondas).
+  2. **Varias piezas en una foto**: detecta las piezas sobre la mesa, tú eliges cuáles te interesan, el navegador las recorta localmente y crea un lote para revisarlas juntas.
+  3. **Corregir con IA**: disponible en cada pieza, cada ficha o en lote (hasta 30 piezas); muestra un diff campo a campo con lo anterior tachado y te deja marcar exactamente qué aplicar.
+- **Cola persistente**: todas las tareas se guardan en `ia_tareas`. Si cierras la pestaña mientras el modelo piensa, el resultado te espera en **Cambios pendientes**.
 
-## Docker (homelab)
+---
 
-```sh
-docker compose up -d --build          # construye la imagen ams-lab:latest y arranca → http://<servidor>:4321
-docker compose logs -f                # ver qué hace
-docker compose exec ams-lab npm run copia
-```
+## Copias de seguridad y modo sin conexión
 
-- Los datos viven en `./data` (base de datos + fotos). Al arrancar, la app aplica el catálogo de `seed/`: actualizar el glosario o los proyectos = reconstruir la imagen (`docker compose up -d --build`).
-- Una instalación nueva empieza con un **catálogo básico** (18 tipos comunes con sus pines y 4 proyectos) y **6 piezas de ejemplo** («(ejemplo)» en el nombre): bórralas cuando añadas las tuyas. Para llevarte tu inventario a otra máquina, descarga una copia completa y restáurala allí.
-- Sin `docker compose`: `docker build -t ams-lab .` y `docker run -d --name ams-lab --init -p 4321:4321 -v ./data:/data ams-lab`
-- Llevar la imagen a otra máquina sin el código: `docker save ams-lab:latest -o ams-lab.tar` → copiar → `docker load -i ams-lab.tar`. Si el servidor es ARM (Raspberry Pi): `docker buildx build --platform linux/arm64 -t ams-lab .`
-- La app corre como el usuario `node` del contenedor; al arrancar deja `./data` a su nombre (uid 1000).
+### Copias de seguridad
 
-## Copias de seguridad
+- **Automáticas diarias**: al arrancar y en comprobaciones horarias, el servidor genera `lab-AAAA-MM-DD.db` mediante `VACUUM INTO` (consistente con SQLite en modo WAL) y copia las fotos nuevas a `copias/fotos/`. También puedes lanzar una al instante con `npm run copia` o desde **Ajustes → Datos**.
+- **Exportación y restauración completas**: desde **Ajustes → Datos** puedes descargar un archivo `.tar.gz` con `lab.db`, todas las fotos y `manifiesto.json`. Al restaurar un `.tar.gz`, un `.db` o una copia del servidor, primero se valida su integridad y se muestra una comparativa; al confirmar, guarda automáticamente `lab-antes-restaurar-<fecha>.db` antes de aplicar el cambio y sin necesidad de reiniciar.
 
-Cada día (al arrancar y luego cada hora comprueba si falta) se guarda `copias/lab-AAAA-MM-DD.db` (copia completa con `VACUUM INTO`) y las fotos nuevas en `copias/fotos/` (las fotos nunca se borran de la copia). Se guardan las 14 últimas.
+### Modo sin conexión (PWA)
 
-- `AMS_LAB_COPIAS=/ruta` cambia la carpeta (por defecto `data/copias`). **Mejor en otro disco**: en `docker-compose.yml` descomenta el volumen `/copias`.
-- `AMS_LAB_COPIAS_MAX=30` cambia cuántas se guardan (`0` = ninguna).
-- **Descargar** (Ajustes → Datos → «Descargar copia completa», `GET /api/copia/exportar`): un `.tar.gz` con `lab.db`, las fotos y `manifiesto.json`. Lleva la clave de la IA: guárdalo en un sitio seguro.
-- **Restaurar** (Ajustes → Datos): sube ese `.tar.gz` o un `.db` suelto, o elige una copia del servidor. Primero se comprueba (que sea SQLite, de esta app, de una versión que esta app entiende y sin daños) y se ve qué contiene frente a lo de ahora; nada cambia hasta confirmar. Al restaurar se guarda antes el estado actual como `copias/lab-antes-restaurar-<fecha>.db` (con sus fotos en `copias/fotos/`), se pone la base de datos de la copia (migrándola si es antigua) y se añaden sus fotos sin borrar ni pisar ninguna. No hace falta reiniciar.
-- A mano (con la app parada): copia la que quieras a `data/lab.db` (borrando `lab.db-wal` y `lab.db-shm`) y las fotos de `copias/fotos/` a `data/fotos/`.
+El Service Worker ([`public/sw.js`](public/sw.js)) guarda en el dispositivo la última copia del inventario, glosario, proyectos, tipografías y las fotos que ya hayas abierto para consultar tu taller sin cobertura (en modo solo lectura hasta recuperar la red).
 
-## Sin conexión (móvil)
-
-La web guarda en el móvil la última copia del inventario, el glosario y los proyectos, y las fotos que ya has visto. Sin red se puede consultar todo (sale «Sin conexión · datos del …»), pero no guardar cambios.
-
-Los navegadores solo lo permiten con **HTTPS** (o en `localhost`): con `http://192.168.x.x` no funciona. Lo más fácil, con Tailscale en el servidor:
+Los navegadores requieren **HTTPS** (o `localhost`) para habilitar el Service Worker y la instalación como app. Con Tailscale en tu servidor basta un comando:
 
 ```sh
-tailscale serve --bg 4321             # → https://<servidor>.<tu-tailnet>.ts.net
+tailscale serve --bg 4321
 ```
 
-Abre esa dirección en el móvil y, si quieres, «Añadir a pantalla de inicio».
+Después abre esa dirección HTTPS en el móvil y usa **Añadir a pantalla de inicio**.
 
-Detalles para Claude: `CLAUDE.md`.
+---
+
+## Arquitectura
+
+| Capa | Tecnología |
+| :--- | :--- |
+| **Servidor** | Node.js ≥ 24 (`node:http`, sin frameworks web) |
+| **Base de datos** | SQLite integrado (`node:sqlite`, modo WAL, migraciones automáticas `PRAGMA user_version`) |
+| **Frontend** | HTML + CSS + Vanilla JS (`public/app.js`, Service Worker PWA, sistema visual `amstech-ui`) |
+| **IA (opcional)** | `ai`, `@ai-sdk/openai-compatible`, `@ai-sdk/anthropic`, `@ai-sdk/openai`, `zod` |
+| **Despliegue** | Imagen `node:24-alpine` sin privilegios (`node`), healthcheck en `/salud`, volumen único `/data` |
+
+```text
+ams_lab/
+├─ server/          # API HTTP, SQLite y migraciones, copias, respaldo tar.gz, IA, auditoría y formato
+├─ public/          # Web SPA, Service Worker, dibujos SVG de componentes y paquete amstech-ui/
+├─ seed/            # Referencia inicial (categorías, pines) y catálogo base (tipos, proyectos, ejemplos)
+├─ scripts/         # Utilidades CLI (copia manual, regeneración de SVG, pines, servidor IA simulado)
+└─ docs/            # Esquema de base de datos (modelo-datos.md) y capturas reales
+```
+
+Para profundizar en el esquema de tablas, migraciones y reglas de negocio consulta [`docs/modelo-datos.md`](docs/modelo-datos.md).
+
+<details>
+<summary>Scripts disponibles en package.json</summary>
+
+| Comando | Qué hace |
+| :--- | :--- |
+| `npm start` | Inicia el servidor en producción cargando `.env` si existe. |
+| `npm run dev` | Inicia el servidor en modo `--watch-path=server`. |
+| `npm run copia` | Ejecuta inmediatamente una copia diaria en `data/copias/` (o `AMS_LAB_COPIAS`). |
+| `npm run catalogo` | Aplica los cambios de `seed/` a la base de datos respetando lo editado por usuario o IA. |
+| `npm run pines` | Regenera definiciones de pines y actualiza el catálogo base. |
+| `npm run dibujos` | Regenera los SVG propios de cada tipo en `public/img/tipos/`. |
+| `npm run ia-simulada` | Levanta un servidor OpenCode Go simulado para probar flujos de IA sin consumir cuota. |
+
+</details>
+
+---
+
+## Licencia
+
+Distribuido bajo la [licencia MIT](LICENSE). Las tipografías incluidas (`Bricolage Grotesque`, `Figtree` y `DM Mono` en `public/amstech-ui/fuentes/`) conservan sus respectivas licencias SIL Open Font License 1.1.
+
+<div align="center">
+
+<br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="public/amstech-ui/logo/sello-noche.svg">
+  <source media="(prefers-color-scheme: light)" srcset="public/amstech-ui/logo/sello.svg">
+  <img alt="Sello de AMSTech: Hecho para mí · Compartido con todos" src="public/amstech-ui/logo/sello.svg" width="88">
+</picture>
+
+<p><strong>Un proyecto de AMSTech</strong> · <em>Hecho para mí, compartido con todos</em> · Código abierto · MIT</p>
+
+</div>

@@ -1,5 +1,12 @@
 {
   "name": "ams-lab",
+  "description": "Almacén digital de componentes electrónicos para homelab: inventario con fotos, fichas de pines, proyectos e identificación con IA",
+  "license": "MIT",
+  "homepage": "https://github.com/msalexms/ams_lab#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/msalexms/ams_lab.git"
+  },
   "private": true,
   "type": "module",
   "scripts": {
