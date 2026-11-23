@@ -1386,11 +1386,11 @@ main:has(> .inv), main:has(> .fi), main:has(.fi), main:has(> .ia-plano), main:ha
   .fi-der > .ia-revisar { order: 4; }
   .fi-der > .ams-aviso, .fi-der > .nota { order: 5; }
   .fi-esta { order: 6; }
-  .fi-dos { order: 7; grid-template-columns: minmax(0, 1fr); }
-  .fi-der > .gris { order: 7; }
-  .fi-izq > .fi-tipo { order: 8; } /* muchos pines: la ficha del tipo, debajo de ellos */
-  .fi-der > .plegables { order: 9; }
-  .fi-der > .meta { order: 10; }
+  .fi-pines, .fi-der > .gris { order: 7; }
+  .fi-izq > .fi-tipo { order: 8; }
+  .fi-proyectos-sec { order: 9; }
+  .fi-der > .plegables { order: 10; }
+  .fi-der > .meta { order: 11; }
   .migas { margin-bottom: 10px; }
   /* barra de abajo: «+» elevado */
   .barra .fab { width: 56px; height: 56px; margin-top: -30px; align-self: start; }
@@ -1408,8 +1408,8 @@ main:has(> .inv), main:has(> .fi), main:has(.fi), main:has(> .ia-plano), main:ha
   .fi-izq > .fi-img, .fi-izq > .fi-esta { grid-column: auto; order: 1; }
   .fi-cab { order: 2; } .fi-acciones { order: 3; } .fi-der > .ia-revisar { order: 4; }
   .fi-der > .ams-aviso, .fi-der > .nota { order: 5; }
-  .fi-dos, .fi-der > .gris { order: 7; } .fi-izq > .fi-tipo { order: 8; }
-  .fi-der > .plegables { order: 9; } .fi-der > .meta { order: 10; }
+  .fi-pines, .fi-der > .gris { order: 7; } .fi-izq > .fi-tipo { order: 8; }
+  .fi-proyectos-sec { order: 9; } .fi-der > .plegables { order: 10; } .fi-der > .meta { order: 11; }
   .caja-ia { grid-template-columns: auto minmax(0, 1fr); }
   .caja-ia-bot { grid-column: 1 / -1; }
 }
@@ -1662,4 +1662,77 @@ main:has(> .inv), main:has(> .fi), main:has(.fi), main:has(> .ia-plano), main:ha
   .aj-menu .fila { gap: 10px; }
   .aj-menu .fila .seg { width: 100%; }
   .aj-menu .fila .seg > button { flex: 1; justify-content: center; }
+}
+
+/* ---------- bloque de pines AMSTech y caja de proyectos (disposición fija opción B) ---------- */
+.fi-proyectos { padding: 4px 16px; }
+.fi-proyectos .fila { margin: 0 -16px; padding: 12px 16px; }
+.fi-proyectos .fila:last-child { border-bottom: 0; }
+
+.fi-pines .caja { padding: 0; overflow: hidden; }
+.pines-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 14px; background: var(--ams-superficie-2); border-bottom: var(--ancho-fino) solid var(--borde); }
+.pines-cnt { font: 700 .86rem/1 var(--mono); color: var(--tinta); }
+.pines-top .seg.conmuta { border: var(--ancho-fino) solid var(--borde); box-shadow: none; padding: 0; gap: 0; }
+.pines-top .seg.conmuta > button { height: 32px; padding: 0 11px; font-size: .82rem; }
+
+/* círculos de color con borde tinta (.ams-punto) y etiquetas de pin */
+.t-pines tr, .ley-it, .pin-grupo { --pc: var(--cc); --pin-tinte: 20%; }
+:root[data-tema="noche"] :is(.t-pines tr, .ley-it, .pin-grupo) { --pc: var(--co); --pin-tinte: 15%; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]):not([data-tema="noche"]) :is(.t-pines tr, .ley-it, .pin-grupo) { --pc: var(--co); --pin-tinte: 15%; }
+}
+.dot { width: 10px; height: 10px; border: var(--ancho-fino) solid var(--borde); background: var(--pc, var(--cc)); vertical-align: 0; }
+.ed-fn .dot { margin-top: -5px; }
+table.t.t-pines th { padding: 9px 14px; border-bottom: var(--ancho-fino) solid var(--borde); }
+table.t.t-pines td { padding: 9px 14px; vertical-align: middle; }
+table.t.t-pines td.n { width: 3em; font-family: var(--mono); font-size: .84rem; }
+table.t.t-pines td.pin { width: 38%; }
+.pin-chip { display: inline-flex; align-items: center; gap: 7px; padding: 3px 9px 3px 7px; max-width: 100%;
+  border: var(--ancho-fino) solid var(--borde); border-radius: 4px;
+  background: color-mix(in srgb, var(--pc) var(--pin-tinte), var(--hoja));
+  color: var(--tinta); font: 600 .86rem/1.25 var(--mono); overflow-wrap: anywhere; }
+.pin-chip .dot { margin-right: 0; }
+table.t.t-pines tr.tachado .pin-chip { text-decoration: line-through; opacity: .7; }
+table.t.t-pines tr.tachado .pin { text-decoration: none; }
+
+/* desplegables por función (placas con > 8 pines) */
+.pines-funcion { border-top: 0; }
+.pin-grupo { border-bottom: var(--ancho-fino) solid var(--borde); }
+.pin-grupo:last-child { border-bottom: 0; }
+.pin-grupo > summary { display: grid; grid-template-columns: minmax(230px, auto) minmax(0, 1fr) auto; gap: 8px 12px;
+  align-items: center; padding: 11px 14px; background: var(--hoja); }
+.pin-grupo > summary:hover { background: var(--ams-superficie-2); }
+.pin-grupo > summary::after { content: '+'; grid-column: 3; grid-row: 1; width: 26px; height: 26px; display: grid; place-items: center;
+  border: var(--ancho-fino) solid var(--borde); border-radius: 4px; background: var(--hoja); color: var(--tinta);
+  font: 800 .95rem/1 var(--mono); box-shadow: 2px 2px 0 var(--ams-sombra-color); }
+.pin-grupo[open] > summary::after { content: '−'; background: var(--ams-sel-fondo); color: var(--ams-sel-texto); box-shadow: none; }
+.pin-grupo-etq { display: inline-flex; align-items: center; gap: 7px; justify-self: start; padding: 3px 9px 3px 7px;
+  border: var(--ancho-fino) solid var(--borde); border-radius: 4px;
+  background: color-mix(in srgb, var(--pc) var(--pin-tinte), var(--hoja));
+  color: var(--tinta); font: 800 .82rem/1.2 var(--sans); white-space: nowrap; }
+.pin-grupo-etq .dot { margin-right: 0; }
+.pin-grupo-etq .n { font: 500 .78rem var(--mono); color: var(--tinta2); margin-left: 2px; }
+.pin-grupo-mid { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.pin-grupo-pines { font: 500 .86rem/1.35 var(--mono); color: var(--tinta2); overflow-wrap: anywhere; }
+.pin-grupo-notas { grid-column: auto; font-size: .72rem; line-height: 1.3; padding: 1px 7px; }
+.pin-grupo-cuerpo { border-top: var(--ancho-fino) solid var(--linea); background: color-mix(in srgb, var(--bg) 55%, var(--hoja)); }
+.pin-grupo-cuerpo table.t.t-pines td:first-child { padding-left: 14px; }
+.pin-grupo-cuerpo table.t.t-pines tr:last-child td { border-bottom: 0; }
+
+/* leyenda inferior con etiquetas enmarcadas */
+.fi-pines .leyenda { margin: 0; padding: 10px 14px; gap: 8px; border-top: var(--ancho-fino) solid var(--borde); background: var(--ams-superficie-2); }
+.ley-it { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: var(--ancho-fino) solid var(--borde); border-radius: 4px;
+  background: var(--hoja); color: var(--tinta); font: 700 .78rem/1.2 var(--sans); }
+.ley-it .dot { width: 9px; height: 9px; margin-right: 0; }
+
+@media (max-width: 760px) {
+  .pin-grupo > summary { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 10px; padding: 10px 12px; }
+  .pin-grupo-etq { grid-column: 1; grid-row: 1; }
+  .pin-grupo > summary::after { grid-column: 2; grid-row: 1; }
+  .pin-grupo-mid { grid-column: 1 / -1; grid-row: 2; }
+  table.t.t-pines th, table.t.t-pines td { padding: 8px 10px; }
+  table.t.t-pines td.pin { width: auto; }
+  .fi-proyectos { padding: 4px 12px; }
+  .fi-proyectos .fila { margin: 0 -12px; padding: 10px 12px; }
 }

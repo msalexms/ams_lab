@@ -369,22 +369,24 @@ function resumenPines(nombres) {
   return out.join(' · ');
 }
 const filaPin = (p, n) => `<tr style="${colorPin(p.fn)}"${FUNC[p.fn]?.tachado ? ' class="tachado"' : ''}>${n != null ? `<td class="n">${n}</td>` : ''}
-  <td class="pin"><i class="dot"></i>${esc(p.pin)}</td><td>${esc(p.uso)}${p.nota ? `<div class="sub pin-nota">${esc(p.nota)}</div>` : ''}</td></tr>`;
+  <td class="pin"><span class="pin-chip"><i class="dot"></i>${esc(p.pin)}</span></td><td>${esc(p.uso)}${p.nota ? `<div class="sub pin-nota">${esc(p.nota)}</div>` : ''}</td></tr>`;
 function tablaPines(f) {
   const pines = list(f.pines).map(([pin, uso, fn, nota]) => ({pin, uso, fn, nota}));
   if (!pines.length) return '';
   const usadas = Object.keys(FUNC).filter((k) => pines.some((p) => p.fn === k));
-  const leyenda = `<p class="leyenda">${usadas.map((k) => `<span style="${colorPin(k)}"><i class="dot"></i>${esc(FUNC[k].nombre)}</span>`).join('')}</p>`;
-  const enOrden = `<table class="t"><thead><tr><th class="n">#</th><th>Pin</th><th>Uso</th></tr></thead><tbody>${pines.map((p, i) => filaPin(p, i + 1)).join('')}</tbody></table>`;
-  if (pines.length <= PINES_AGRUPAR) return `<h3>Pines</h3>${enOrden}${leyenda}`;
+  const leyenda = `<div class="leyenda">${usadas.map((k) => `<span class="ley-it" style="${colorPin(k)}"><i class="dot"></i>${esc(FUNC[k].nombre)}</span>`).join('')}</div>`;
+  const enOrden = `<table class="t t-pines"><thead><tr><th class="n">#</th><th>Pin</th><th>Uso</th></tr></thead><tbody>${pines.map((p, i) => filaPin(p, i + 1)).join('')}</tbody></table>`;
+  const cuenta = `<span class="pines-cnt">${plural(pines.length, 'pin', 'pines')}</span>`;
+  if (pines.length <= PINES_AGRUPAR) return `<div class="pines"><div class="pines-top">${cuenta}</div>${enOrden}${leyenda}</div>`;
   const vista = ui.pinesVista === 'orden' ? 'orden' : 'funcion';
   const grupos = usadas.map((k) => {
     const ps = pines.filter((p) => p.fn === k), notas = ps.filter((p) => p.nota).length;
-    return `<details class="pin-grupo" style="${colorPin(k)}"><summary><i class="dot"></i><span class="pin-grupo-t">${esc(FUNC[k].nombre)}<span class="n">${ps.length}</span></span>
-      <span class="pin-grupo-pines${FUNC[k].tachado ? ' tachado' : ''}">${esc(resumenPines(ps.map((p) => p.pin)))}</span>${notas ? `<span class="pin-grupo-notas">${plural(notas, 'nota')}</span>` : ''}</summary>
-      <table class="t"><tbody>${ps.map((p) => filaPin(p)).join('')}</tbody></table></details>`;
+    return `<details class="pin-grupo" style="${colorPin(k)}"><summary>
+      <span class="pin-grupo-etq"><i class="dot"></i><span>${esc(FUNC[k].nombre)}</span><span class="n">${ps.length}</span></span>
+      <span class="pin-grupo-mid"><span class="pin-grupo-pines${FUNC[k].tachado ? ' tachado' : ''}">${esc(resumenPines(ps.map((p) => p.pin)))}</span>${notas ? `<span class="etq-pend pin-grupo-notas">${plural(notas, 'nota')}</span>` : ''}</span>
+    </summary><div class="pin-grupo-cuerpo"><table class="t t-pines"><tbody>${ps.map((p) => filaPin(p)).join('')}</tbody></table></div></details>`;
   }).join('');
-  return `<div class="pines" data-pines-modo="${vista}"><div class="pines-cab"><h3>Pines<span class="n">${pines.length}</span></h3>
+  return `<div class="pines" data-pines-modo="${vista}"><div class="pines-top">${cuenta}
       <div class="seg conmuta" role="group" aria-label="Cómo ver los pines">${[['funcion', 'Por función'], ['orden', 'En orden']].map(([k, t]) =>
         `<button class="${vista === k ? 'on' : ''}" type="button" data-pines-vista="${k}" aria-pressed="${vista === k}">${t}</button>`).join('')}</div></div>
     <div class="pines-funcion">${grupos}</div><div class="pines-orden">${enOrden}${leyenda}</div></div>`;
@@ -814,22 +816,21 @@ const imagenGrande = ({foto = '', tipo = '', cat, pie}) => `<figure class="fi-im
     : `<span class="fi-img-marco">${tipo ? `<img src="img/tipos/${esc(tipo)}.svg" alt="" onerror="this.remove()">` : ''}</span>`}
   <figcaption>${pie}</figcaption></figure>`;
 const notaOjo = (f) => (f.ojo ? `<div class="ams-aviso aviso-ojo"><b>${ICO.aviso}Ojo</b><p>${esc(f.ojo)}</p></div>` : '');
-// pines y, al lado, la ficha del tipo (tensión, pines, interfaces, estado, datos y proyectos). Las placas con muchos pines
-// (agrupados por función) ocupan toda la columna derecha y la ficha del tipo pasa a la izquierda, bajo la imagen y
-// «Esta pieza» (en el móvil, debajo de los pines). Devuelve {der, izq}: lo de cada columna.
+// disposición fija de la ficha (opción B): la «Ficha del tipo» va siempre en la columna izquierda (bajo la foto y
+// «Esta pieza»); los pines ocupan siempre todo el ancho de la derecha y «Proyectos que la usan» va en su propia caja
+// debajo. En el móvil: foto, cabecera, acciones, avisos, esta pieza, pines, ficha del tipo y proyectos.
 function fichaDelTipo(f, tipo, ps, pie = '') {
   const pines = tablaPines(f), nPines = list(f.pines).length;
   const celdas = [['Tensión', esc(voltajeDe(f)) || '—'], ['Pines', nPines || '—'],
     list(f.interfaz).length ? ['Interfaces', esc(list(f.interfaz).join(', ')), true] : null,
     ...list(f.datos).map(([k, v]) => [esc(k), esc(v)]),
     list(f.alias).length ? ['Otros nombres', esc(list(f.alias).join(', ')), true] : null,
-    ['Estado', f.revisado === 0 ? '<span class="aviso">Sin comprobar</span>' : 'Comprobada ✓']];
+    ['Estado', f.revisado === 0 ? '<span class="etq-pend">Sin comprobar</span>' : 'Comprobada ✓']];
   const secPines = pines ? `<section class="fi-pines"><h2 class="rotulo">Pines</h2><div class="caja">${pines}</div></section>` : '';
+  const secPro = ps.length ? `<section class="fi-proyectos-sec"><h2 class="rotulo">Proyectos que la usan</h2><div class="caja fi-proyectos">${listaProyectos(ps)}</div></section>` : '';
   const secTipo = `<section class="fi-tipo"><h2 class="rotulo">Ficha del tipo</h2><div class="caja fi-tipo-caja">${cajetin(celdas)}
-      ${ps.length ? `<h3 class="fi-h">Proyectos que la usan</h3><div class="fi-proyectos">${listaProyectos(ps)}</div>` : ''}
       ${pie ? `<p class="meta">${pie}</p>` : ''}</div></section>`;
-  if (nPines > PINES_AGRUPAR) return {der: `<div class="fi-dos una">${secPines}</div>`, izq: secTipo};
-  return {der: `<div class="fi-dos${pines ? '' : ' una'}">${secPines}${secTipo}</div>`, izq: ''};
+  return {der: `${secPines}${secPro}`, izq: secTipo};
 }
 
 function vComponente(id) {
