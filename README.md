@@ -1,18 +1,11 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="public/amstech-ui/logo/thor-noche.svg">
-  <source media="(prefers-color-scheme: light)" srcset="public/amstech-ui/logo/thor.svg">
-  <img alt="Logo de AMSTech" src="public/amstech-ui/logo/thor.svg" width="68">
-</picture>
+<img alt="[AMS] lab — Almacén digital de componentes electrónicos para tu homelab" src="docs/capturas/banner.png" width="100%">
 
-<h1>[AMS] lab</h1>
-
-<p><strong>Almacén digital de componentes electrónicos para tu homelab</strong><br>
-Inventario con fotos reales, fichas de pines, proyectos conectados a tu stock e identificación con IA.</p>
+<br><br>
 
 <p>
-  <img alt="Node.js >=24" src="https://img.shields.io/badge/Node.js-%E2%89%A524-2B36D9?style=flat-square&logo=nodedotjs&logoColor=white">
+  <img alt="Node.js 24 o superior" src="https://img.shields.io/badge/Node.js-24%2B-2B36D9?style=flat-square&logo=nodedotjs&logoColor=white">
   <img alt="SQLite nativo" src="https://img.shields.io/badge/SQLite-node%3Asqlite-1E1B2E?style=flat-square&logo=sqlite&logoColor=white">
   <img alt="Docker" src="https://img.shields.io/badge/Docker-Compose-2B36D9?style=flat-square&logo=docker&logoColor=white">
   <img alt="PWA sin conexión" src="https://img.shields.io/badge/PWA-Sin_conexi%C3%B3n-1E1B2E?style=flat-square">
@@ -30,13 +23,9 @@ Inventario con fotos reales, fichas de pines, proyectos conectados a tu stock e 
 
 <br>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/capturas/inventario-noche.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/capturas/inventario-claro.png">
-  <img alt="Vista principal del inventario de AMS lab con fotos reales y tarjetas por categoría" src="docs/capturas/inventario-claro.png" width="100%">
-</picture>
+<img alt="Vista principal del inventario de AMS lab en modo claro con fotos reales y tarjetas por categoría" src="docs/capturas/inventario-claro.png" width="100%">
 
-<p><em>Vista principal del inventario en cuadrícula con fotos reales, filtros laterales por categoría y acceso directo al asistente con IA (se adapta al tema claro u oscuro de GitHub).</em></p>
+<p><em>Vista principal del inventario en cuadrícula con fotos reales, filtros laterales por categoría y acceso directo al asistente con IA.</em></p>
 
 </div>
 
@@ -46,7 +35,7 @@ Inventario con fotos reales, fichas de pines, proyectos conectados a tu stock e 
 
 - **Directo al grano, sin infraestructura pesada**: un único servicio en **Node.js 24+** con **SQLite nativo (`node:sqlite`)** y frontend en HTML, CSS y JavaScript sin frameworks ni paso de compilación. Todo persiste en una sola carpeta `./data`.
 - **Pieza física separada de su ficha técnica**: cada **pieza** guarda lo que tienes en tu taller (cantidad, sitio, foto real, notas y datos propios como el valor óhmico); la **ficha del tipo** vive en el Glosario y comparte pines, tensión, interfaces y avisos «Ojo» entre todas las piezas iguales.
-- **IA opcional siempre bajo tu control**: fotografia una pieza o una bandeja con varias, el modelo propone nombre, tipo y pines, resuelve dudas con opciones rápidas y enseña diferencias antes/después; **nada entra en el inventario sin que tú lo confirmes**.
+- **IA opcional siempre bajo tu control**: haz una foto a una pieza o a una bandeja con varias, el modelo propone nombre, tipo y pines, resuelve dudas con opciones rápidas y enseña diferencias antes/después; **nada entra en el inventario sin que tú lo confirmes**.
 - **Pensado para el móvil y el homelab**: PWA instalable con modo sin conexión, tipografías locales (sin peticiones externas), estilo AMSTech claro/noche y copias de seguridad diarias automáticas.
 
 ---
