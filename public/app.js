@@ -3,20 +3,14 @@
 
 // configuración: llega de la base de datos (categorias, funciones_pin, dificultades, ajustes)
 let CATS = {};  // id → nombre, en el orden de la base de datos
+let COLOR_CAT = {}; // id → color de la categoría (tabla categorias, v9): marcas y fondos teñidos
+// el color de una categoría como variable CSS (--ams-c) y su cuadradito
+const conColor = (cat) => (COLOR_CAT[cat] ? ` style="--ams-c:${COLOR_CAT[cat]}"` : '');
+const marcaCat = '<span class="ams-cuadro" aria-hidden="true"></span>';
 let FUNC = {};  // id → {nombre, color_claro, color_oscuro, tachado}
 let DIF = {};   // nivel → nombre
 const MUCHOS = 99;
 const TEMAS = {auto: 'Tema: automático', claro: 'Tema: claro', noche: 'Tema: noche'};
-// letras de la app (Ajustes → Letra); la primera es la de por defecto. La familia de cada una está en style.css ([data-fuente])
-const FUENTES = {
-  jetbrains: {nombre: 'JetBrains Mono', sub: 'Monoespaciada, muy legible. La de por defecto.'},
-  mixta: {nombre: 'Mixta: JetBrains Mono + IBM Plex Sans', sub: 'Mono en nombres, pines y datos; sin serifa en los párrafos. Más fácil de leer.'},
-  'plex-mono': {nombre: 'IBM Plex Mono', sub: 'Monoespaciada, más clásica, de hoja técnica.'},
-  'mono-sistema': {nombre: 'Monoespaciada del sistema', sub: 'No carga nada, pero cambia de un dispositivo a otro.'},
-  'plex-sans': {nombre: 'IBM Plex Sans', sub: 'Sin serifa, de la misma familia que Plex Mono.'},
-  sistema: {nombre: 'Sin serifa del sistema', sub: 'La letra de antes: la del móvil o del ordenador.'},
-};
-const fuenteActual = () => (FUENTES[D.ajustes.fuente] ? D.ajustes.fuente : 'jetbrains');
 
 const D = {componentes: [], tipos: {}, proyectos: [], categorias: [], funciones: [], dificultades: [], ubicaciones: [], ajustes: {}};
 const ui = {sel: new Set(), seleccionando: false, selIA: false, visibles: [], cat: '', ubic: '', revisar: false, proFiltro: 'todos', sinComprobar: false, ajTipos: 'todos', ajBuscar: ''};
@@ -183,8 +177,6 @@ function guardarLocal(c) {
 function aplicarTema() {
   const t = TEMAS[D.ajustes.tema] ? D.ajustes.tema : 'auto';
   document.documentElement.dataset.tema = t;
-  document.documentElement.dataset.fuente = fuenteActual();
-  try { localStorage.setItem('ams-fuente', fuenteActual()); } catch {}
   $('#tema').textContent = TEMAS[t];
 }
 async function cambiarTema() {
@@ -413,37 +405,50 @@ function tipoEnFila(c) {
   if (!nuevas.length) return '';
   return norm(t).startsWith(norm(c.nombre)) ? t.slice(c.nombre.length).replace(/^[\s(·:,-]+|[)\s]+$/g, '') || t : t;
 }
-// en escritorio, el sitio, la tensión y las interfaces van en columnas; en el móvil, el sitio va bajo el nombre
+// ---------- disposición AMSTech (mockup aprobado el 23/11/2026) ----------
+// iconos de línea (heredan el color del texto)
+const ico = (d) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+const ICO = {
+  camara: ico('<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>'),
+  galeria: ico('<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M5 18l5-5 3 3 2-2 4 4"/>'),
+  varias: ico('<rect x="4" y="6" width="7" height="7" rx="1"/><rect x="13" y="11" width="7" height="7" rx="1"/><path d="M4 17h6M14 7h6"/>'),
+  lapiz: ico('<path d="M5 19l1-4L16 5l3 3L9 18z"/><path d="M14 7l3 3"/>'),
+  mas: ico('<path d="M12 5v14M5 12h14"/>'),
+  rejilla: ico('<rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/>'),
+  lista: ico('<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>'),
+  chispa: ico('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z"/>'),
+  aviso: ico('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>'),
+  filtros: ico('<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>'),
+};
+// la categoría de una pieza: cuadradito de su color + nombre
+const etqCat = (cat, cls = 'pz-cat') => `<span class="${cls}"${conColor(cat)}>${marcaCat}<span class="pz-cat-t">${esc(CATS[cat] || 'Otros')}</span></span>`;
+// imagen de una pieza: su foto o el dibujo de su tipo sobre el color de su categoría (sin dibujo, solo el color)
+const imgPieza = (c, cls) => (c.foto ? `<span class="${cls}"><img src="${fotoUrl(c)}" alt="" loading="lazy"></span>`
+  : `<span class="${cls} dibujo"${conColor(catOf(c))}>${c.tipo ? `<img src="img/tipos/${esc(c.tipo)}.svg" alt="" loading="lazy" onerror="this.remove()">` : ''}</span>`);
+const cuenta = (c) => `<span class="cuenta num${unidades(c) || c.varios ? '' : ' cero'}">${esc(qtyText(c))}</span>`;
+const etqPend = (c) => (c.revisar ? '<span class="etq-pend">pendiente</span>' : '');
+
+// lista: miniatura, nombre y categoría; en escritorio, sitio, tensión e interfaces en columnas y el − n +;
+// en el móvil, la cantidad en un recuadro que al tocarlo se convierte en − n +
 function filaComp(c) {
   const f = c.tipo && D.tipos[c.tipo] ? g(c.tipo) : null, tipo = tipoEnFila(c);
-  const sub = [tipo ? esc(tipo) : '', c.ubicacion ? `<span class="solo-movil">${esc(c.ubicacion)}</span>` : ''].filter(Boolean);
-  return `<div class="fila">
-    <a class="fila-main" href="#/c/${c.id}">${c.foto ? `<img class="thumb" src="${fotoUrl(c)}" alt="" loading="lazy">` : ''}
+  return `<div class="fila fila-pieza${ui.cuentaAbierta === c.id ? ' editando' : ''}">
+    <a class="fila-main" href="#/c/${c.id}">${imgPieza(c, 'fila-img')}
       <div><div class="nombre">${esc(c.nombre)}${revisar(c)}</div>
-      ${sub.length ? `<div class="sub${tipo ? '' : ' solo-movil'}">${sub.join(tipo && c.ubicacion ? '<span class="solo-movil"> · </span>' : '')}</div>` : ''}</div></a>
+      <div class="sub">${etqCat(catOf(c))}${tipo ? `<span class="solo-escritorio"> · ${esc(tipo)}</span>` : ''}${c.ubicacion ? `<span class="solo-movil"> · ${esc(c.ubicacion)}</span>` : ''}</div></div></a>
     <div class="fila-cols solo-escritorio"><span>${esc(c.ubicacion) || '<span class="gris">—</span>'}</span><span>${f ? esc(voltajeDe(f)) : ''}</span>
       <span>${f ? esc(list(f.interfaz).slice(0, 2).join(', ')) : ''}</span></div>
+    ${c.varios ? '' : `<button class="cuenta-btn num" type="button" data-cuenta="${c.id}" aria-label="Cambiar la cantidad (${esc(qtyText(c))})">${esc(qtyText(c))}</button>`}
     ${stepper(c)}</div>`;
 }
-// escritorio: «Añadir pieza» despliega las mismas opciones que el «+» del móvil (sin cámara: «Con IA, foto y texto»)
-const menuAnadir = () => `<details class="mas anadir solo-escritorio"><summary class="btn prim">Añadir pieza<span class="anadir-flecha" aria-hidden="true">▾</span></summary>
-  <div class="mas-menu anadir-menu" role="menu">
-    <label class="fab-op" role="menuitem" tabindex="0">Elegir foto con IA<span class="sub">la analiza en cuanto la eliges</span>
-      <input type="file" accept="image/*" class="foto-directa" hidden></label>
-    <a class="fab-op" role="menuitem" href="#/ia">Con IA, foto y texto<span class="sub">añade lo que sepas y elige el modelo</span></a>
-    <a class="fab-op" role="menuitem" href="#/ia/varias">Varias piezas en una foto<span class="sub">la IA las separa y las identifica</span></a>
-    <a class="fab-op" role="menuitem" href="#/nuevo">A mano<span class="sub">rellenas tú la ficha</span></a>
-  </div></details>`;
 const CAB_INVENTARIO = `<div class="fila fila-cab solo-escritorio" aria-hidden="true"><div class="fila-main">Pieza</div>
   <div class="fila-cols"><span>Sitio</span><span>Tensión</span><span>Interfaz</span></div><div class="fila-cant">Cantidad</div></div>`;
 
-// cuadrícula: la foto manda; sin foto, solo el nombre (sin recuadros de relleno)
+// cuadrícula: foto o dibujo arriba, la cantidad en la esquina y debajo nombre, categoría y sitio
 function tarjetaComp(c) {
-  return `<div class="tarjeta${c.foto ? '' : ' sin-foto'}">
-    <a class="tarjeta-main" href="#/c/${c.id}">${c.foto ? `<img class="tarjeta-foto" src="${fotoUrl(c)}" alt="" loading="lazy">` : ''}
-      <span class="tarjeta-txt"><span class="nombre">${esc(c.nombre)}${revisar(c)}</span>
-      <span class="sub">${[tipoEnFila(c), c.ubicacion].filter(Boolean).map(esc).join(' · ')}</span></span></a>
-    <div class="tarjeta-pie">${stepper(c)}</div></div>`;
+  return `<a class="tarjeta" href="#/c/${c.id}">${imgPieza(c, 'tarjeta-img')}${etqPend(c)}${cuenta(c)}
+    <span class="tarjeta-txt"><span class="nombre">${esc(c.nombre)}</span>
+      <span class="tarjeta-meta">${etqCat(catOf(c))}<span class="sitio">${esc(c.ubicacion || 'sin sitio')}</span></span></span></a>`;
 }
 const vistaInv = () => (D.ajustes.vista_inventario === 'cuadricula' ? 'cuadricula' : 'lista');
 
@@ -457,46 +462,71 @@ function tambien(query, aqui) {
   return partes.length ? `<p class="tambien">También con «${esc(query)}»: <a href="#/buscar">${partes.join(', ')} →</a></p>` : '';
 }
 
+// la caja azul: lo principal de la pantalla es añadir piezas con la IA (solo escritorio; en el móvil, el «+»)
+function cajaIA() {
+  if (!D.ia?.activa) return `<section class="caja-ia solo-escritorio"><span class="caja-ia-ico">${ICO.camara}</span>
+    <div><b class="caja-ia-t">Añadir con IA</b><p>Pon tu clave de OpenCode Go y la IA identificará tus piezas por foto: nombre, tipo y pines.</p></div>
+    <div class="caja-ia-bot"><a class="btn blanco" href="#/ia/ajustes">Configurar la IA</a></div></section>`;
+  return `<section class="caja-ia solo-escritorio"><span class="caja-ia-ico">${ICO.camara}</span>
+    <div><b class="caja-ia-t">Añadir con IA</b><p>Haz una foto a una pieza (o a varias a la vez): la IA propone nombre, tipo y pines, y tú lo revisas antes de guardar.
+      <a href="#/ia">Con foto y texto →</a></p></div>
+    <div class="caja-ia-bot"><label class="btn amarillo" tabindex="0">Foto con IA<input type="file" accept="image/*" class="foto-directa" hidden></label>
+      <a class="btn blanco" href="#/ia/varias">Varias piezas</a></div></section>`;
+}
+
 function vInventario() {
-  const query = q.value.trim();
-  let cs = D.componentes.slice();
+  const query = q.value.trim(), todas = D.componentes;
+  let cs = todas.slice();
   const porCat = {};
   cs.forEach((c) => (porCat[catOf(c)] = (porCat[catOf(c)] || 0) + 1));
   if (query) cs = cs.filter((c) => matches(compText(c), query));
   if (ui.cat) cs = cs.filter((c) => catOf(c) === ui.cat);
   if (ui.ubic) cs = cs.filter((c) => (ui.ubic === '∅' ? !c.ubicacion : c.ubicacion === ui.ubic));
   if (ui.revisar) cs = cs.filter((c) => c.revisar);
-  const nRevisar = D.componentes.filter((c) => c.revisar).length;
+  if (ui.sinFoto) cs = cs.filter((c) => !c.foto);
+  const n = (fn) => todas.filter(fn).length, sitios = ubicaciones(), orden = Object.keys(CATS);
+  const activos = [ui.ubic, ui.revisar, ui.sinFoto].filter(Boolean).length;
+  const opCat = (k, nombre, cuantas, cls) => `<button class="${cls}${ui.cat === k ? ' on' : ''}" type="button" data-cat="${k}"${k ? conColor(k) : ''} aria-pressed="${ui.cat === k}">${k ? marcaCat : '<span class="ams-cuadro todas" aria-hidden="true"></span>'}${esc(nombre)}<span class="n">${cuantas}</span></button>`;
+  const catsVisibles = orden.filter((k) => porCat[k]);
 
-  const cats = Object.keys(CATS).filter((k) => porCat[k]).map((k) =>
-    `<button class="f ${ui.cat === k ? 'on' : ''}" data-cat="${k}">${CATS[k]}<span class="n">${porCat[k]}</span></button>`).join('');
-  const filtros = `<div class="filtros">
-    <div class="cats"><button class="f ${!ui.cat ? 'on' : ''}" data-cat="">Todo<span class="n">${D.componentes.length}</span></button>${cats}</div>
-    <button class="f solo-movil filtros-abrir ${ui.filtros ? 'on' : ''}" id="filtros-abrir" type="button" aria-expanded="${!!ui.filtros}">Filtros y vista${
-      [ui.ubic === '∅' ? 'sin sitio' : ui.ubic, ui.revisar ? 'pendientes' : '', ui.seleccionando ? 'seleccionando' : ''].filter(Boolean).map((x) => `<span class="n">· ${esc(x)}</span>`).join('')}</button>
-    <div class="filtros-der ${ui.filtros ? 'abierto' : ''}">
-      <select id="ubic" class="sel" aria-label="Filtrar por sitio"><option value="">Cualquier sitio</option>
-        ${ubicaciones().map((u) => `<option ${ui.ubic === u ? 'selected' : ''}>${esc(u)}</option>`).join('')}
-        <option value="∅" ${ui.ubic === '∅' ? 'selected' : ''}>Sin sitio</option></select>
-      ${nRevisar ? `<button class="f ${ui.revisar ? 'on' : ''}" id="rev">Pendientes<span class="n">${nRevisar}</span></button>` : ''}
-      <button class="f ${ui.seleccionando ? 'on' : ''}" id="sel-modo" type="button">${ui.seleccionando ? 'Terminar' : 'Seleccionar'}</button>
-      <span class="conmuta" role="group" aria-label="Vista">${[['lista', 'Lista'], ['cuadricula', 'Cuadrícula']].map(([k, v]) =>
-        `<button class="f ${vistaInv() === k ? 'on' : ''}" data-vista-inv="${k}" aria-pressed="${vistaInv() === k}">${v}</button>`).join('')}</span>
-      ${menuAnadir()}
-    </div></div><div id="pend-aviso" aria-live="polite"></div>`;
+  // lateral (escritorio): categorías y «Mostrar»; en el móvil las categorías van en una tira y «Mostrar» se abre con el botón de filtros
+  const lado = `<aside class="lado" aria-label="Filtros">
+    <h2 class="lado-t solo-escritorio">Categorías</h2>
+    <div class="lado-caja lado-cats solo-escritorio">${opCat('', 'Todas', todas.length, 'lado-op')}${catsVisibles.map((k) => opCat(k, CATS[k], porCat[k], 'lado-op')).join('')}</div>
+    <h2 class="lado-t">Mostrar</h2>
+    <div class="lado-caja lado-mostrar">
+      <label class="lado-op"><input type="checkbox" id="rev" ${ui.revisar ? 'checked' : ''}>Con «pendiente»<span class="n">${n((c) => c.revisar)}</span></label>
+      <label class="lado-op"><input type="checkbox" id="sin-sitio" ${ui.ubic === '∅' ? 'checked' : ''}>Sin sitio<span class="n">${n((c) => !c.ubicacion)}</span></label>
+      <label class="lado-op"><input type="checkbox" id="sin-foto" ${ui.sinFoto ? 'checked' : ''}>Sin foto<span class="n">${n((c) => !c.foto)}</span></label>
+      ${sitios.length ? `<label class="lado-sitio"><span>Sitio</span><select id="ubic" class="sel"><option value="">Cualquier sitio</option>
+        ${sitios.map((u) => `<option ${ui.ubic === u ? 'selected' : ''}>${esc(u)}</option>`).join('')}</select></label>` : ''}
+    </div></aside>`;
+  const cab = `<div class="inv-cab"><h1>Inventario <small>${piezasTxt(todas.length)}</small></h1>
+    <button class="btn icono solo-movil${ui.filtros || activos ? ' on' : ''}" id="filtros-abrir" type="button" aria-expanded="${!!ui.filtros}" aria-label="Filtros y vista">${ICO.filtros}${activos ? `<span class="n">${activos}</span>` : ''}</button>
+    <div class="inv-acciones">
+      <div class="seg" role="group" aria-label="Vista">${[['cuadricula', 'Cuadrícula', ICO.rejilla], ['lista', 'Lista', ICO.lista]].map(([k, v, i]) =>
+        `<button type="button" class="${vistaInv() === k ? 'on' : ''}" data-vista-inv="${k}" aria-pressed="${vistaInv() === k}">${i}${v}</button>`).join('')}</div>
+      <button class="btn${ui.seleccionando ? ' on' : ''}" id="sel-modo" type="button">${ui.seleccionando ? 'Terminar' : 'Seleccionar'}</button>
+      <a class="btn solo-escritorio" href="#/nuevo">${ICO.mas}A mano</a>
+    </div></div>
+    <div class="chips solo-movil">${opCat('', 'Todas', todas.length, 'chip')}${catsVisibles.map((k) => opCat(k, CATS[k], porCat[k], 'chip')).join('')}</div>`;
 
-  if (!D.componentes.length) return filtros + vacio('Aún no hay piezas. Pulsa + para añadir la primera.');
-  if (!cs.length) return filtros + tambien(query, 'piezas') + vacio('Nada coincide con el filtro.');
-  const rejilla = vistaInv() === 'cuadricula', sel = ui.seleccionando;
-  ui.visibles = cs.map((c) => c.id);
-  const cabSel = sel ? `<div class="sel-cab"><span class="gris">Elige las piezas:</span>
-    <button class="f" type="button" data-sel="visibles">Todas las que se ven (${cs.length})</button>
-    <button class="f" type="button" data-sel="ninguna">Ninguna</button></div>` : '';
-  return filtros + tambien(query, 'piezas') + cabSel + (rejilla || sel ? '' : CAB_INVENTARIO) + Object.keys(CATS).map((k) => {
-    const items = cs.filter((c) => catOf(c) === k).sort(byName);
-    return items.length ? `<section class="grupo"><h3 class="grupo-t">${CATS[k]}<span class="n">${items.length}</span></h3>${rejilla
-      ? `<div class="rejilla">${items.map(sel ? tarjetaSel : tarjetaComp).join('')}</div>` : items.map(sel ? filaSel : filaComp).join('')}</section>` : '';
-  }).join('') + (sel ? `<div class="sel-hueco"></div>${barraSel()}` : '');
+  let cuerpo;
+  const sel = ui.seleccionando, rejilla = vistaInv() === 'cuadricula';
+  if (!todas.length) cuerpo = vacio('Aún no hay piezas. Pulsa + para añadir la primera.');
+  else if (!cs.length) cuerpo = tambien(query, 'piezas') + vacio('Nada coincide con el filtro.');
+  else {
+    cs.sort((a, b) => orden.indexOf(catOf(a)) - orden.indexOf(catOf(b)) || byName(a, b));
+    ui.visibles = cs.map((c) => c.id);
+    const cabSel = sel ? `<div class="sel-cab"><span class="gris">Elige las piezas:</span>
+      <button class="f" type="button" data-sel="visibles">Todas las que se ven (${cs.length})</button>
+      <button class="f" type="button" data-sel="ninguna">Ninguna</button></div>` : '';
+    cuerpo = tambien(query, 'piezas') + cabSel + (rejilla
+      ? `<div class="rejilla">${cs.map(sel ? tarjetaSel : tarjetaComp).join('')}</div>`
+      : `<div class="lista-piezas${sel ? ' sel' : ''}">${sel ? '' : CAB_INVENTARIO}${cs.map(sel ? filaSel : filaComp).join('')}</div>`);
+  }
+  return `<div class="inv${ui.filtros ? ' filtros-abiertos' : ''}">${lado}<div class="inv-main">${cab}${sel ? '' : cajaIA()}
+    <div id="pend-aviso" aria-live="polite"></div>${cuerpo}</div></div>${sel ? `<div class="sel-hueco"></div>${barraSel()}` : ''}`;
 }
 
 // ---------- varias piezas a la vez: elegir en el Inventario, editarlas juntas y corregirlas con la IA ----------
@@ -507,18 +537,18 @@ const piezasTxt = (n) => `${n} pieza${n === 1 ? '' : 's'}`;
 function filaSel(c) {
   const marcada = ui.sel.has(c.id);
   return `<label class="fila fila-sel${marcada ? ' marcada' : ''}"><input type="checkbox" class="sel-pieza" value="${c.id}" ${marcada ? 'checked' : ''} aria-label="Elegir ${esc(c.nombre)}">
-    ${c.foto ? `<img class="thumb" src="${fotoUrl(c)}" alt="" loading="lazy">` : ''}
+    ${imgPieza(c, 'fila-img')}
     <span class="fila-sel-txt"><span class="nombre">${esc(c.nombre)}${revisar(c)}</span>
       <span class="sub">${[c.tipo ? g(c.tipo).nombre : '', c.ubicacion].filter(Boolean).map(esc).join(' · ')}</span></span>
     <span class="der num">${esc(qtyText(c))}</span></label>`;
 }
 function tarjetaSel(c) {
   const marcada = ui.sel.has(c.id);
-  return `<label class="tarjeta tarjeta-sel${c.foto ? '' : ' sin-foto'}${marcada ? ' marcada' : ''}">
+  return `<label class="tarjeta tarjeta-sel${marcada ? ' marcada' : ''}">
     <input type="checkbox" class="sel-pieza" value="${c.id}" ${marcada ? 'checked' : ''} aria-label="Elegir ${esc(c.nombre)}">
-    ${c.foto ? `<img class="tarjeta-foto" src="${fotoUrl(c)}" alt="" loading="lazy">` : ''}
-    <span class="tarjeta-txt"><span class="nombre">${esc(c.nombre)}${revisar(c)}</span>
-      <span class="sub">${[c.tipo ? g(c.tipo).nombre : '', c.ubicacion].filter(Boolean).map(esc).join(' · ')}</span></span></label>`;
+    ${imgPieza(c, 'tarjeta-img')}${cuenta(c)}
+    <span class="tarjeta-txt"><span class="nombre">${esc(c.nombre)}</span>
+      <span class="tarjeta-meta">${etqCat(catOf(c))}<span class="sitio">${esc(c.ubicacion || 'sin sitio')}</span></span></span></label>`;
 }
 // barra fija abajo con lo que se puede hacer con las elegidas
 function barraSel() {
@@ -773,95 +803,121 @@ const menuMas = (items) => `<details class="mas"><summary class="btn" aria-label
 const cabFicha = ({img = '', titulo, linea, extra = ''}) => `<header class="pz-cab${img ? '' : ' sin-img'}">${img}
   <div class="pz-tit"><h1>${titulo}</h1>${linea ? `<p class="pz-linea">${linea}</p>` : ''}${extra}</div></header>`;
 
+// ---------- fichas de pieza y de tipo: dos columnas (mockup del 23/11/2026) ----------
+// izquierda: la imagen grande y lo de esta pieza (o tus piezas del tipo); derecha: nombre, acciones, avisos, pines y ficha del tipo.
+// En el móvil todo va en una columna: imagen, nombre, acciones, avisos, esta pieza, pines y ficha del tipo.
+const migas = (partes) => `<nav class="migas" aria-label="Estás en">${partes.join('<span class="migas-sep" aria-hidden="true">/</span>')}</nav>`;
+// cajetín de dos columnas: una celda que se queda sola en su fila ocupa las dos (sin huecos)
+function cajetin(celdas) {
+  const cs = celdas.filter(Boolean).map(([k, v, ancho]) => ({k, v, ancho: !!ancho}));
+  let col = 0;
+  cs.forEach((c, i) => {
+    if (c.ancho) { if (col === 1) cs[i - 1].ancho = true; col = 0; } else col = 1 - col;
+  });
+  if (col === 1 && cs.length) cs[cs.length - 1].ancho = true;
+  return `<dl class="cajetin">${cs.map((c) => `<div${c.ancho ? ' class="ancho"' : ''}><dt>${c.k}</dt><dd>${c.v}</dd></div>`).join('')}</dl>`;
+}
+const imagenGrande = ({foto = '', tipo = '', cat, pie}) => `<figure class="fi-img${foto ? ' con-foto' : ''}"${conColor(cat)}>
+  ${foto ? `<a class="fi-img-marco" href="${foto}" target="_blank" aria-label="Ver la foto grande"><img src="${foto}" alt=""></a>`
+    : `<span class="fi-img-marco">${tipo ? `<img src="img/tipos/${esc(tipo)}.svg" alt="" onerror="this.remove()">` : ''}</span>`}
+  <figcaption>${pie}</figcaption></figure>`;
+const notaOjo = (f) => (f.ojo ? `<div class="ams-aviso aviso-ojo"><b>${ICO.aviso}Ojo</b><p>${esc(f.ojo)}</p></div>` : '');
+// pines y, al lado, la ficha del tipo (tensión, pines, interfaces, estado, datos y proyectos). Las placas con muchos pines
+// (agrupados por función) ocupan todo el ancho y la ficha del tipo va debajo
+function fichaDelTipo(f, tipo, ps, pie = '') {
+  const pines = tablaPines(f), nPines = list(f.pines).length;
+  const celdas = [['Tensión', esc(voltajeDe(f)) || '—'], ['Pines', nPines || '—'],
+    list(f.interfaz).length ? ['Interfaces', esc(list(f.interfaz).join(', ')), true] : null,
+    ...list(f.datos).map(([k, v]) => [esc(k), esc(v)]),
+    list(f.alias).length ? ['Otros nombres', esc(list(f.alias).join(', ')), true] : null,
+    ['Estado', f.revisado === 0 ? '<span class="aviso">Sin comprobar</span>' : 'Comprobada ✓']];
+  return `<div class="fi-dos${!pines || nPines > PINES_AGRUPAR ? ' una' : ''}">
+    ${pines ? `<section class="fi-pines"><h2 class="rotulo">Pines</h2><div class="caja">${pines}</div></section>` : ''}
+    <section class="fi-tipo"><h2 class="rotulo">Ficha del tipo</h2><div class="caja fi-tipo-caja">${cajetin(celdas)}
+      ${ps.length ? `<h3 class="fi-h">Proyectos que la usan</h3><div class="fi-proyectos">${listaProyectos(ps)}</div>` : ''}
+      ${pie ? `<p class="meta">${pie}</p>` : ''}</div></section></div>`;
+}
+
 function vComponente(id) {
   const c = comp(id);
   if (!c) return vacio('No existe esa pieza.');
-  const f = g(c.tipo), conTipo = !!(c.tipo && D.tipos[c.tipo]);
+  const f = g(c.tipo), conTipo = !!(c.tipo && D.tipos[c.tipo]), cat = catOf(c), ia = D.ia?.activa;
   const delTipo = conTipo ? D.componentes.filter((x) => x.tipo === c.tipo).length : 0;
   const ps = conTipo ? proyectosDe(c.tipo) : [];
-  const linea = [esc(c.ubicacion || 'Sin sitio'),
-    conTipo ? `<a href="#/g/${esc(c.tipo)}">${esc(f.nombre)}</a>${f.archivado ? ' (archivado)' : ''}` : 'Sin tipo'].join(' · ');
-  const mas = conTipo ? [`<p class="sec-nombre"><a href="#/g/${esc(c.tipo)}">${esc(f.nombre)}</a>
-      <span class="gris">· ${delTipo > 1 ? `la comparten tus ${delTipo} piezas de este tipo` : 'común a todas las piezas de este tipo'}</span></p>`,
-    f.resumen ? `<p class="resumen">${esc(f.resumen)}</p>` : '',
-    list(f.alias).length ? `<p class="sec-datos"><span><span class="gris">Otros nombres</span> ${esc(list(f.alias).join(', '))}</span></p>` : '',
-    tablaDatos(f.datos),
-    `<p class="meta"><a href="#/g/${esc(c.tipo)}/editar">Editar la ficha del tipo</a> · ${esc(CATS[f.categoria] || '')}</p>`].join('') : '';
-  return `<a class="back" href="#/">← Inventario</a>
-    <article class="hoja ficha">
-      ${cabFicha({
-        img: c.foto ? `<a class="pz-img" href="${fotoUrl(c)}" target="_blank" aria-label="Ver la foto grande"><img src="${fotoUrl(c)}" alt=""></a>` : '',
-        titulo: esc(c.nombre) + revisar(c), linea, extra: `<div class="pz-cantidad">${stepper(c, true)}</div>`})}
-      <div class="pz-acciones">
-        <a class="btn prim" href="#/editar/${c.id}">Editar</a>
-        <label class="btn">Foto<input type="file" accept="image/*" id="foto" hidden></label>
-        ${D.ia?.activa ? '<button class="btn" type="button" id="ia-abrir" aria-expanded="false">Corregir con IA</button>' : ''}
-        ${menuMas([
-          conTipo ? `<a role="menuitem" href="#/g/${esc(c.tipo)}/editar">Editar la ficha del tipo</a>` : '',
-          `<label role="menuitem">${c.foto ? 'Cambiar la foto' : 'Añadir una foto'}<input type="file" accept="image/*" id="foto2" hidden></label>`,
-          c.foto ? '<button role="menuitem" type="button" id="quitar-foto">Quitar la foto</button>' : '',
-          '<button role="menuitem" type="button" class="peligro" id="borrar">Borrar esta pieza</button>'])}
+  const datos = list(c.datos).length ? c.datos.map(([k, v]) => [esc(k), esc(v)]) : [['Datos propios', '—']];
+  const esta = `<section class="caja fi-esta"><div class="fi-esta-cab"><h2 class="rotulo">Esta pieza</h2>
+      ${c.revisar ? '<button class="btn mini" id="quitar-pendiente" type="button">Hecho: quitar «pendiente»</button>'
+        : '<button class="btn mini" id="marcar-pendiente" type="button">Marcar pendiente</button>'}</div>
+    ${c.revisar ? '<p class="fi-pend">La marcaste para mirar algo de ella más tarde.</p>' : ''}
+    ${cajetin([['Cantidad', stepper(c, true)], ['Sitio', esc(c.ubicacion || 'Sin sitio')],
+      ['Tipo', conTipo ? `<a href="#/g/${esc(c.tipo)}">${esc(f.nombre)}</a>${f.archivado ? ' (archivado)' : ''}` : 'Sin tipo', true],
+      ['Categoría', etqCat(cat)], ...datos])}
+    ${c.notas ? `<div class="fi-notas"><h3 class="rotulo">Notas</h3><p class="notas">${esc(c.notas)}</p></div>` : ''}</section>`;
+  return `${migas(['<a href="#/" data-cat="">Inventario</a>', `<a href="#/" data-cat="${esc(cat)}">${esc(CATS[cat] || 'Otros')}</a>`, `<span>${esc(c.nombre)}</span>`])}
+    <article class="fi">
+      <div class="fi-izq">
+        ${imagenGrande({foto: c.foto ? fotoUrl(c) : '', tipo: conTipo ? c.tipo : '', cat,
+          pie: `<span>${c.foto ? 'Foto de la pieza' : conTipo ? 'Dibujo del tipo · aún sin foto' : 'Aún sin foto'}</span>
+            <label class="btn mini">${ICO.camara}${c.foto ? 'Cambiar foto' : 'Añadir foto'}<input type="file" accept="image/*" id="foto2" hidden></label>`})}
+        ${esta}
       </div>
-      ${panelRevisar('pieza', c.id, c.tipo ? 'La IA repasa esta pieza y la ficha de su tipo.' : 'La IA repasa esta pieza.')}
-      <div class="pz-cuerpo">
-        ${c.revisar ? `<div class="nota"><p><span class="nota-t">Pendiente</span> La marcaste para mirar algo de ella más tarde.</p>
-          <button class="btn mini" id="quitar-pendiente" type="button">Hecho: quitar la marca</button></div>` : ''}
+      <div class="fi-der">
+        <header class="fi-cab">${etqCat(cat, 'etq-cat')}<h1>${esc(c.nombre)}${c.revisar ? ' <span class="etq-pend">pendiente</span>' : ''}</h1>
+          ${conTipo && f.resumen ? `<p class="fi-resumen">${esc(f.resumen)}</p>` : ''}</header>
+        <div class="fi-acciones">
+          <a class="btn${ia ? '' : ' prim'}" href="#/editar/${c.id}">${ICO.lapiz}Editar</a>
+          <label class="btn">${ICO.camara}Foto<input type="file" accept="image/*" id="foto" hidden></label>
+          ${ia ? `<button class="btn prim" type="button" id="ia-abrir" aria-expanded="false">${ICO.chispa}Corregir con IA</button>` : ''}
+          ${menuMas([
+            conTipo ? `<a role="menuitem" href="#/g/${esc(c.tipo)}/editar">Editar la ficha del tipo</a>` : '',
+            c.foto ? '<button role="menuitem" type="button" id="quitar-foto">Quitar la foto</button>' : '',
+            '<button role="menuitem" type="button" class="peligro" id="borrar">Borrar esta pieza</button>'])}
+        </div>
+        ${panelRevisar('pieza', c.id, c.tipo ? 'La IA repasa esta pieza y la ficha de su tipo.' : 'La IA repasa esta pieza.')}
         ${conTipo ? notaOjo(f) : ''}
         ${conTipo && f.revisado === 0 ? avisoIA(c.tipo, true) : ''}
-        ${list(c.datos).length ? specs(c.datos.map(([k, v]) => [esc(k), esc(v)])) : ''}
-        ${conTipo ? `${lineaTecnica(f)}${tablaPines(f) || '<p class="gris">Este tipo no tiene pines.</p>'}`
+        ${conTipo ? fichaDelTipo(f, c.tipo, ps, `${delTipo > 1 ? `La comparten tus ${delTipo} piezas de este tipo` : 'Común a todas las piezas de este tipo'} ·
+            <a href="#/g/${esc(c.tipo)}/editar">Editar la ficha del tipo</a>`)
           : '<p class="gris">Esta pieza no tiene tipo. Ponle uno en «Editar» y verás aquí sus pines, su tensión y sus datos.</p>'}
-        <div class="plegables">
-          ${plegable('Más sobre este tipo', mas)}
-          ${plegable('Notas', c.notas ? `<p class="notas">${esc(c.notas)}</p>` : '')}
-          ${plegable('Proyectos donde se usa', ps.length ? listaProyectos(ps) : '', ps.length)}
-          ${plegableHist('pieza', c.id, conTipo ? c.tipo : '')}
-        </div>
+        <div class="plegables">${plegableHist('pieza', c.id, conTipo ? c.tipo : '')}</div>
         <p class="meta">Actualizado ${esc(c.actualizado)}</p>
       </div>
     </article>`;
 }
 
-const notaOjo = (f) => (f.ojo ? `<p class="nota nota-ojo"><span class="nota-t">Ojo</span> ${esc(f.ojo)}</p>` : '');
 function vTipo(tipo) {
   const f = D.tipos[tipo];
   if (!f) return vacio('Ese tipo no está en el glosario.');
   const cs = D.componentes.filter((c) => c.tipo === tipo).sort(byName);
-  const ps = proyectosDe(tipo);
-  const tienes = stock(tipo);
-  return `<a class="back" href="#/glosario">← Glosario</a>
-    <article class="hoja ficha">
-      ${cabFicha({
-        img: f.origen === 'seed' ? `<span class="pz-img dibujo"><img src="img/tipos/${esc(tipo)}.svg" alt="" loading="lazy" onerror="this.parentElement.remove()"></span>` : '',
-        titulo: esc(f.nombre), linea: `${esc(CATS[f.categoria] || '')} · ${tienes ? `tienes ${stockText(tipo)}` : 'no tienes ninguna'}`,
-        extra: f.resumen ? `<p class="pz-resumen">${esc(f.resumen)}</p>` : ''})}
-      <div class="pz-acciones">
-        <a class="btn prim" href="#/g/${esc(tipo)}/editar">Editar ficha</a>
-        <a class="btn" href="#/nuevo?tipo=${esc(tipo)}">Añadir pieza</a>
-        ${D.ia?.activa ? '<button class="btn" type="button" id="ia-abrir" aria-expanded="false">Corregir con IA</button>' : ''}
-        ${menuMas([
-          `<button role="menuitem" type="button" data-tipo-archivar="${esc(tipo)}" data-v="${f.archivado ? 0 : 1}">${f.archivado ? 'Recuperar del archivo' : 'Archivar (ocultar)'}</button>`,
-          `<a role="menuitem" href="#/ajustes/tipos?t=${esc(tipo)}">Fusionar o borrar…</a>`])}
+  const ps = proyectosDe(tipo), cat = f.categoria || 'otro';
+  const tuyas = `<section class="caja fi-esta"><div class="fi-esta-cab"><h2 class="rotulo">Tus piezas de este tipo</h2>
+      <a class="btn mini" href="#/nuevo?tipo=${esc(tipo)}">${ICO.mas}Añadir</a></div>
+    ${cs.length ? `<div class="lista-piezas">${cs.map(filaComp).join('')}</div>` : '<p class="gris">No tienes ninguna todavía.</p>'}</section>`;
+  return `${migas(['<a href="#/glosario">Glosario</a>', `<span>${esc(CATS[cat] || 'Otros')}</span>`, `<span>${esc(f.nombre)}</span>`])}
+    <article class="fi">
+      <div class="fi-izq">
+        ${imagenGrande({tipo, cat, pie: `<span>Dibujo del tipo${stock(tipo) ? ` · tienes ${stockText(tipo)}` : ''}</span>`})}
+        ${tuyas}
       </div>
-      ${panelRevisar('tipo', tipo, 'La IA repasa la ficha; los cambios valen para todas las piezas de este tipo.')}
-      <div class="pz-cuerpo">
+      <div class="fi-der">
+        <header class="fi-cab">${etqCat(cat, 'etq-cat')}<h1>${esc(f.nombre)}</h1>${f.resumen ? `<p class="fi-resumen">${esc(f.resumen)}</p>` : ''}</header>
+        <div class="fi-acciones">
+          <a class="btn prim" href="#/g/${esc(tipo)}/editar">${ICO.lapiz}Editar ficha</a>
+          <a class="btn" href="#/nuevo?tipo=${esc(tipo)}">${ICO.mas}Añadir pieza</a>
+          ${D.ia?.activa ? `<button class="btn" type="button" id="ia-abrir" aria-expanded="false">${ICO.chispa}Corregir con IA</button>` : ''}
+          ${menuMas([
+            `<button role="menuitem" type="button" data-tipo-archivar="${esc(tipo)}" data-v="${f.archivado ? 0 : 1}">${f.archivado ? 'Recuperar del archivo' : 'Archivar (ocultar)'}</button>`,
+            `<a role="menuitem" href="#/ajustes/tipos?t=${esc(tipo)}">Fusionar o borrar…</a>`])}
+        </div>
+        ${panelRevisar('tipo', tipo, 'La IA repasa la ficha; los cambios valen para todas las piezas de este tipo.')}
         ${f.archivado ? `<p class="nota">Archivado: no sale en el glosario ni al elegir tipo. <button class="btn mini" data-tipo-archivar="${esc(tipo)}" data-v="0">Recuperar</button></p>` : ''}
         ${notaOjo(f)}
         ${f.revisado === 0 ? avisoIA(tipo, true) : ''}
-        ${lineaTecnica(f)}
-        ${tablaPines(f) || '<p class="gris">Sin pines.</p>'}
-        <div class="plegables">
-          ${plegable('Más datos', [list(f.alias).length ? `<p class="sec-datos"><span><span class="gris">Otros nombres</span> ${esc(list(f.alias).join(', '))}</span></p>` : '',
-            tablaDatos(f.datos)].join(''))}
-          ${plegable('Tus piezas de este tipo', cs.length ? cs.map(filaComp).join('') : '', cs.length)}
-          ${plegable('Proyectos donde se usa', ps.length ? listaProyectos(ps) : '', ps.length)}
-          ${plegableHist('tipo', tipo)}
-        </div>
-        <p class="meta">Ficha ${{seed: 'del catálogo base', ia: 'de la IA', usuario: 'escrita por ti'}[f.origen] || ''}</p>
+        ${fichaDelTipo(f, tipo, ps, `Ficha ${{seed: 'del catálogo base', ia: 'de la IA', usuario: 'escrita por ti'}[f.origen] || ''}`)}
+        <div class="plegables">${plegableHist('tipo', tipo)}</div>
       </div>
     </article>`;
 }
-
 
 // ---------- selector de tipo con búsqueda (fase D) ----------
 // un campo de texto que filtra los tipos por nombre, alias, interfaz o categoría; el id va en un campo oculto (name="tipo")
@@ -1118,7 +1174,7 @@ function vGlosario() {
   if (!tipos.length) return filtros + tambien(query, 'tipos') + vacio('Nada coincide.');
   return filtros + tambien(query, 'tipos') + Object.keys(CATS).map((cat) => {
     const ts = tipos.filter((t) => (t.categoria || 'otro') === cat).sort(byName);
-    return ts.length ? `<section class="grupo"><h3 class="grupo-t">${CATS[cat]}<span class="n">${ts.length}</span></h3>${ts.map(filaTipo).join('')}</section>` : '';
+    return ts.length ? `<section class="grupo"${conColor(cat)}><h3 class="grupo-t">${marcaCat}${CATS[cat]}<span class="n">${ts.length}</span></h3>${ts.map(filaTipo).join('')}</section>` : '';
   }).join('');
 }
 
@@ -1191,7 +1247,7 @@ function miniMaterial(m) {
   const c = piezasDe(m).find((x) => x.foto);
   if (c) return `<img class="thumb mini" src="${fotoUrl(c)}" alt="" title="${esc(c.nombre)}" loading="lazy">`;
   const t = list(m.tipo).find((k) => D.tipos[k]?.origen === 'seed');
-  return t ? `<img class="thumb mini dibujo" src="img/tipos/${esc(t)}.svg" alt="" title="${esc(g(t).nombre)}" loading="lazy" onerror="this.remove()">` : '';
+  return t ? `<img class="thumb mini dibujo"${conColor(g(t).categoria || 'otro')} src="img/tipos/${esc(t)}.svg" alt="" title="${esc(g(t).nombre)}" loading="lazy" onerror="this.remove()">` : '';
 }
 
 // filas de proyectos. Con «minis», la tira de fotos de las piezas (listado de Proyectos); sin ella, el estado va junto al nombre
@@ -2257,7 +2313,7 @@ async function regCargar() {
   regCargar.t = setTimeout(() => { if (location.hash === h) regCargar(); }, 5000);
 }
 
-const SECCIONES = {ia: 'IA', categorias: 'Categorías', tipos: 'Tipos', sitios: 'Sitios', formato: 'Uniformar formato', datos: 'Datos', letra: 'Letra', historial: 'Historial', registro: 'Registro'};
+const SECCIONES = {ia: 'IA', categorias: 'Categorías', tipos: 'Tipos', sitios: 'Sitios', formato: 'Uniformar formato', datos: 'Datos', historial: 'Historial', registro: 'Registro'};
 
 function vAjustes(sec) {
   if (sec && SECCIONES[sec]) {
@@ -2280,7 +2336,6 @@ function vAjustes(sec) {
         fila('#/ajustes/sitios', 'Sitios', `${plural(ubicaciones().length, 'sitio')} · renombrar, juntar, borrar`),
         fila('#/ajustes/formato', 'Uniformar formato', 'Que todo esté escrito igual: «3,3 V», «I2C», «Corriente máx.»')])}
       ${grupo('Aspecto', [
-        fila('#/ajustes/letra', 'Letra', `${esc(FUENTES[fuenteActual()].nombre)} · elige la letra de toda la app`),
         `<div class="fila"><div class="fila-main"><div><div class="nombre">Tema</div><div class="sub">Claro de día, grafito de noche o según el sistema</div></div></div>
           <div class="cats">${Object.entries({auto: 'Automático', claro: 'Claro', noche: 'Noche'}).map(([k, v]) =>
             `<button class="f ${(D.ajustes.tema || 'auto') === k ? 'on' : ''}" data-poner-tema="${k}">${v}</button>`).join('')}</div></div>`])}
@@ -2302,7 +2357,6 @@ async function ajCargar() {
     if (sec === 'sitios') zona.innerHTML = ajSitios(await api('GET', 'api/ubicaciones'));
     if (sec === 'formato') { zona.innerHTML = ajFormato(await api('GET', 'api/ajustes/formato')); contarFormato(); }
     if (sec === 'datos') zona.innerHTML = ajDatos(await api('GET', 'api/ajustes/resumen'));
-    if (sec === 'letra') zona.innerHTML = ajLetra();
     if (sec === 'historial') await histCargar(true);
     if (sec === 'registro') { zona.innerHTML = ajRegistro(); await regCargar(); }
   } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; }
@@ -2367,21 +2421,6 @@ function ajTipos(tipos) {
           <button class="btn mini" data-aj-cerrar>Cancelar</button></div>`}</div>
       </div>`;
     }).join('') : vacio('Nada en este filtro.')}</div>`;
-}
-
-// cada letra se enseña con un texto de muestra escrito en ella; se cambia con un toque y se guarda en el servidor
-function ajLetra() {
-  const actual = fuenteActual();
-  return `${cabecera('Letra', '', 'La de toda la app. Se guarda en el servidor, así que sale igual en el móvil y en el ordenador.')}
-    <div class="pad letras" role="radiogroup" aria-label="Letra de la app">${Object.entries(FUENTES).map(([k, f]) => `
-      <label class="letra-op">
-        <input type="radio" name="fuente" value="${k}" ${k === actual ? 'checked' : ''}>
-        <span class="letra-muestra" data-fuente="${k}">
-          <span class="nombre">${esc(f.nombre)}</span>
-          <span class="letra-texto">ESP32-WROOM-32 · 3,3 V · GPIO 21 SDA<br>Pequeño ñandú: 0O 1lI 5S 8B «Ojo» 220 Ω</span>
-        </span>
-        <span class="sub">${esc(f.sub)}</span>
-      </label>`).join('')}</div>`;
 }
 
 // Uniformar formato: lo que cambiaría en las fichas y en los datos de las piezas para que todo esté escrito igual
@@ -2812,7 +2851,7 @@ function route() {
   document.querySelectorAll('#nav a, #barra a').forEach((a) => a.classList.toggle('on', a.dataset.v === tab));
   cerrarMenuFab();
   app.innerHTML = fn();
-  document.title = `[AMS] lab · ${tab}`;
+  document.title = `AMS lab · ${tab}`;
   if (v === 'g' && sub === 'editar') editarTipoCargar();
   if (v === 'p') cargarProyecto();
   if (v === 'ia') { if (arg === 'ajustes') iaAjustes(); else if (arg === 'lote') iaLote(sub); else if (arg === 'varias') llenarModelosAlta(); else if (arg) iaTarea(arg); else { iaAbiertas(); llenarModelosAlta(); } }
@@ -2841,8 +2880,15 @@ function contadores() {
 
 // ---------- eventos ----------
 app.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-cat],[data-pf],[data-adj],#rev,#quitar-foto,#quitar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-rev-vista],[data-vista-inv],#sel-modo,[data-sel],[data-sel-acc],[data-lote-todas],[data-lote-marcar],#lote-aplicar,#lote-descartar,.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar],[data-pend-descartar],[data-hist-grupo],#hist-mas,[data-reg-nivel],#reg-copiar,[data-pro],#det-crear,[data-det-marcar],#lote-guardar,#filtros-abrir,#formato-aplicar,[data-formato-marcar],[data-pines-vista]');
+  const t = e.target.closest('[data-cat],[data-cuenta],[data-pf],[data-adj],#quitar-foto,#quitar-pendiente,#marcar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-rev-vista],[data-vista-inv],#sel-modo,[data-sel],[data-sel-acc],[data-lote-todas],[data-lote-marcar],#lote-aplicar,#lote-descartar,.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar],[data-pend-descartar],[data-hist-grupo],#hist-mas,[data-reg-nivel],#reg-copiar,[data-pro],#det-crear,[data-det-marcar],#lote-guardar,#filtros-abrir,#formato-aplicar,[data-formato-marcar],[data-pines-vista]');
   if (!t || !app.contains(t)) return; // solo botones de la propia vista (no el <html>, que lleva data-* del tema)
+  if (t.dataset.cuenta) { // móvil: el recuadro de la cantidad se convierte en − n + (y se queda así mientras ajustas)
+    ui.cuentaAbierta = Number(t.dataset.cuenta);
+    document.querySelectorAll('.fila-pieza.editando').forEach((x) => x.classList.remove('editando'));
+    t.closest('.fila-pieza').classList.add('editando');
+    t.closest('.fila-pieza').querySelector('[data-adj]')?.focus();
+    return;
+  }
   // sin redibujar la vista: el selector de tipo y las tablas editables viven dentro de formularios a medio rellenar
   if (t.classList.contains('combo-op')) { elegirTipo(t.closest('.combo'), t.dataset.valor); return; }
   if (t.id === 'ia-abrir') { // el panel de la IA se abre debajo de la fila de acciones
@@ -2925,11 +2971,11 @@ app.addEventListener('click', async (e) => {
       guardarLocal(await api('POST', `api/componentes/${t.dataset.id}/ajuste`, {delta: Number(t.dataset.adj)}));
     } else if (t.dataset.cat !== undefined) ui.cat = t.dataset.cat;
     else if (t.dataset.pf) ui.proFiltro = t.dataset.pf;
-    else if (t.id === 'rev') ui.revisar = !ui.revisar;
     else if (t.id === 'filtros-abrir') ui.filtros = !ui.filtros;
-    else if (t.id === 'quitar-pendiente') {
-      guardarLocal(await api('PATCH', `api/componentes/${location.hash.split('/')[2]}`, {revisar: false}));
-      toast('Marca quitada');
+    else if (t.id === 'quitar-pendiente' || t.id === 'marcar-pendiente') {
+      const marcar = t.id === 'marcar-pendiente';
+      guardarLocal(await api('PATCH', `api/componentes/${location.hash.split('/')[2]}`, {revisar: marcar}));
+      toast(marcar ? 'Marcada como pendiente' : 'Marca quitada');
     } else if (t.id === 'quitar-foto') {
       if (!(await confirmar('¿Quitar la foto de esta pieza?', {si: 'Quitar', peligro: true}))) return;
       guardarLocal(await api('DELETE', `api/componentes/${location.hash.split('/')[2]}/foto`));
@@ -2955,6 +3001,9 @@ app.addEventListener('click', async (e) => {
 app.addEventListener('change', async (e) => {
   const t = e.target;
   if (t.id === 'ubic') { ui.ubic = t.value; route(); }
+  if (t.id === 'rev') { ui.revisar = t.checked; route(); }
+  if (t.id === 'sin-sitio') { ui.ubic = t.checked ? '∅' : ''; route(); }
+  if (t.id === 'sin-foto') { ui.sinFoto = t.checked; route(); }
   if (t.id === 'pro-estado') { try { await cambiarEstadoPro(t); } catch (err) { toast(err.message, true); route(); } }
   if (t.id === 'pro-archivo' && t.files[0]) { const f = t.files[0]; t.value = ''; try { await subirArchivoPro(f); } catch (err) { toast(err.message, true); } }
   if (t.name === 'ia-modelo') cambiarModeloIA(t);
@@ -2965,13 +3014,6 @@ app.addEventListener('change', async (e) => {
     const antes = D.ajustes.ia_razonar;
     try { await api('PUT', 'api/ajustes/ia_razonar', {valor: t.value}); D.ajustes.ia_razonar = t.value; toast(`La IA razonará: ${RAZONAR[t.value].nombre.toLowerCase()}`); }
     catch (err) { D.ajustes.ia_razonar = antes; toast(err.message, true); iaAjustes(); }
-  }
-  if (t.name === 'fuente') {
-    const antes = fuenteActual();
-    D.ajustes.fuente = t.value;
-    aplicarTema(); // se ve al momento; si el servidor no lo guarda, vuelve la de antes
-    try { await api('PUT', 'api/ajustes/fuente', {valor: t.value}); toast(`Letra: ${FUENTES[t.value].nombre}`); }
-    catch (err) { D.ajustes.fuente = antes; aplicarTema(); ajCargar(); toast(err.message, true); }
   }
   if (t.dataset.catNombre || t.dataset.sitioNombre) cambioAjustes(t);
   if (t.classList.contains('ia-cambio')) contarCambios();
@@ -3050,9 +3092,9 @@ async function fotoDirectaIA(file) {
   const t = await api('POST', 'api/ia/alta', {foto});
   location.hash = `#/ia/${t.id}`;
 }
-// «Elegir foto con IA» del desplegable de escritorio: lo mismo que el del móvil (también con Intro o Espacio)
+// «Foto con IA» de la caja azul (escritorio): lo mismo que el del móvil (también con Intro o Espacio)
 app.addEventListener('keydown', (e) => {
-  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('.anadir-menu label.fab-op')) { e.preventDefault(); e.target.querySelector('input')?.click(); }
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('label.btn[tabindex]')) { e.preventDefault(); e.target.querySelector('input')?.click(); }
 });
 app.addEventListener('change', async (e) => {
   if (!e.target.classList.contains('foto-directa')) return;
@@ -3112,6 +3154,9 @@ q.addEventListener('input', () => {
   if (['', 'glosario', 'proyectos', 'buscar'].includes(vistaActual())) route(); else location.hash = '#/buscar';
 });
 q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && q.value.trim()) { if (vistaActual() === 'buscar') route(); else location.hash = '#/buscar'; q.blur(); } });
+// móvil: el buscador va escondido tras la lupa; se abre al tocarla y se cierra al salir de él vacío
+$('#buscar-abrir').addEventListener('click', () => { document.body.classList.add('buscando'); q.focus(); });
+q.addEventListener('blur', () => { if (!q.value.trim()) document.body.classList.remove('buscando'); });
 document.addEventListener('keydown', (e) => {
   const escribiendo = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
   if (e.key === '/' && !escribiendo) { e.preventDefault(); q.focus(); q.select(); }
@@ -3119,6 +3164,7 @@ document.addEventListener('keydown', (e) => {
 });
 window.addEventListener('hashchange', (e) => {
   if (/^#\/ia\/\d+$/.test(location.hash)) ui.origenTarea = {hash: location.hash, desde: e.oldURL ? new URL(e.oldURL).hash : ''};
+  ui.cuentaAbierta = null;
   route(); window.scrollTo(0, 0);
 });
 
@@ -3137,6 +3183,7 @@ async function cargar() {
   if (!r.ok) throw new Error(datos.error || `Error ${r.status}`);
   Object.assign(D, datos);
   CATS = Object.fromEntries(D.categorias.map((c) => [c.id, c.nombre]));
+  COLOR_CAT = Object.fromEntries(D.categorias.map((c) => [c.id, c.color]));
   FUNC = Object.fromEntries(D.funciones.map((f) => [f.id, f]));
   DIF = Object.fromEntries(D.dificultades.map((d) => [d.nivel, d.nombre]));
   const guardado = r.headers.get('x-guardado');

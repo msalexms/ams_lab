@@ -10,13 +10,15 @@ import {mkdirSync, readFileSync, existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {opcionesCopias} from './copias.mjs';
 
-export const VERSION = 8;
+export const VERSION = 9;
 export const ESTADOS_PROYECTO = ['idea', 'en_marcha', 'pausa', 'terminado'];
 export const COLUMNAS_TAREA = ['hacer', 'curso', 'hecho'];
 export const ORIGENES = ['seed', 'ia', 'usuario'];
 const ORIGEN = `TEXT NOT NULL DEFAULT 'seed' CHECK (origen IN ('seed', 'ia', 'usuario'))`;
 const ESTADO_PROYECTO = `TEXT NOT NULL DEFAULT 'idea' CHECK (estado IN ('idea', 'en_marcha', 'pausa', 'terminado'))`;
 const HEX = (col) => `CHECK (${col} GLOB '#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]')`;
+export const COLOR_NEUTRO = '#C9C6DA'; // categorías nuevas o sin color en seed/
+const COLOR_CATEGORIA = `TEXT NOT NULL DEFAULT '${COLOR_NEUTRO}' ${HEX('color')}`;
 const AJUSTES = `
   CREATE TABLE ajustes (                    -- preferencias de la aplicación (no del navegador)
     clave  TEXT PRIMARY KEY,
@@ -29,7 +31,8 @@ const ESQUEMA = `
     id      TEXT PRIMARY KEY,
     nombre  TEXT NOT NULL UNIQUE,
     orden   INTEGER NOT NULL,
-    origen  ${ORIGEN}           -- quién manda en la fila: seed/ solo actualiza las que siguen siendo 'seed'
+    origen  ${ORIGEN},          -- quién manda en la fila: seed/ solo actualiza las que siguen siendo 'seed'
+    color   ${COLOR_CATEGORIA}  -- color de la categoría (pegatinas y fondos teñidos; el mismo en claro y en noche)
   );
   CREATE TABLE funciones_pin (
     id      TEXT PRIMARY KEY,
@@ -323,8 +326,9 @@ function guardarReferencia(db, ref) {
   // las categorías que ya no son «de seed» (creadas o renombradas por la IA o el usuario) no se tocan,
   // y las que el usuario borró no se vuelven a crear
   const fuera = quitados(db, 'categoria');
-  ref.categorias.forEach((c, i) => fuera.has(c.id) || db.prepare(`INSERT INTO categorias (id, nombre, orden) VALUES (?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET nombre = excluded.nombre, orden = excluded.orden WHERE categorias.origen = 'seed'`).run(c.id, c.nombre, i + 1));
+  ref.categorias.forEach((c, i) => fuera.has(c.id) || db.prepare(`INSERT INTO categorias (id, nombre, orden, color) VALUES (?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET nombre = excluded.nombre, orden = excluded.orden, color = excluded.color WHERE categorias.origen = 'seed'`)
+    .run(c.id, c.nombre, i + 1, c.color || COLOR_NEUTRO));
   ref.funciones_pin.forEach((f, i) => db.prepare(`INSERT INTO funciones_pin (id, nombre, color_claro, color_oscuro, tachado, orden) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET nombre = excluded.nombre, color_claro = excluded.color_claro, color_oscuro = excluded.color_oscuro,
       tachado = excluded.tachado, orden = excluded.orden`)
@@ -444,6 +448,7 @@ export function abrir(dataDir, seedDir) {
     if (version === 5) { migrarDesdeV5(db); version = 6; }
     if (version === 6) { migrarDesdeV6(db); version = 7; }
     if (version === 7) { migrarDesdeV7(db); version = 8; }
+    if (version === 8) { migrarDesdeV8(db, seedDir); version = 9; }
   }
 
   db.exec('PRAGMA foreign_keys = ON;');
@@ -593,6 +598,19 @@ function migrarDesdeV7(db) {
     db.exec('PRAGMA user_version = 8');
   });
   console.log('Base de datos migrada al modelo v8');
+}
+
+// v8 → v9: cada categoría tiene su color (estilo AMSTech: pegatinas y fondos teñidos). Se pone el de seed/referencia.json
+// a todas las que lo tienen, aunque el usuario las haya renombrado (el color no lo había elegido nadie); las demás, neutro.
+function migrarDesdeV8(db, seedDir) {
+  const colores = Object.fromEntries((leer(seedDir, 'referencia.json')?.categorias || []).filter((c) => c.color).map((c) => [c.id, c.color]));
+  enTransaccion(db, () => {
+    db.exec(`ALTER TABLE categorias ADD COLUMN color ${COLOR_CATEGORIA}`);
+    const poner = db.prepare('UPDATE categorias SET color = ? WHERE id = ?');
+    for (const [id, color] of Object.entries(colores)) poner.run(color, id);
+    db.exec('PRAGMA user_version = 9');
+  });
+  console.log('Base de datos migrada al modelo v9');
 }
 
 // una ficha tal como está en la base de datos, en el formato de guardarTipo() (para revisarla o reescribirla entera)

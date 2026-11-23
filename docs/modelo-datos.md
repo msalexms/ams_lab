@@ -1,4 +1,4 @@
-# Modelo de datos (v8) — `data/lab.db`
+# Modelo de datos (v9) — `data/lab.db`
 
 SQLite (`node:sqlite`). Esquema y migraciones en `server/db.mjs`; versión en `PRAGMA user_version`.
 
@@ -55,7 +55,7 @@ erDiagram
 ## Tres capas
 | Capa | Tablas | Quién la cambia |
 |---|---|---|
-| **Referencia** (configuración) | `categorias`, `funciones_pin` (nombre + **color claro y de noche** + tachado), `dificultades`; `ajustes` (tema: auto, claro, noche; vista_inventario: lista, cuadricula; ia_razonar: poco (por defecto), medio, mucho; fuente: jetbrains (por defecto), mixta, plex-mono, mono-sistema, plex-sans, sistema — el valor por defecto viene de seed, el elegido no se pisa; los valores válidos los comprueba el servidor) | `seed/referencia.json`; las categorías también la IA o el usuario |
+| **Referencia** (configuración) | `categorias` (con su **color**, v9), `funciones_pin` (nombre + **color claro y de noche** + tachado), `dificultades`; `ajustes` (tema: auto, claro, noche; vista_inventario: lista, cuadricula; ia_razonar: poco (por defecto), medio, mucho — el valor por defecto viene de seed, el elegido no se pisa; los valores válidos los comprueba el servidor) | `seed/referencia.json`; las categorías también la IA o el usuario |
 | **Catálogo** | `tipos`, `tipo_pines`, `tipo_alias`, `tipo_interfaces`, `tipo_datos`, `proyectos` y sus tablas | `seed/glosario.json`, `seed/proyectos.json`; los tipos y los proyectos también la IA o el usuario |
 | **Inventario** (datos del usuario) | `componentes`, `componente_datos`, `ubicaciones`, `historial`; de cada proyecto, `proyectos.estado`, `proyecto_notas`, `proyecto_tareas` y `proyecto_archivos` | solo la aplicación |
 | **IA** | `ia_tareas` | la aplicación al llamar al modelo |
@@ -130,6 +130,7 @@ Cada llamada al modelo se guarda: qué se le pidió (`entrada`, JSON), qué prop
 
 ## Migraciones
 - v7 → v8 (11/11/2026): `tipo_pines.nota` (cada fila es un solo pin; lo que comparta con otro uso va en la nota). `proyectos.origen` y `proyectos.estado`; tablas `proyecto_notas`, `proyecto_tareas` y `proyecto_archivos`. `catalogo_quitados` admite la clase `proyecto`, `auditoria` el objeto `proyecto` e `ia_tareas` la clase `detectar`: como SQLite no deja cambiar un CHECK, las tres se rehacen copiando sus filas.
+- v8 → v9 (23/11/2026): `categorias.color` (hex; estilo AMSTech: pegatinas y fondos teñidos, el mismo en claro y en noche). La migración pone el de `seed/referencia.json` a las categorías que lo tienen, aunque estén renombradas; las demás y las nuevas, `#C9C6DA` (neutro).
 - v1 → v2 (03/11/2026): `funciones_pin.color` pasa a `color_oscuro` y se añade `color_claro`; nueva tabla `ajustes`.
 - v2 → v3 (06/11/2026): `origen` en `categorias` y `tipos`, `revisado` en `tipos`; tablas `tipo_datos`, `componente_datos` e `ia_tareas`. Los tipos que no están en `seed/glosario.json` (creados desde la web) quedan con origen `usuario`.
 - v6 → v7 (11/11/2026): tabla `auditoria` (historial de cambios). Se rellena con lo que ya se sabía: las altas, cambios de stock y bajas de `historial` y las propuestas de la IA ya aplicadas (con su modelo), por orden de fecha.
@@ -137,4 +138,4 @@ Cada llamada al modelo se guarda: qué se le pidió (`entrada`, JSON), qué prop
 - v4 → v5 (09/11/2026): `tipos.archivado` y tabla `catalogo_quitados` (lo borrado o fusionado desde Ajustes).
 - v3 → v4 (06/11/2026): tabla `ia_config` (una fila): clave y modelo de la IA puestos desde la web. La clave nunca sale por la API (ni en `/api/datos` ni en `/api/exportar`), pero sí está en las copias de seguridad de la base de datos.
 
-`abrir()` mira `PRAGMA user_version`: 0 sin tablas → crea y siembra desde `seed/`; si es más antigua que la actual, **primero hace una copia completa** (`VACUUM INTO`) en la carpeta de copias como `lab-antes-vX-a-vY-<fecha>.db` (fuera de la rotación: no se borra sola) y después migra paso a paso (v0 → v8 directo, v1 → v2 → … → v8).
+`abrir()` mira `PRAGMA user_version`: 0 sin tablas → crea y siembra desde `seed/`; si es más antigua que la actual, **primero hace una copia completa** (`VACUUM INTO`) en la carpeta de copias como `lab-antes-vX-a-vY-<fecha>.db` (fuera de la rotación: no se borra sola) y después migra paso a paso (v0 → v9 directo, v1 → v2 → … → v9).

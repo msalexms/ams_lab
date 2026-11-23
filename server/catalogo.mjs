@@ -35,7 +35,7 @@ export function idLibre(db, tabla, nombre, porDefecto) {
 
 // ---------- categorías ----------
 export function listarCategorias(db) {
-  return db.prepare(`SELECT c.id, c.nombre, c.orden, c.origen, COUNT(t.id) AS tipos FROM categorias c
+  return db.prepare(`SELECT c.id, c.nombre, c.orden, c.origen, c.color, COUNT(t.id) AS tipos FROM categorias c
     LEFT JOIN tipos t ON t.categoria_id = c.id GROUP BY c.id ORDER BY c.orden, c.nombre`).all();
 }
 export function crearCategoria(db, b) {
