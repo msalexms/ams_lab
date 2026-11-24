@@ -992,12 +992,14 @@ async function api(req, res, path) {
 }
 
 // ---------- ficheros ----------
-// huella de la web: cambia cuando cambian app.js, style.css o sw.js. index.html los pide con «?v=<huella>», así que un
-// proxy que guarde los .js y .css (Nginx Proxy Manager con «Cache Assets») o el navegador nunca sirven una versión vieja.
-const WEB_HUELLA = ['i18n.js', 'app.js', 'style.css', 'sw.js', 'icon.svg', 'amstech-ui/fuentes.css', 'amstech-ui/tokens.css', 'amstech-ui/componentes.css'];
+// huella de la web: cambia cuando cambia cualquiera de sus ficheros (los módulos de js/, i18n.js, style.css, sw.js…).
+// index.html los pide con «?v=<huella>», así que un proxy que guarde los .js y .css (Nginx Proxy Manager con «Cache
+// Assets») o el navegador nunca sirven una versión vieja.
+const modulosWeb = () => readdirSync(join(PUB, 'js')).filter((f) => f.endsWith('.js')).sort().map((f) => `js/${f}`);
+const WEB_HUELLA = ['i18n.js', 'style.css', 'sw.js', 'icon.svg', 'amstech-ui/fuentes.css', 'amstech-ui/tokens.css', 'amstech-ui/componentes.css'];
 let huellaWeb = {clave: '', valor: ''};
 function huella() {
-  const rutas = WEB_HUELLA.map((f) => join(PUB, f));
+  const rutas = [...WEB_HUELLA, ...modulosWeb()].map((f) => join(PUB, f));
   const clave = rutas.map((f) => statSync(f).mtimeMs).join(); // se recalcula solo si alguno cambió (npm run dev)
   if (clave !== huellaWeb.clave) {
     const h = createHash('sha1');
@@ -1006,12 +1008,14 @@ function huella() {
   }
   return huellaWeb.valor;
 }
+const importMap = (v) => Object.fromEntries(modulosWeb().map((f) => [`./${f}`, `./${f}?v=${v}`]));
 async function paginaPrincipal(res) {
   const v = huella();
   const html = (await readFile(join(PUB, 'index.html'), 'utf8'))
-    .replace(/href="((?:amstech-ui\/)?[\w-]+\.css)"/g, `href="$1?v=${v}"`).replace(/src="(i18n|app)\.js"/g, `src="$1.js?v=${v}"`)
+    .replace(/href="((?:amstech-ui\/)?[\w-]+\.css)"/g, `href="$1?v=${v}"`).replace(/src="(i18n\.js|js\/app\.js)"/g, `src="$1?v=${v}"`)
     .replace(/href="icon\.svg"/g, `href="icon.svg?v=${v}"`)
-    .replace('</head>', `  <meta name="version-web" content="${v}">\n</head>`);
+    // los «import» entre módulos van sin huella: el import map hace que cada uno se pida con ella
+    .replace('</head>', `  <meta name="version-web" content="${v}">\n  <script type="importmap">${JSON.stringify({imports: importMap(v)})}</script>\n</head>`);
   send(res, 200, html, TYPES['.html'], {'cache-control': 'no-cache'});
 }
 

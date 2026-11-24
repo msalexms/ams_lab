@@ -17,7 +17,9 @@ const LETRAS = ['bricolage-grotesque-latin-opsz-normal', 'bricolage-grotesque-la
   ...[400, 500, 600, 700, 800].flatMap((w) => [`figtree-latin-${w}-normal`, `figtree-latin-ext-${w}-normal`]),
   ...[400, 500].flatMap((w) => [`dm-mono-latin-${w}-normal`, `dm-mono-latin-ext-${w}-normal`])].map((f) => `amstech-ui/fuentes/${f}.woff2`);
 const ESTILOS = ['amstech-ui/fuentes.css', 'amstech-ui/tokens.css', 'amstech-ui/componentes.css', 'style.css'].map(conV);
-const PRECARGA = ['./', 'index.html', conV('i18n.js'), conV('app.js'), ...ESTILOS, conV('icon.svg'), 'manifest.webmanifest', ...LETRAS].map(u);
+// los módulos de la web (public/js/); test/web.test.mjs comprueba que la lista está completa
+const MODULOS = ['actividad', 'ajustes', 'app', 'base', 'fichas', 'fotos', 'ia', 'lotes', 'piezas', 'proyectos', 'revision'].map((m) => conV(`js/${m}.js`));
+const PRECARGA = ['./', 'index.html', conV('i18n.js'), ...MODULOS, ...ESTILOS, conV('icon.svg'), 'manifest.webmanifest', ...LETRAS].map(u);
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(WEB).then((c) => c.addAll(PRECARGA)).then(() => self.skipWaiting()));
