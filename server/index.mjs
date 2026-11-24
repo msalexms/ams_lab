@@ -1,4 +1,4 @@
-// [AMS] lab — servidor: web estática + API + fotos. Sin dependencias (Node 24).
+// CircuitBin — servidor: web estática + API + fotos (Node 24; las únicas dependencias de npm son las de la IA).
 //   npm start            → http://localhost:4321 (y http://<IP-del-PC>:4321 desde el móvil, misma Wi-Fi)
 //   AMS_LAB_DATA=/ruta   → carpeta de la base de datos y las fotos (por defecto ./data)
 //   AMS_LAB_COPIAS=/ruta → carpeta de las copias diarias (por defecto <datos>/copias) · ver server/copias.mjs
@@ -70,7 +70,11 @@ function leerCuerpo(req, limit) {
     req.on('error', ko);
   });
 }
-const leerJson = async (req) => { try { return JSON.parse((await leerCuerpo(req, 1e6)).toString('utf8') || '{}'); } catch { throw new HttpError(400, 'JSON no válido'); } };
+// cuerpo JSON (por defecto, hasta 1 MB; con fotos en base64, más): demasiado grande → 413, mal formado → 400
+async function leerJson(req, limite = 1e6) {
+  const cuerpo = await leerCuerpo(req, limite);
+  try { return JSON.parse(cuerpo.toString('utf8') || '{}'); } catch { throw new HttpError(400, 'JSON no válido'); }
+}
 const texto = (v, max = 500) => String(v ?? '').trim().slice(0, max);
 const agrupar = (filas, clave) => filas.reduce((m, f) => ((m[f[clave]] ||= []).push(f), m), {});
 
@@ -257,12 +261,9 @@ async function guardarFotosTarea(id, fotos, prefijo) {
   }
   return nombres;
 }
-const leerJsonFotos = async (req) => {
-  try { return JSON.parse((await leerCuerpo(req, MAX_CUERPO_FOTOS)).toString('utf8') || '{}'); } catch (e) {
-    if (e instanceof HttpError) throw e;
-    throw new HttpError(400, 'JSON no válido');
-  }
-};
+const leerJsonFotos = (req) => leerJson(req, MAX_CUERPO_FOTOS);
+
+const exigirIA = () => { if (!estado(db).activa) throw new HttpError(503, 'Falta la clave de OpenCode Go: ponla en Ajustes → IA'); };
 
 // estados de una tarea de la IA, para los mensajes
 const ESTADO = {pendiente: 'en marcha', propuesta: 'esperando', aplicada: 'aplicada', descartada: 'descartada', error: 'con error'};
@@ -329,7 +330,7 @@ async function responderAlta(id, b) {
 
 // «Corregir con IA» desde una pieza (revisa la pieza y su tipo) o desde un tipo (revisa la ficha)
 async function crearRevision(req) {
-  if (!estado(db).activa) throw new HttpError(503, 'Falta la clave de OpenCode Go: ponla en Ajustes → IA');
+  exigirIA();
   const b = await leerJsonFotos(req); // la foto y hasta 3 más
   const id = await nuevaRevision(b);
   encolarIA(id);
@@ -393,7 +394,7 @@ function encolarIA(id) {
 // «Corregir con IA» de varias piezas a la vez: una tarea por pieza, todas con el mismo «lote»
 const MAX_LOTE = 30;
 async function corregirLote(b) {
-  if (!estado(db).activa) throw new HttpError(503, 'Falta la clave de OpenCode Go: ponla en Ajustes → IA');
+  exigirIA();
   const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(Number).filter(Number.isInteger))];
   if (!ids.length) throw new HttpError(400, 'Elige alguna pieza');
   if (ids.length > MAX_LOTE) throw new HttpError(400, `Como mucho ${MAX_LOTE} piezas a la vez`);
@@ -405,11 +406,12 @@ async function corregirLote(b) {
   return {lote, tareas};
 }
 // «IA pendiente»: lo que la IA tiene abierto (pensando, esperando a que lo mires o con error). Los lotes van juntos.
-const ABIERTAS = "estado IN ('pendiente', 'propuesta', 'error')";
+const ESTADOS_ABIERTOS = ['pendiente', 'propuesta', 'error'];
+const ABIERTAS = `estado IN (${ESTADOS_ABIERTOS.map((e) => `'${e}'`).join(', ')})`;
 function pendientesIA() {
   const filas = db.prepare(`SELECT id, json_extract(entrada, '$.lote') AS lote FROM ia_tareas WHERE ${ABIERTAS} ORDER BY id DESC`).all();
   const lotes = [...new Set(filas.map((f) => f.lote).filter(Boolean))].map((lote) => {
-    const ts = tareasLote(lote), abiertas = ts.filter((t) => ['pendiente', 'propuesta', 'error'].includes(t.estado));
+    const ts = tareasLote(lote), abiertas = ts.filter((t) => ESTADOS_ABIERTOS.includes(t.estado));
     const estados = {};
     for (const t of ts) estados[t.estado] = (estados[t.estado] || 0) + 1;
     return {lote, clase: ts[0]?.clase, creada: ts[0]?.creada, total: ts.length, estados, piezas: abiertas.map((t) => t.objetivo_nombre || t.propuesta?.nombre || t.texto).filter(Boolean),
@@ -487,7 +489,7 @@ async function aplicarRevision(id, b) {
 }
 
 async function crearAlta(req) {
-  if (!estado(db).activa) throw new HttpError(503, 'Falta la clave de OpenCode Go: ponla en Ajustes → IA');
+  exigirIA();
   const b = await leerJsonFotos(req); // la foto principal y hasta 3 más
   const id = await nuevaTareaFoto('alta', b);
   encolarIA(id); // en segundo plano: la web va preguntando el estado
@@ -527,13 +529,8 @@ async function nuevaTareaFoto(clase, b) {
 
 // foto con varias piezas, paso 1: el modelo las separa (nombre aproximado y recuadro de cada una)
 async function crearDeteccion(req) {
-  if (!estado(db).activa) throw new HttpError(503, 'Falta la clave de OpenCode Go: ponla en Ajustes → IA');
-  let b;
-  try { b = JSON.parse((await leerCuerpo(req, MAX_FOTO * 1.4)).toString('utf8') || '{}'); } catch (e) {
-    if (e instanceof HttpError) throw e;
-    throw new HttpError(400, 'JSON no válido');
-  }
-  const id = await nuevaTareaFoto('detectar', b);
+  exigirIA();
+  const id = await nuevaTareaFoto('detectar', await leerJson(req, MAX_FOTO * 1.4));
   encolarIA(id);
   return tarea(id);
 }
@@ -543,11 +540,7 @@ async function crearPiezasDetectadas(id, req) {
   const t = tarea(id);
   if (t.clase !== 'detectar') throw new HttpError(400, 'Esta tarea no es una foto con varias piezas');
   if (t.estado !== 'propuesta') throw new HttpError(409, `Esta foto ya está ${ESTADO[t.estado] || t.estado}`);
-  let b;
-  try { b = JSON.parse((await leerCuerpo(req, 60e6)).toString('utf8') || '{}'); } catch (e) {
-    if (e instanceof HttpError) throw e;
-    throw new HttpError(400, 'JSON no válido');
-  }
+  const b = await leerJson(req, 60e6);
   const piezas = (Array.isArray(b.piezas) ? b.piezas : []).slice(0, MAX_DETECTADAS).filter((p) => p && p.foto);
   if (!piezas.length) throw new HttpError(400, 'Elige alguna pieza');
   const lote = randomBytes(6).toString('hex'), ids = [];
@@ -634,7 +627,6 @@ async function api(req, res, path) {
   const m = req.method;
   let r;
   if (m === 'GET' && path === '/api/datos') return send(res, 200, todo());
-  if (m === 'GET' && path === '/api/historial') return send(res, 200, db.prepare('SELECT * FROM historial ORDER BY id DESC LIMIT 200').all());
   if (m === 'GET' && path === '/api/exportar')
     return send(res, 200, JSON.stringify({exportado: new Date().toISOString(), ...todo()}, null, 2), 'application/json; charset=utf-8',
       {'content-disposition': `attachment; filename="circuitbin-${new Date().toISOString().slice(0, 10)}.json"`});
@@ -691,12 +683,7 @@ async function api(req, res, path) {
     }
   }
   if ((r = path.match(/^\/api\/proyectos\/([a-z0-9-]+)\/notas$/)) && m === 'POST') {
-    let b;
-    try { b = JSON.parse((await leerCuerpo(req, MAX_FOTO * 1.4)).toString('utf8') || '{}'); } catch (e) {
-      if (e instanceof HttpError) throw e;
-      throw new HttpError(400, 'JSON no válido');
-    }
-    const x = await pro.anadirNota(db, FOTOS, r[1], b);
+    const x = await pro.anadirNota(db, FOTOS, r[1], await leerJson(req, MAX_FOTO * 1.4));
     apuntarPro(x.proyecto, 'proyecto.nota', `Nota en la bitácora${x.nota.foto ? ' (con foto)' : ''}`, {detalle: {texto: x.nota.texto.slice(0, 200)}});
     return send(res, 201, pro.detalle(db, r[1]));
   }
@@ -770,9 +757,6 @@ async function api(req, res, path) {
   if (m === 'POST' && path === '/api/ia/revisar-lote') return send(res, 202, await corregirLote(await leerJson(req)));
   if ((r = path.match(/^\/api\/ia\/lotes\/([a-f0-9]{12})$/)) && m === 'GET') return send(res, 200, tareasLote(r[1]));
   if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)\/aplicar-cambios$/)) && m === 'POST') return send(res, 200, await aplicarRevision(r[1], await leerJson(req)));
-  if (m === 'GET' && path === '/api/ia/tareas') // las que siguen abiertas (pensando, propuesta sin confirmar o con error)
-    return send(res, 200, db.prepare("SELECT id FROM ia_tareas WHERE estado IN ('pendiente', 'propuesta', 'error') ORDER BY id DESC LIMIT 20")
-      .all().map((x) => tarea(x.id)));
   if ((r = path.match(/^\/api\/ia\/tareas\/(\d+)$/)) && m === 'GET') return send(res, 200, tarea(r[1]));
   if (m === 'GET' && path === '/api/ia/pendientes') return send(res, 200, pendientesIA());
   if (m === 'GET' && path === '/api/ia/pendientes/cuenta') return send(res, 200, cuentaPendientes());
