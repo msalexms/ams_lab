@@ -1017,15 +1017,11 @@ table.t-material td .sub a { color: inherit; text-underline-offset: 3px; }
    ===================================================================================================== */
 :root { --ancho: var(--ams-borde-ancho, 2.5px); --ancho-fino: 2px; }
 
-/* cabecera: Thor + «lab» + «amstech» */
+/* cabecera: Thor + «circuitbin» + «amstech» + pegatina */
 .top { border-bottom: var(--ancho) solid var(--borde); }
 .logo { display: inline-flex; align-items: center; gap: 8px; font: 800 1.2rem/1 var(--marca); letter-spacing: -.02em; }
-.logo .ams-thor, .logo .cb-logo { width: 30px; height: 30px; display: block; flex: none; }
-.cb-logo .cb-bin { fill: var(--ams-thor); stroke: var(--ams-thor-borde); stroke-width: 3; stroke-linejoin: round; }
-.cb-logo .cb-pins { fill: var(--ams-amarillo); stroke: var(--ams-thor-borde); stroke-width: 2; stroke-linejoin: round; }
-.cb-logo .cb-label { fill: var(--ams-amarillo); stroke: #1E1B2E; stroke-width: 2.2; }
-.cb-logo .cb-trace { fill: none; stroke: var(--ams-thor-prompt); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
-.cb-logo .cb-node { fill: var(--ams-thor-prompt); }
+.logo .ams-thor { width: 32px; height: 32px; display: block; flex: none; }
+.logo .cb-sticker { width: 40px; height: 37px; display: block; flex: none; margin-left: 4px; overflow: visible; transform: rotate(-8deg); }
 .logo span { font: 500 .78rem/1 var(--mono); color: var(--gris); letter-spacing: 0; align-self: flex-end; margin-bottom: 3px; }
 nav#nav { gap: var(--e2); }
 nav#nav a { padding: 6px 12px; border: var(--ancho-fino) solid transparent; border-radius: var(--radio); font-weight: 600; color: var(--tinta2); }
@@ -1140,7 +1136,8 @@ select.sel { border: var(--ancho-fino) solid var(--borde); border-radius: var(--
 
 @media (max-width: 760px) {
   .logo { font-size: 1.05rem; }
-  .logo .ams-thor, .logo .cb-logo { width: 26px; height: 26px; }
+  .logo .ams-thor { width: 26px; height: 26px; }
+  .logo .cb-sticker { width: 32px; height: 30px; margin-left: 2px; }
   .cats { padding-bottom: 6px; }
   /* en el móvil la hoja ocupa todo el ancho: sin bordes laterales ni sombra, como una página */
   .hoja { border-radius: 0; border-left: 0; border-right: 0; box-shadow: none; }
@@ -1184,8 +1181,8 @@ select.sel { border: var(--ancho-fino) solid var(--borde); border-radius: var(--
 
 /* cabecera: buscador con lupa y «/» */
 .logo span { font: 700 .82rem/1 var(--sans); align-self: center; margin: 0 0 0 4px; padding-left: 10px; border-left: var(--ancho-fino) solid var(--linea); color: var(--gris); }
-.logo .ams-thor, .logo .cb-logo { width: 34px; height: 34px; }
-.logo { font-size: 1.5rem; }
+.logo .ams-thor { width: 32px; height: 32px; }
+.logo { font-size: 1.42rem; }
 nav#nav a.on { box-shadow: inset 0 -3px 0 var(--ams-sel-raya), var(--sombra-peq); }
 .buscar { flex: 1; max-width: 300px; display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 10px 0 12px; border: var(--ancho-fino) solid var(--borde);
   border-radius: var(--radio); background: var(--hoja); color: var(--gris); cursor: text; }
@@ -1341,7 +1338,9 @@ main:has(> .inv), main:has(> .fi), main:has(.fi), main:has(> .ia-plano), main:ha
   .top .buscar-abrir { display: inline-flex; margin-left: auto; }
   body.buscando .buscar { display: flex; max-width: none; }
   body.buscando .top .buscar-abrir, body.buscando .logo { display: none; }
-  .logo { font-size: 1.25rem; }
+  .logo { font-size: 1.18rem; gap: 6px; }
+  .logo .ams-thor { width: 26px; height: 26px; }
+  .logo .cb-sticker { width: 32px; height: 30px; margin-left: 2px; }
   .inv { grid-template-columns: minmax(0, 1fr); gap: 0; }
   /* «Mostrar» se abre debajo de la cabecera y las categorías (inv-main se deshace para poder ordenarlo) */
   .inv-main { display: contents; }
@@ -1492,8 +1491,9 @@ main:has(> .inv), main:has(> .fi), main:has(.fi), main:has(> .ia-plano), main:ha
   .lote-lista .lote-abrir { grid-column: 3; justify-self: start; }
   .ia-plano > .lote-acciones .btn { flex: 1 1 auto; }
   /* el logo con su «amstech» también en el móvil */
-  .logo span { display: inline; font-size: .7rem; padding-left: 8px; margin-left: 0; }
+  .logo span { display: inline; font-size: .72rem; padding-left: 8px; margin-left: 0; }
 }
+@media (max-width: 360px) { .logo .cb-sticker { display: none; } }
 
 /* ---------- estilo AMSTech en el resto de apartados (vista previa, proyectos, glosario, formularios, IA, pendientes y ajustes) ---------- */
 .plano { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }

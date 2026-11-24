@@ -1007,7 +1007,7 @@ async function api(req, res, path) {
 // ---------- ficheros ----------
 // huella de la web: cambia cuando cambian app.js, style.css o sw.js. index.html los pide con «?v=<huella>», así que un
 // proxy que guarde los .js y .css (Nginx Proxy Manager con «Cache Assets») o el navegador nunca sirven una versión vieja.
-const WEB_HUELLA = ['i18n.js', 'app.js', 'style.css', 'sw.js', 'amstech-ui/fuentes.css', 'amstech-ui/tokens.css', 'amstech-ui/componentes.css'];
+const WEB_HUELLA = ['i18n.js', 'app.js', 'style.css', 'sw.js', 'icon.svg', 'amstech-ui/fuentes.css', 'amstech-ui/tokens.css', 'amstech-ui/componentes.css'];
 let huellaWeb = {clave: '', valor: ''};
 function huella() {
   const rutas = WEB_HUELLA.map((f) => join(PUB, f));
@@ -1023,6 +1023,7 @@ async function paginaPrincipal(res) {
   const v = huella();
   const html = (await readFile(join(PUB, 'index.html'), 'utf8'))
     .replace(/href="((?:amstech-ui\/)?[\w-]+\.css)"/g, `href="$1?v=${v}"`).replace(/src="(i18n|app)\.js"/g, `src="$1.js?v=${v}"`)
+    .replace(/href="icon\.svg"/g, `href="icon.svg?v=${v}"`)
     .replace('</head>', `  <meta name="version-web" content="${v}">\n</head>`);
   send(res, 200, html, TYPES['.html'], {'cache-control': 'no-cache'});
 }
