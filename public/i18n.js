@@ -997,6 +997,16 @@ window.I18N = (() => {
     'alto': 'high',
     'mínimo': 'minimal',
 
+    // Rótulos de los cambios que pone el servidor (revisión, formato e historial)
+    'También se llama': 'Also known as',
+    'Nombres de los pines': 'Pin names',
+    'Orden de los pines': 'Pin order',
+    'Dato del tipo': 'Type spec',
+    'Dato de la pieza': 'Part spec',
+    'Pines: uno por fila': 'Pins: one per row',
+    'Tarea': 'Task',
+    'sin contar': 'not counted',
+
     // Errores del servidor (llegan en español; api() los pasa por t())
     'Cantidad no válida': 'Invalid quantity',
     'Contesta alguna duda, escribe algo más o añade una foto': 'Answer a question, write something else or add a photo',
