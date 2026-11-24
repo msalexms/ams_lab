@@ -13,6 +13,13 @@ export let FUNC = {};  // id → {nombre, color_claro, color_oscuro, tachado}
 export let DIF = {};   // nivel → nombre
 export const MUCHOS = 99;
 const TEMAS = {auto: 'Tema: automático', claro: 'Tema: claro', noche: 'Tema: noche'};
+const NOMBRE_TEMA = {auto: 'Automático', claro: 'Claro', noche: 'Noche'};
+// el botón de la cabecera enseña el tema puesto: sol, luna o círculo a medias (automático = según el sistema)
+const ICONO_TEMA = {
+  claro: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  noche: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+  auto: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>',
+};
 
 export const D = {componentes: [], tipos: {}, proyectos: [], categorias: [], funciones: [], dificultades: [], ubicaciones: [], ajustes: {}};
 export const ui = {sel: new Set(), seleccionando: false, selIA: false, visibles: [], cat: '', ubic: '', revisar: false, proFiltro: 'todos', sinComprobar: false, ajTipos: 'todos', ajBuscar: ''};
@@ -208,7 +215,10 @@ export function guardarLocal(c) {
 export function aplicarTema() {
   const tx = TEMAS[D.ajustes.tema] ? D.ajustes.tema : 'auto';
   document.documentElement.dataset.tema = tx;
-  $('#tema').textContent = t(TEMAS[tx]);
+  const orden = Object.keys(TEMAS), sig = orden[(orden.indexOf(tx) + 1) % orden.length], b = $('#tema');
+  b.innerHTML = `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${ICONO_TEMA[tx]}</svg>`;
+  b.setAttribute('aria-label', t(TEMAS[tx]));
+  b.title = `${t(TEMAS[tx])} · ${t('toca para pasar a {tema}', {tema: t(NOMBRE_TEMA[sig]).toLowerCase()})}`;
 }
 export async function cambiarTema() {
   const orden = Object.keys(TEMAS);
