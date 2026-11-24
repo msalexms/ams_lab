@@ -13,7 +13,6 @@ import {opcionesCopias} from './copias.mjs';
 export const VERSION = 9;
 export const ESTADOS_PROYECTO = ['idea', 'en_marcha', 'pausa', 'terminado'];
 export const COLUMNAS_TAREA = ['hacer', 'curso', 'hecho'];
-export const ORIGENES = ['seed', 'ia', 'usuario'];
 const ORIGEN = `TEXT NOT NULL DEFAULT 'seed' CHECK (origen IN ('seed', 'ia', 'usuario'))`;
 const ESTADO_PROYECTO = `TEXT NOT NULL DEFAULT 'idea' CHECK (estado IN ('idea', 'en_marcha', 'pausa', 'terminado'))`;
 const HEX = (col) => `CHECK (${col} GLOB '#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]')`;
