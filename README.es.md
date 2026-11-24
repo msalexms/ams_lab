@@ -148,7 +148,7 @@ La IA es **totalmente opcional** — la aplicación funciona al 100 % sin clave 
 | Capa | Detalle |
 | --- | --- |
 | **Servidor y BD** | Node.js 24+ (`node:http`, `node:sqlite`, `node:crypto`, `node:zlib`) sin Express ni ORM |
-| **Interfaz** | HTML + CSS + ES modules (`public/app.js`, `public/i18n.js`, `public/style.css`, `public/sw.js`) |
+| **Interfaz** | HTML + CSS + módulos ES sin compilar (`public/js/*.js`, `public/i18n.js`, `public/style.css`, `public/sw.js`) |
 | **IA** | Vercel AI SDK (`ai`, `@ai-sdk/openai-compatible`, `zod`) con confirmación explícita antes de escribir |
 | **Esquema SQLite** | Modelo versionado (`v9`) documentado en [docs/modelo-datos.md](docs/modelo-datos.md) |
 | **Identidad visual** | Pegatina vectorial Thor Chip-Bin en [docs/logo/circuitbin.svg](docs/logo/circuitbin.svg) y banner en [docs/brand/banner.es.svg](docs/brand/banner.es.svg) ([CLAUDE.md](CLAUDE.md)) |
