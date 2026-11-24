@@ -262,6 +262,9 @@ async function restaurarCopia(boton) {
   } catch (err) { boton.disabled = false; boton.textContent = t('Restaurar'); toast(err.message, true); }
 }
 
+// los botones de Ajustes que atiende clicAjustes (los recoge el gestor de clics de app.js)
+export const CLICS_AJUSTES = ['poner-tema', 'poner-idioma', 'aj-cerrar', 'aj-tipos', 'copia-preparar', 'restaurar', 'restaurar-cancelar', 'cat-mover', 'cat-borrar',
+  'cat-borrar-ok', 'tipo-archivar', 'tipo-fusionar', 'tipo-fusionar-ok', 'tipo-borrar', 'sitio-borrar'].map((d) => `[data-${d}]`).concat('#aj-copia').join(', ');
 export async function clicAjustes(el) {
   const d = el.dataset, fila = el.closest('.aj-fila'), panel = fila?.querySelector('.aj-panel');
   if (d.ponerTema) { await api('PUT', 'api/ajustes/tema', {valor: d.ponerTema}); D.ajustes.tema = d.ponerTema; aplicarTema(); route(); return true; }
