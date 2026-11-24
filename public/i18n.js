@@ -1057,10 +1057,97 @@ window.I18N = (() => {
     'Una de las fotos es demasiado grande': 'One of the photos is too large',
     'Una de las fotos está vacía': 'One of the photos is empty',
     'Ya no se puede deshacer': 'It can no longer be undone',
+    // errores de la IA y resúmenes del historial que escribe el servidor
+    'El modelo no devolvió una respuesta con el formato correcto (2 intentos). Prueba otra vez u otro modelo.': 'The model did not return an answer in the right format (2 attempts). Try again or use another model.',
+    'El modelo se quedó sin espacio pensando y no llegó a escribir la respuesta (2 intentos). Prueba otra vez o elige otro modelo en Ajustes → IA.': 'The model ran out of room while thinking and never wrote the answer (2 attempts). Try again or choose another model in Settings → AI.',
+    'El modelo terminó sin dar ninguna respuesta (2 intentos). Prueba otra vez o elige otro modelo en Ajustes → IA.': 'The model finished without any answer (2 attempts). Try again or choose another model in Settings → AI.',
+    'OpenCode Go rechaza la clave (o no da acceso a ese modelo). Revísala en la configuración.': 'OpenCode Go rejects the key (or gives no access to that model). Check it in the settings.',
+    'Has llegado al límite de uso de OpenCode Go por ahora. Prueba más tarde.': 'You have reached the OpenCode Go usage limit for now. Try again later.',
+    'El modelo ha tardado demasiado.': 'The model took too long.',
+    'Pieza borrada': 'Part deleted',
+    'Borrado deshecho': 'Deletion undone',
+    'Foto cambiada': 'Photo changed',
+    'Foto puesta': 'Photo added',
+    'Foto quitada': 'Photo removed',
+    'Ficha nueva creada por la IA (sin comprobar)': 'New sheet created by the AI (unchecked)',
+    'Clave de la IA quitada': 'AI key removed',
+    'Clave de la IA cambiada': 'AI key changed',
+    'Correcciones de la IA descartadas': 'AI fixes discarded',
+    'Foto con varias piezas descartada': 'Photo with several parts discarded',
+    'Propuesta de pieza de la IA descartada': 'AI part proposal discarded',
+    'Ficha marcada como comprobada': 'Sheet marked as checked',
+    'Ficha marcada como sin comprobar': 'Sheet marked as unchecked',
+    'Tipo archivado': 'Type archived',
+    'Tipo sacado del archivo': 'Type taken out of the archive',
+    'Tipo borrado': 'Type deleted',
+    'Copia de seguridad hecha en el servidor': 'Backup made on the server',
+    'Copia completa descargada (base de datos y fotos)': 'Full backup downloaded (database and photos)',
+    'Categoría creada': 'Category created',
+    'Categorías reordenadas': 'Categories reordered',
+    'Proyecto borrado (con su bitácora, su tablero y sus archivos)': 'Project deleted (with its log, board and files)',
+    'Nota de la bitácora borrada': 'Log note deleted',
+    'Vista del inventario': 'Inventory view',
+    'Cuánto razona la IA': 'How much the AI reasons',
+    'Letra': 'Font',
+    'Editada': 'Edited',
+    'Corregida con IA': 'Fixed with AI',
+    'Ficha corregida con IA': 'Sheet fixed with AI',
+    'Proyecto editado': 'Project edited',
+    'Tarea cambiada': 'Task changed',
+    'Formato uniformado': 'Format made uniform',
+    'Ficha editada': 'Sheet edited',
+    '(varias a la vez)': '(several at once)',
+    'sin cambios': 'no changes',
   };
 
+  // Mensajes del servidor que llevan datos dentro: no casan con EN por el texto exacto. Solo se miran si no hay
+  // traducción exacta. [patrón, inglés con $1… o función que recibe los grupos]
+  const PATRONES_EN = [
+    // IA (server/ia.mjs)
+    [/^No se pudo leer el catálogo de modelos de OpenCode Go \((.*)\)$/s, 'Could not read the OpenCode Go model catalog ($1)'],
+    [/^El tipo «(.+)» no existe\.$/, 'The type “$1” does not exist.'],
+    [/^Categoría «(.+)» desconocida: puesta en «otro»\.$/, 'Unknown category “$1”: set to “other”.'],
+    [/^El modelo «(.+)» no está en el catálogo de OpenCode Go: elige otro en la configuración\.$/, 'The model “$1” is not in the OpenCode Go catalog: choose another one in the settings.'],
+    [/^(.+) no ve fotos: escribe qué es la pieza o elige otro modelo\.$/, '$1 cannot see photos: describe the part or choose another model.'],
+    [/^(.+) no ve fotos: para separar las piezas de una foto elige un modelo que las entienda\.$/, '$1 cannot see photos: to split the parts in a photo, choose a model that understands images.'],
+    [/^El modelo no rellenó bien algunos campos y se han corregido solos; compruébalos: (.+)\.$/, 'The model did not fill in some fields correctly and they were fixed automatically; check them: $1.'],
+    [/^OpenCode Go no acepta la petición para este modelo: (.*)$/s, 'OpenCode Go does not accept the request for this model: $1'],
+    [/^OpenCode Go respondió con un error: (.*)$/s, 'OpenCode Go returned an error: $1'],
+    [/^OpenCode Go respondió (\d+): (.*)$/s, 'OpenCode Go returned $1: $2'],
+    // historial (server/index.mjs)
+    [/^Copia restaurada: (\d+) piezas, (\d+) tipos(?:, (\d+) fotos nuevas)?$/, (p, tp, f) => `Backup restored: ${p} parts, ${tp} types${f ? `, ${f} new photos` : ''}`],
+    [/^(\d+) piezas? de una foto, a identificar$/, (n) => `${n} part${n === '1' ? '' : 's'} from a photo, to identify`],
+    [/^Pieza añadida con IA \((.+)\)$/, (c) => `Part added with AI (${t(c)})`],
+    [/^Pieza añadida \((.+)\)$/, (c) => `Part added (${t(c)})`],
+    [/^Tipo creado \((.+)\)$/, 'Type created ($1)'],
+    [/^Modelo de siempre: (.+) → (.+)$/, 'Default model: $1 → $2'],
+    [/^Renombrada: (.+) → (.+)$/, 'Renamed: $1 → $2'],
+    [/^Renombrado: (.+) → (.+)$/, 'Renamed: $1 → $2'],
+    [/^Categoría borrada \((\d+) tipos? pasan a «(.+)»\)$/, (n, d) => `Category deleted (${n} type${n === '1' ? '' : 's'} moved to “${d}”)`],
+    [/^Categoría borrada$/, 'Category deleted'],
+    [/^Fusionado con «(.+)» \((\d+) piezas? pasan a él\)$/, (d, n) => `Merged into “${d}” (${n} part${n === '1' ? '' : 's'} moved to it)`],
+    [/^Recibe a «(.+)» \((\d+) piezas?\)$/, (d, n) => `Takes in “${d}” (${n} part${n === '1' ? '' : 's'})`],
+    [/^«(.+)» juntado con «(.+)» \((\d+) piezas?\)$/, (a, b, n) => `“${a}” joined with “${b}” (${n} part${n === '1' ? '' : 's'})`],
+    [/^Sitio borrado \((\d+) piezas? se quedan? sin sitio\)$/, (n) => `Location deleted (${n} part${n === '1' ? ' is' : 's are'} left without a location)`],
+    [/^Sitio borrado$/, 'Location deleted'],
+    [/^Nota en la bitácora \(con foto\)$/, 'Note in the log (with photo)'],
+    [/^Nota en la bitácora$/, 'Note in the log'],
+    [/^Tarea añadida: (.+)$/s, 'Task added: $1'],
+    [/^(\d+) tareas añadidas al tablero \(los pasos\)$/, '$1 tasks added to the board (the steps)'],
+    [/^Tarea borrada: (.+)$/s, 'Task deleted: $1'],
+    [/^Archivo añadido: (.+)$/s, 'File added: $1'],
+    [/^Archivo borrado: (.+)$/s, 'File deleted: $1'],
+  ];
+  function porPatron(es) {
+    for (const [re, en] of PATRONES_EN) {
+      const m = es.match(re);
+      if (m) return typeof en === 'function' ? en(...m.slice(1)) : es.replace(re, en);
+    }
+    return null;
+  }
+
   function t(es, vars) {
-    let s = lang === 'en' ? (EN[es] ?? es) : es;
+    let s = lang === 'en' ? (EN[es] ?? porPatron(String(es)) ?? es) : es;
     if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, String(v ?? ''));
     return s;
   }

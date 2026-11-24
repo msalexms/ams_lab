@@ -35,7 +35,7 @@ function htmlLote(ts) {
     const estado = {pendiente: t('pensando…'), propuesta: cambios.length ? plural(cambios.length, 'cambio') : t('nada que cambiar'),
       aplicada: t('aplicada'), descartada: t('descartada'), error: t('error')}[tr.estado] || tr.estado;
     const clsEtq = tr.estado === 'error' ? ' ams-etiqueta--mal' : tr.estado === 'aplicada' ? ' ams-etiqueta--ok' : tr.estado === 'pendiente' ? ' ams-etiqueta--amarilla' : '';
-    const cuerpo = tr.estado === 'error' ? `<p class="mal">${esc(tr.error || t('Error'))}</p>`
+    const cuerpo = tr.estado === 'error' ? `<p class="mal">${esc(t(tr.error || 'Error'))}</p>`
       : tr.estado === 'propuesta' ? `${cambios.map((x) => `<label class="ia-cambio-fila"><input type="checkbox" class="lote-cambio" data-tarea="${tr.id}" value="${esc(x.id)}"
           ${LOTE.desmarcados.has(`${tr.id}:${x.id}`) ? '' : 'checked'}><span>${filaCambio(x)}</span></label>`).join('')}
         ${tr.propuesta.dudas?.length ? `<p class="ayuda">${tr.propuesta.dudas.length === 1 ? t('La IA tiene una duda: ') : t('La IA tiene {n} dudas: ', {n: tr.propuesta.dudas.length})}<a href="#/ia/${tr.id}">${t('ábrela para contestar')}</a>${t(' (o para ver la vista previa).')}</p>` : ''}` : '';
