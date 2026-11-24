@@ -256,6 +256,8 @@ export async function separarEnEditor(input) {
     toast(r.pines.length > filas.length ? t('Separado: ahora hay {pines}, uno por fila', {pines: plural(r.pines.length, 'pin')}) : t('Pines repetidos juntados: mira sus notas'));
   } catch (err) { toast(err.message, true); }
 }
+// los botones de las tablas editables (los recoge el gestor de clics de app.js)
+export const CLICS_EDITOR = '[data-ed-anadir], [data-ed-quitar]';
 export function clicEditor(t) {
   const ed = t.closest('.ed');
   if (!ed) return false;
