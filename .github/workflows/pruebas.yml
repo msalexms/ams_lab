@@ -1,0 +1,27 @@
+# En cada PR y en main: las pruebas (npm test: reglas de formato, migraciones, normalizar() de la IA, la API arrancando
+# el servidor con una base de datos nueva, y que los módulos de la web casen entre sí) y la revisión de nombres
+# (npm run tipos: variables que no existen, imports, constantes reasignadas).
+name: pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    name: pruebas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run tipos
