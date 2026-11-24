@@ -107,6 +107,7 @@ window.I18N = (() => {
     'Guardar cambios': 'Save changes',
     'Editar': 'Edit',
     'Borrar': 'Delete',
+    'Borrar proyecto': 'Delete project',
     'Quitar': 'Remove',
     'Añadir': 'Add',
     'Copiar': 'Copy',
