@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 264" width="920" height="264" role="img" aria-label="CircuitBin — An AMSTech project. Self-hosted electronics bench organizer with real photos, color-coded pinouts, stock-matched projects, and AI vision.">
+  <!-- Hard ink shadow -->
+  <rect x="10" y="10" width="906" height="250" rx="8" fill="#1E1B2E"/>
+  <!-- Cream card background -->
+  <rect x="4" y="4" width="906" height="250" rx="8" fill="#FFF6E9"/>
+  <!-- White header bar -->
+  <path d="M12 4H902A8 8 0 0 1 910 12V54H4V12A8 8 0 0 1 12 4Z" fill="#FFFFFF"/>
+  <line x1="4" y1="54" x2="910" y2="54" stroke="#1E1B2E" stroke-width="2.5"/>
+  <!-- Card ink border -->
+  <rect x="4" y="4" width="906" height="250" rx="8" fill="none" stroke="#1E1B2E" stroke-width="2.5"/>
+
+  <!-- Top bar: Thor logo & wordmark -->
+  <g transform="translate(22 14) scale(0.62)">
+    <path d="M10 4L21 14h6L38 4l5 14q1 2 1 6v12q0 8-8 8H12q-8 0-8-8V24q0-4 1-6z" fill="#2B36D9" stroke="#1E1B2E" stroke-width="2.6" stroke-linejoin="round"/>
+    <path d="M13 25l6 5-6 5M24 36h10" fill="none" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="62" y="36" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="20" letter-spacing="-0.3">
+    <tspan font-weight="800" fill="#1E1B2E">circuitbin</tspan>
+    <tspan dx="8" font-weight="400" fill="#D5CAB5">|</tspan>
+    <tspan dx="8" font-weight="700" font-size="16" fill="#5A5670">amstech</tspan>
+  </text>
+
+  <!-- Top bar: status & license pills -->
+  <rect x="688" y="15" width="136" height="28" rx="6" fill="#FFFFFF" stroke="#1E1B2E" stroke-width="2"/>
+  <circle cx="706" cy="29" r="4.5" fill="#6FD08C" stroke="#1E1B2E" stroke-width="1.6"/>
+  <text x="718" y="33.5" font-family="ui-monospace, 'Cascadia Code', Consolas, Menlo, monospace" font-size="11.5" font-weight="700" letter-spacing="0.6" fill="#1E1B2E">SELF-HOSTED</text>
+
+  <rect x="834" y="15" width="58" height="28" rx="6" fill="#FFE27A" stroke="#1E1B2E" stroke-width="2"/>
+  <text x="863" y="33.5" text-anchor="middle" font-family="ui-monospace, 'Cascadia Code', Consolas, Menlo, monospace" font-size="11.5" font-weight="700" letter-spacing="0.6" fill="#1E1B2E">MIT</text>
+
+  <!-- Hero copy -->
+  <text x="28" y="86" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11.5" font-weight="800" letter-spacing="1.4" fill="#2B36D9">AN AMSTECH PROJECT · OPEN SOURCE</text>
+  <text x="28" y="128" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="35" font-weight="800" letter-spacing="-0.8" fill="#1E1B2E">Your electronics bench, organized.</text>
+  <text x="28" y="158" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="500" fill="#5A5670">Real photos, color-coded pinouts, stock-matched projects &amp; AI vision · Node 24 + SQLite.</text>
+
+  <!-- Thor Chip-Bin die-cut sticker (pure SVG hard shadow) -->
+  <g transform="translate(778 68) rotate(-6 48 44) scale(1.34)">
+    <g transform="translate(3 3)" fill="#1E1B2E" stroke="#1E1B2E" stroke-width="11" stroke-linejoin="round"><path d="M16 4l11 10h18L56 4l5 15v15H11V19z"/><rect x="2" y="30.5" width="12" height="6.2" rx="2.2"/><rect x="2" y="42" width="12" height="6.2" rx="2.2"/><rect x="2" y="53.5" width="12" height="6.2" rx="2.2"/><rect x="58" y="30.5" width="12" height="6.2" rx="2.2"/><rect x="58" y="42" width="12" height="6.2" rx="2.2"/><rect x="58" y="53.5" width="12" height="6.2" rx="2.2"/><rect x="12" y="25" width="48" height="40" rx="7"/><rect x="15" y="22" width="10.5" height="7.2" rx="3.6"/><rect x="46.5" y="22" width="10.5" height="7.2" rx="3.6"/></g>
+    <g fill="#FFFFFF" stroke="#FFFFFF" stroke-width="11" stroke-linejoin="round"><path d="M16 4l11 10h18L56 4l5 15v15H11V19z"/><rect x="2" y="30.5" width="12" height="6.2" rx="2.2"/><rect x="2" y="42" width="12" height="6.2" rx="2.2"/><rect x="2" y="53.5" width="12" height="6.2" rx="2.2"/><rect x="58" y="30.5" width="12" height="6.2" rx="2.2"/><rect x="58" y="42" width="12" height="6.2" rx="2.2"/><rect x="58" y="53.5" width="12" height="6.2" rx="2.2"/><rect x="12" y="25" width="48" height="40" rx="7"/><rect x="15" y="22" width="10.5" height="7.2" rx="3.6"/><rect x="46.5" y="22" width="10.5" height="7.2" rx="3.6"/></g>
+    <path d="M16 4l11 10h18L56 4l5 15v13H11V19z" fill="#2B36D9" stroke="#1E1B2E" stroke-width="3.2" stroke-linejoin="round"/>
+    <circle cx="24" cy="18" r="2.5" fill="#FFFFFF"/>
+    <circle cx="48" cy="18" r="2.5" fill="#FFFFFF"/>
+    <g fill="#FFE27A" stroke="#1E1B2E" stroke-width="2.5" stroke-linejoin="round"><rect x="2" y="30.5" width="12" height="6.2" rx="2.2"/><rect x="2" y="42" width="12" height="6.2" rx="2.2"/><rect x="2" y="53.5" width="12" height="6.2" rx="2.2"/><rect x="58" y="30.5" width="12" height="6.2" rx="2.2"/><rect x="58" y="42" width="12" height="6.2" rx="2.2"/><rect x="58" y="53.5" width="12" height="6.2" rx="2.2"/></g>
+    <rect x="12" y="25" width="48" height="40" rx="7" fill="#2A2742" stroke="#1E1B2E" stroke-width="3.2"/>
+    <rect x="17" y="31.5" width="17.5" height="12.5" rx="3" fill="#7CC4FF" stroke="#1E1B2E" stroke-width="2"/>
+    <rect x="37.5" y="31.5" width="17.5" height="12.5" rx="3" fill="#6FD08C" stroke="#1E1B2E" stroke-width="2"/>
+    <rect x="17" y="47" width="17.5" height="12.5" rx="3" fill="#FFE27A" stroke="#1E1B2E" stroke-width="2"/>
+    <rect x="37.5" y="47" width="17.5" height="12.5" rx="3" fill="#B48CFF" stroke="#1E1B2E" stroke-width="2"/>
+    <rect x="23" y="35.3" width="5.5" height="5" rx="1.2" fill="#1E1B2E"/>
+    <path d="M41.5 39 L45 35.5 L47.5 39 L51 36" fill="none" stroke="#1E1B2E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="25.7" cy="53.2" r="3" fill="#FF5C39" stroke="#1E1B2E" stroke-width="1.8"/>
+    <path d="M41.5 55 H45.5 L48 51.5 H51.5" fill="none" stroke="#1E1B2E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M31.5 25 A4.5 4.5 0 0 0 40.5 25 Z" fill="#FFE27A" stroke="#1E1B2E" stroke-width="2"/>
+    <rect x="15" y="22" width="10.5" height="7.2" rx="3.6" fill="#2B36D9" stroke="#1E1B2E" stroke-width="2.6"/>
+    <rect x="46.5" y="22" width="10.5" height="7.2" rx="3.6" fill="#2B36D9" stroke="#1E1B2E" stroke-width="2.6"/>
+  </g>
+
+  <!-- Bottom 4-cell cajetín -->
+  <rect x="24" y="186" width="866" height="54" rx="6" fill="#FFFFFF" stroke="#1E1B2E" stroke-width="2"/>
+  <line x1="240.5" y1="187" x2="240.5" y2="239" stroke="#E9DFCB" stroke-width="1.5"/>
+  <line x1="457" y1="187" x2="457" y2="239" stroke="#E9DFCB" stroke-width="1.5"/>
+  <line x1="673.5" y1="187" x2="673.5" y2="239" stroke="#E9DFCB" stroke-width="1.5"/>
+
+  <text x="40" y="205" font-family="ui-monospace, 'Cascadia Code', Consolas, Menlo, monospace" font-size="10.5" font-weight="700" letter-spacing="0.9" fill="#5A5670">STACK</text>
+  <text x="40" y="227" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="800" fill="#1E1B2E">Node 24 · SQLite</text>
+
+  <text x="257" y="205" font-family="ui-monospace, 'Cascadia Code', Consolas, Menlo, monospace" font-size="10.5" font-weight="700" letter-spacing="0.9" fill="#5A5670">FEATURES</text>
+  <text x="257" y="227" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="800" fill="#1E1B2E">Photos · Pinouts · Stock</text>
+
+  <text x="473" y="205" font-family="ui-monospace, 'Cascadia Code', Consolas, Menlo, monospace" font-size="10.5" font-weight="700" letter-spacing="0.9" fill="#5A5670">AI VISION</text>
+  <text x="473" y="227" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="800" fill="#1E1B2E">Snap &amp; batch identify</text>
+
+  <text x="690" y="205" font-family="ui-monospace, 'Cascadia Code', Consolas, Menlo, monospace" font-size="10.5" font-weight="700" letter-spacing="0.9" fill="#5A5670">LANGUAGES</text>
+  <text x="690" y="227" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="800" fill="#1E1B2E">English · Español</text>
+</svg>

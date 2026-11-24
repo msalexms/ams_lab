@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/capturas/banner.png" alt="CircuitBin — Self-hosted electronics component inventory by AMSTech" width="900">
+  <img src="docs/brand/banner.svg" alt="CircuitBin — Self-hosted electronics component inventory by AMSTech" width="920">
 </p>
 
 <p align="center">
@@ -151,7 +151,7 @@ AI assistance is **100% optional** — CircuitBin works completely offline witho
 | **Frontend** | Vanilla ES6 UI (`public/app.js`, `public/i18n.js`, `public/style.css`, Service Worker `public/sw.js`) |
 | **AI Integration** | Vercel AI SDK (`ai`, `@ai-sdk/openai-compatible`, `zod`) behind an explicit user confirmation workflow |
 | **Schema** | Versioned SQLite (`v9`) documented in [docs/modelo-datos.md](docs/modelo-datos.md) |
-| **Brand Assets** | Custom SVG emblem in [docs/logo/circuitbin.svg](docs/logo/circuitbin.svg) & AMSTech tokens in [CLAUDE.md](CLAUDE.md) |
+| **Brand Assets** | Custom Thor Chip-Bin sticker in [docs/logo/circuitbin.svg](docs/logo/circuitbin.svg) & banner in [docs/brand/banner.svg](docs/brand/banner.svg) ([CLAUDE.md](CLAUDE.md)) |
 
 ---
 
