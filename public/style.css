@@ -785,9 +785,11 @@ table.t-material td .sub a { color: inherit; text-underline-offset: 3px; }
 .fila-cab:hover { background: none; }
 .fila-cab, .fila-cab .fila-cols { font-size: .7rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--gris); }
 .fila-cant { flex: none; width: 104px; text-align: center; }
+.fila-cols.sin-sitio { grid-template-columns: 120px 150px; } /* nadie tiene sitio: solo tensión e interfaz */
 @media (max-width: 1000px) {
   .fila-cols { grid-template-columns: 140px 110px; }
   .fila-cols > :nth-child(3) { display: none; }
+  .fila-cols.sin-sitio { grid-template-columns: 110px 140px; }
 }
 @media (max-width: 760px) {
   .solo-movil { display: revert; }
@@ -1219,6 +1221,7 @@ main:has(> .inv), main:has(> .fi), main:has(.fi), main:has(> .ia-plano), main:ha
   .inv.filtros-abiertos .inv-acciones .seg button { flex: 1; justify-content: center; }
   .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 14px; padding: 0 16px 4px; }
   .chips::-webkit-scrollbar { display: none; }
+  .chips { padding-right: 48px; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
   .chip { display: inline-flex; align-items: center; gap: 6px; flex: none; min-height: 32px; padding: 2px 10px; border: var(--ancho-fino) solid var(--borde); border-radius: var(--radio);
     background: var(--hoja); color: var(--tinta); font: 800 .82rem var(--sans); white-space: nowrap; cursor: pointer; }
   .chip .ams-cuadro { width: 11px; height: 11px; border-width: var(--ancho-fino); }

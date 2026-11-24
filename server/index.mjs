@@ -89,7 +89,10 @@ const comp = (id) => {
   return {...c, datos: datos.map((d) => [d.clave, d.valor])};
 };
 
+// tipos con dibujo propio (public/img/tipos/<id>.svg); los demás usan el genérico (_pieza.svg)
+const conDibujo = () => new Set(readdirSync(join(PUB, 'img', 'tipos')).filter((f) => f.endsWith('.svg')).map((f) => f.slice(0, -4)));
 function tipos() {
+  const dibujos = conDibujo();
   const alias = agrupar(db.prepare('SELECT * FROM tipo_alias').all(), 'tipo_id');
   const inter = agrupar(db.prepare('SELECT * FROM tipo_interfaces ORDER BY orden').all(), 'tipo_id');
   const pines = agrupar(db.prepare('SELECT * FROM tipo_pines ORDER BY orden').all(), 'tipo_id');
@@ -99,7 +102,7 @@ function tipos() {
     alias: (alias[t.id] || []).map((a) => a.alias), interfaz: (inter[t.id] || []).map((i) => i.interfaz),
     pines: (pines[t.id] || []).map((p) => [p.pin, p.uso, p.funcion_id, p.nota || '']),
     datos: (datos[t.id] || []).map((d) => [d.clave, d.valor]),
-    ojo: t.advertencias || '', origen: t.origen, revisado: t.revisado, archivado: t.archivado,
+    ojo: t.advertencias || '', origen: t.origen, revisado: t.revisado, archivado: t.archivado, dibujo: dibujos.has(t.id),
   }]));
 }
 
@@ -1033,7 +1036,8 @@ const server = createServer(async (req, res) => {
   });
   try {
     if (req.url === '/salud') return send(res, 200, 'ok', 'text/plain'); // para el HEALTHCHECK de Docker (no da datos)
-    const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    let path;
+    try { path = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { throw new HttpError(400, 'Dirección no válida'); }
     if (path.startsWith('/api/')) return await api(req, res, path);
     if (path.startsWith('/fotos/')) return await estatico(res, FOTOS, path.slice(7), 'public, max-age=31536000, immutable');
     if (path === '/' || path === '/index.html') return await paginaPrincipal(res);
