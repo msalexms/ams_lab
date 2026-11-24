@@ -1201,6 +1201,7 @@ main:has(> .inv), main:has(> .fi), main:has(.fi), main:has(> .ia-plano), main:ha
 @media (max-width: 760px) {
   .buscar { display: none; }
   .top .buscar-abrir { display: inline-flex; margin-left: auto; }
+  .top .tema-btn { display: none; } /* en el móvil, el tema está en Ajustes → Aspecto */
   body.buscando .buscar { display: flex; max-width: none; }
   body.buscando .top .buscar-abrir, body.buscando .logo { display: none; }
   .logo { font-size: 1.18rem; gap: 6px; }
