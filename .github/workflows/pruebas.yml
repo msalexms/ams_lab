@@ -1,5 +1,6 @@
-# Pasa las pruebas (npm test) en cada PR y en main: reglas de formato, migraciones, normalizar() de la IA, la API
-# arrancando el servidor con una base de datos nueva, y que los módulos de la web casen entre sí.
+# En cada PR y en main: las pruebas (npm test: reglas de formato, migraciones, normalizar() de la IA, la API arrancando
+# el servidor con una base de datos nueva, y que los módulos de la web casen entre sí) y la revisión de nombres
+# (npm run tipos: variables que no existen, imports, constantes reasignadas).
 name: pruebas
 
 on:
@@ -23,3 +24,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run tipos
