@@ -1,0 +1,25 @@
+# Pasa las pruebas (npm test) en cada PR y en main: reglas de formato, migraciones, normalizar() de la IA, la API
+# arrancando el servidor con una base de datos nueva, y que los módulos de la web casen entre sí.
+name: pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    name: pruebas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm test

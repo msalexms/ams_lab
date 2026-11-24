@@ -412,7 +412,7 @@ export function abrir(dataDir, seedDir) {
   let version = db.prepare('PRAGMA user_version').get().user_version;
   const conTablas = tablas(db).has('componentes');
 
-  if (version > VERSION) throw new Error(`La base de datos es de una versión más nueva (${version}) que esta aplicación (${VERSION})`);
+  if (version > VERSION) { db.close(); throw new Error(`La base de datos es de una versión más nueva (${version}) que esta aplicación (${VERSION})`); }
   if (version === 0 && !conTablas) crearNueva(db, seedDir);
   else if (version < VERSION) {
     copiaAntesDeMigrar(db, dataDir, version);
