@@ -1,4 +1,4 @@
-# Modelo de datos (v9) — `data/lab.db`
+# Modelo de datos (v10) — `data/lab.db`
 
 SQLite (`node:sqlite`). Esquema y migraciones en `server/db.mjs`; versión en `PRAGMA user_version`.
 
@@ -11,7 +11,6 @@ erDiagram
   tipos ||--o{ tipo_interfaces : usa
   tipos |o--o{ componentes : "es de tipo"
   ubicaciones |o--o{ componentes : guarda
-  componentes |o--o{ historial : registra
   dificultades ||--o{ proyectos : nivel
   proyectos ||--o{ proyecto_material : necesita
   proyecto_material ||--|{ material_opciones : "vale cualquiera de"
@@ -40,7 +39,6 @@ erDiagram
   tipo_interfaces { text tipo_id PK,FK; int orden PK; text interfaz }
   ubicaciones { int id PK; text nombre UK }
   componentes { int id PK; text nombre; text tipo_id FK; int cantidad "NULL=sin contar"; int varios; int ubicacion_id FK; text notas; int revisar; text foto UK; text creado; text actualizado }
-  historial { int id PK; int componente_id FK; text componente_nombre; text accion "alta|stock|baja"; text antes; text despues; text fecha }
   auditoria { int id PK; text fecha; text quien "usuario|ia|sistema"; text accion; text objeto; text objeto_id; text nombre; text resumen; text detalle "JSON"; text modelo }
   proyectos { text id PK; text nombre; int dificultad FK; text tiempo; text resumen; text origen "seed|ia|usuario"; text estado "idea|en_marcha|pausa|terminado" }
   proyecto_material { int id PK; text proyecto_id FK; int orden; int cantidad; int opcional; text nota }
@@ -57,7 +55,7 @@ erDiagram
 |---|---|---|
 | **Referencia** (configuración) | `categorias` (con su **color**, v9), `funciones_pin` (nombre + **color claro y de noche** + tachado), `dificultades`; `ajustes` (tema: auto, claro, noche; vista_inventario: lista, cuadricula; ia_razonar: poco (por defecto), medio, mucho — el valor por defecto viene de seed, el elegido no se pisa; los valores válidos los comprueba el servidor) | `seed/referencia.json`; las categorías también la IA o el usuario |
 | **Catálogo** | `tipos`, `tipo_pines`, `tipo_alias`, `tipo_interfaces`, `tipo_datos`, `proyectos` y sus tablas | `seed/glosario.json`, `seed/proyectos.json`; los tipos y los proyectos también la IA o el usuario |
-| **Inventario** (datos del usuario) | `componentes`, `componente_datos`, `ubicaciones`, `historial`; de cada proyecto, `proyectos.estado`, `proyecto_notas`, `proyecto_tareas` y `proyecto_archivos` | solo la aplicación |
+| **Inventario** (datos del usuario) | `componentes`, `componente_datos`, `ubicaciones`; de cada proyecto, `proyectos.estado`, `proyecto_notas`, `proyecto_tareas` y `proyecto_archivos` | solo la aplicación |
 | **IA** | `ia_tareas` | la aplicación al llamar al modelo |
 
 La web no guarda configuración propia: categorías, funciones de pin con sus colores y dificultades le llegan en `GET /api/datos`.
@@ -90,7 +88,7 @@ Lo escribe el servidor (`server/auditoria.mjs`) cada vez que algo cambia, y se v
 - `quien`: `usuario` (desde la web), `ia` (cambios de la IA que el usuario confirmó; `modelo` dice con cuál) o `sistema`.
 - `accion`: `pieza.alta|editar|stock|foto|borrar|restaurar`, `tipo.alta|editar|comprobar|archivar|fusionar|borrar`, `categoria.*`, `sitio.*`, `ia.aplicar|alta|descartar|config`, `copia.hacer|exportar|restaurar`, `ajustes.cambiar`.
 - `objeto` + `objeto_id`: a qué afecta (puede que ya no exista); `nombre`: cómo se llamaba entonces; `resumen`: la frase que se lee; `detalle`: `{cambios: [{campo, antes, despues}], …}` (más lo que tenía una pieza borrada, el lote de la IA, la copia guardada antes de restaurar…).
-- Nunca guarda la clave de la IA. Se quedan las 20 000 últimas (las más antiguas se borran al arrancar). `historial` (stock, con *triggers*) sigue igual.
+- Nunca guarda la clave de la IA. Se quedan las 20 000 últimas (las más antiguas se borran al arrancar). Desde v10 es el único historial (la tabla `historial` de stock se quitó).
 - API: `GET /api/auditoria?grupo=piezas|fichas|ia|catalogo|sistema&objeto=&id=&tipo=&q=&antes=<id>&limite=` → `{filas, mas}`.
 
 ## Registro del servidor y «Cambios pendientes» (sin tablas)
@@ -125,11 +123,12 @@ Cada llamada al modelo se guarda: qué se le pidió (`entrada`, JSON), qué prop
 ## Reglas en la base de datos
 - `cantidad ≥ 0`; `varios = 1` (muchos) obliga a `cantidad = NULL`; nombres no vacíos; colores `#RRGGBB`; booleanos 0/1.
 - Claves foráneas activas: borrar un tipo deja sus piezas «sin tipo» (`SET NULL`); borrar un proyecto borra su material, conexiones, pasos, notas, tareas y archivos (`CASCADE`); renombrar ids se propaga (`ON UPDATE CASCADE`).
-- *Triggers*: `actualizado` se pone solo; `historial` registra altas, cambios de stock y bajas, aunque el cambio no venga de la web. El historial completo (`auditoria`) lo escribe el servidor.
+- *Triggers*: `actualizado` se pone solo. El historial (`auditoria`) lo escribe el servidor.
 - Ubicaciones únicas sin distinguir mayúsculas («Cajita 3» = «cajita 3»).
 
 ## Migraciones
 - v7 → v8 (11/11/2026): `tipo_pines.nota` (cada fila es un solo pin; lo que comparta con otro uso va en la nota). `proyectos.origen` y `proyectos.estado`; tablas `proyecto_notas`, `proyecto_tareas` y `proyecto_archivos`. `catalogo_quitados` admite la clase `proyecto`, `auditoria` el objeto `proyecto` e `ia_tareas` la clase `detectar`: como SQLite no deja cambiar un CHECK, las tres se rehacen copiando sus filas.
+- v9 → v10 (24/11/2026): fuera la tabla `historial` y sus *triggers* (altas, stock y bajas): desde v7 lo mismo lo apunta el servidor en `auditoria`, y lo anterior ya se pasó allí al migrar a v7. En v0 → v10 el historial antiguo va directo a `auditoria`.
 - v8 → v9 (23/11/2026): `categorias.color` (hex; estilo AMSTech: pegatinas y fondos teñidos, el mismo en claro y en noche). La migración pone el de `seed/referencia.json` a las categorías que lo tienen, aunque estén renombradas; las demás y las nuevas, `#C9C6DA` (neutro).
 - v1 → v2 (03/11/2026): `funciones_pin.color` pasa a `color_oscuro` y se añade `color_claro`; nueva tabla `ajustes`.
 - v2 → v3 (06/11/2026): `origen` en `categorias` y `tipos`, `revisado` en `tipos`; tablas `tipo_datos`, `componente_datos` e `ia_tareas`. Los tipos que no están en `seed/glosario.json` (creados desde la web) quedan con origen `usuario`.
@@ -138,4 +137,4 @@ Cada llamada al modelo se guarda: qué se le pidió (`entrada`, JSON), qué prop
 - v4 → v5 (09/11/2026): `tipos.archivado` y tabla `catalogo_quitados` (lo borrado o fusionado desde Ajustes).
 - v3 → v4 (06/11/2026): tabla `ia_config` (una fila): clave y modelo de la IA puestos desde la web. La clave nunca sale por la API (ni en `/api/datos` ni en `/api/exportar`), pero sí está en las copias de seguridad de la base de datos.
 
-`abrir()` mira `PRAGMA user_version`: 0 sin tablas → crea y siembra desde `seed/`; si es más antigua que la actual, **primero hace una copia completa** (`VACUUM INTO`) en la carpeta de copias como `lab-antes-vX-a-vY-<fecha>.db` (fuera de la rotación: no se borra sola) y después migra paso a paso (v0 → v9 directo, v1 → v2 → … → v9).
+`abrir()` mira `PRAGMA user_version`: 0 sin tablas → crea y siembra desde `seed/`; si es más antigua que la actual, **primero hace una copia completa** (`VACUUM INTO`) en la carpeta de copias como `lab-antes-vX-a-vY-<fecha>.db` (fuera de la rotación: no se borra sola) y después migra paso a paso (v0 → v10 directo, v1 → v2 → … → v10).
