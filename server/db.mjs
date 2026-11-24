@@ -4,16 +4,15 @@
 //   · REFERENCIA y CATÁLOGO (categorías, funciones de pin y sus colores, dificultades, tipos, pines, proyectos).
 //     La base de datos es la fuente de verdad. seed/*.json crea lo que falta y actualiza solo lo que sigue siendo
 //     «de seed» (origen = 'seed'): nunca pisa una categoría o un tipo creados o cambiados por la IA o por el usuario.
-//   · INVENTARIO del usuario (componentes, ubicaciones, historial, datos de cada pieza): solo los cambia la aplicación.
+//   · INVENTARIO del usuario (componentes, ubicaciones, datos de cada pieza): solo los cambia la aplicación.
 import {DatabaseSync} from 'node:sqlite';
 import {mkdirSync, readFileSync, existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {opcionesCopias} from './copias.mjs';
 
-export const VERSION = 9;
+export const VERSION = 10;
 export const ESTADOS_PROYECTO = ['idea', 'en_marcha', 'pausa', 'terminado'];
 export const COLUMNAS_TAREA = ['hacer', 'curso', 'hecho'];
-export const ORIGENES = ['seed', 'ia', 'usuario'];
 const ORIGEN = `TEXT NOT NULL DEFAULT 'seed' CHECK (origen IN ('seed', 'ia', 'usuario'))`;
 const ESTADO_PROYECTO = `TEXT NOT NULL DEFAULT 'idea' CHECK (estado IN ('idea', 'en_marcha', 'pausa', 'terminado'))`;
 const HEX = (col) => `CHECK (${col} GLOB '#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]')`;
@@ -143,17 +142,6 @@ const ESQUEMA = `
     texto        TEXT NOT NULL,
     PRIMARY KEY (proyecto_id, orden)
   ) WITHOUT ROWID;
-
-  CREATE TABLE historial (
-    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    componente_id      INTEGER REFERENCES componentes(id) ON DELETE SET NULL,
-    componente_nombre  TEXT NOT NULL,
-    accion             TEXT NOT NULL CHECK (accion IN ('alta', 'stock', 'baja')),
-    antes              TEXT,
-    despues            TEXT,
-    fecha              TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-  CREATE INDEX historial_componente ON historial(componente_id);
 `;
 
 // v3: datos extra (clave → valor) de cada tipo y de cada pieza, y las tareas de la IA (propuestas pendientes de revisar)
@@ -226,7 +214,7 @@ const TABLAS_V5 = QUITADOS('catalogo_quitados');
 
 // v7: historial de cambios de toda la aplicación (Ajustes → Historial y el de cada pieza o ficha). Lo escribe el
 // servidor (server/auditoria.mjs) al cambiar algo: quién (tú, la IA con su modelo, o el sistema), qué y el detalle
-// (los campos con su antes y su después). Nunca guarda la clave de la IA. «historial» (stock) sigue con sus triggers.
+// (los campos con su antes y su después). Nunca guarda la clave de la IA. (Convivió con la tabla «historial» de stock hasta v10.)
 const AUDITORIA = (nombre) => `
   CREATE TABLE ${nombre} (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -289,23 +277,11 @@ export function resolver(db, clase, id) {
   return null;
 }
 
-// el historial y la fecha de actualización los mantiene la propia base de datos
+// la fecha de actualización la mantiene la propia base de datos (lo que cambia lo apunta la app en «auditoria»)
 const TRIGGERS = `
   CREATE TRIGGER componentes_actualizado AFTER UPDATE ON componentes
     WHEN NEW.actualizado IS OLD.actualizado
     BEGIN UPDATE componentes SET actualizado = datetime('now') WHERE id = NEW.id; END;
-  CREATE TRIGGER historial_alta AFTER INSERT ON componentes
-    BEGIN INSERT INTO historial (componente_id, componente_nombre, accion, despues)
-      VALUES (NEW.id, NEW.nombre, 'alta', CASE WHEN NEW.varios THEN 'muchos' ELSE NEW.cantidad END); END;
-  CREATE TRIGGER historial_stock AFTER UPDATE OF cantidad, varios ON componentes
-    WHEN NEW.cantidad IS NOT OLD.cantidad OR NEW.varios IS NOT OLD.varios
-    BEGIN INSERT INTO historial (componente_id, componente_nombre, accion, antes, despues)
-      VALUES (NEW.id, NEW.nombre, 'stock',
-              CASE WHEN OLD.varios THEN 'muchos' ELSE OLD.cantidad END,
-              CASE WHEN NEW.varios THEN 'muchos' ELSE NEW.cantidad END); END;
-  CREATE TRIGGER historial_baja AFTER DELETE ON componentes
-    BEGIN INSERT INTO historial (componente_id, componente_nombre, accion, antes)
-      VALUES (NULL, OLD.nombre, 'baja', CASE WHEN OLD.varios THEN 'muchos' ELSE OLD.cantidad END); END;
 `;
 
 const list = (v) => (Array.isArray(v) ? v : v ? [v] : []);
@@ -449,6 +425,7 @@ export function abrir(dataDir, seedDir) {
     if (version === 6) { migrarDesdeV6(db); version = 7; }
     if (version === 7) { migrarDesdeV7(db); version = 8; }
     if (version === 8) { migrarDesdeV8(db, seedDir); version = 9; }
+    if (version === 9) { migrarDesdeV9(db); version = 10; }
   }
 
   db.exec('PRAGMA foreign_keys = ON;');
@@ -477,7 +454,7 @@ function crearNueva(db, seedDir) {
     for (const c of leer(seedDir, 'componentes.json') || [])
       db.prepare('INSERT INTO componentes (nombre, tipo_id, cantidad, varios, ubicacion_id, notas, revisar) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .run(c.nombre, glosario[c.tipo] ? c.tipo : null, c.varios ? null : c.cantidad ?? null, c.varios ? 1 : 0, ubicacionId(db, c.ubicacion), c.notas || '', c.seguro === false ? 1 : 0);
-    db.exec(TRIGGERS + TRIGGERS_V3); // después de cargar: el inventario inicial no cuenta como «alta» en el historial
+    db.exec(TRIGGERS + TRIGGERS_V3);
     db.exec(`PRAGMA user_version = ${VERSION}`);
   });
   console.log(`Base de datos creada (modelo v${VERSION})`);
@@ -497,8 +474,8 @@ function migrarDesdeV0(db, seedDir) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(c.id, c.nombre, c.tipo, c.varios ? null : c.cantidad, c.varios, ubicacionId(db, c.ubicacion),
         c.notas, c.revisar, c.foto, c.creado, c.actualizado);
     for (const h of db.prepare('SELECT * FROM v0_historial').all())
-      db.prepare("INSERT INTO historial (componente_id, componente_nombre, accion, despues, fecha) VALUES (?, ?, 'stock', ?, ?)")
-        .run(null, h.nombre || '?', h.cambio, h.fecha);
+      db.prepare("INSERT INTO auditoria (fecha, quien, accion, objeto, nombre, resumen) VALUES (?, 'usuario', 'pieza.stock', 'pieza', ?, ?)")
+        .run(h.fecha, h.nombre || '?', `Cantidad: ${h.cambio ?? '—'}`);
     for (const t of ['componentes', 'tipos', 'proyectos', 'historial']) db.exec(`DROP TABLE v0_${t}`);
     db.exec(TRIGGERS + TRIGGERS_V3);
     const rotas = db.prepare('PRAGMA foreign_key_check').all();
@@ -611,6 +588,17 @@ function migrarDesdeV8(db, seedDir) {
     db.exec('PRAGMA user_version = 9');
   });
   console.log('Base de datos migrada al modelo v9');
+}
+
+// v9 → v10: fuera la tabla «historial» y sus triggers. Desde v7 lo mismo (altas, cambios de stock y bajas) lo apunta
+// la app en «auditoria», y lo de antes de v7 ya se pasó allí al migrar a v7: no se pierde nada.
+function migrarDesdeV9(db) {
+  enTransaccion(db, () => {
+    db.exec(`DROP TRIGGER IF EXISTS historial_alta; DROP TRIGGER IF EXISTS historial_stock; DROP TRIGGER IF EXISTS historial_baja;
+      DROP TABLE IF EXISTS historial;`);
+    db.exec('PRAGMA user_version = 10');
+  });
+  console.log('Base de datos migrada al modelo v10');
 }
 
 // una ficha tal como está en la base de datos, en el formato de guardarTipo() (para revisarla o reescribirla entera)

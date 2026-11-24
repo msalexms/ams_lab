@@ -51,7 +51,7 @@ function chip(x, y, w, h, label = '', legs = 4) {
 }
 const usb = (x, y, w = 16, h = 10) => rect(x, y, w, h, C.silver, 2, 'stroke="#888"') + rect(x + 3, y + 3, w - 6, h - 6, '#555', 1);
 const btn = (x, y) => rect(x, y, 10, 10, C.silver, 1.5) + circ(x + 5, y + 5, 3, '#222');
-const name = (s, y = 134) => txt(100, y, s, 9, '#e6e6e6');
+const name = () => ''; // sin rótulo: el nombre ya sale junto al dibujo, y en gris claro sobre el fondo teñido no se leía
 function segDigit(x, y, s = 1, on = C.led, off = '#3a1212') {
   // dígito de 7 segmentos mostrando «8»
   const w = 14 * s, h = 24 * s, t = 3 * s;
@@ -194,6 +194,9 @@ const D = {
     [75, 100, 125].map((x) => line(x, 84, x, 115, C.silver, 2.5)).join('') + name('Interruptor deslizante', 132)),
   'dip-switch': () => svg(rect(25, 40, 150, 55, '#1d4fd0', 3) + Array.from({length: 6}, (_, i) => rect(36 + i * 23, 48, 14, 32, '#0e2f86', 1) + rect(38 + i * 23, i % 2 ? 50 : 64, 10, 14, C.white, 1) +
     txt(43 + i * 23, 91, i + 1, 6)).join('') + txt(30, 36, 'ON', 7, '#e6e6e6', 'start') + name('DIP de 6 posiciones', 125)),
+  // genérico: para los tipos sin dibujo propio (los que crea la IA o el usuario); un chip DIP sin rótulo
+  '_pieza': () => svg(Array.from({length: 7}, (_, i) => line(62 + i * 12.7, 38, 62 + i * 12.7, 24, C.silver, 3) + line(62 + i * 12.7, 102, 62 + i * 12.7, 116, C.silver, 3)).join('') +
+    rect(50, 36, 100, 68, '#2c2c2c', 4) + circ(62, 48, 4, '#1a1a1a')),
 };
 
 mkdirSync(OUT, {recursive: true});

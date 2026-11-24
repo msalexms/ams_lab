@@ -5,7 +5,7 @@
 //     usuario ve el resumen y confirma. Al restaurar, server/index.mjs hace antes una copia del estado actual.
 // Sin dependencias: tar (formato ustar) escrito y leído aquí, gzip con node:zlib.
 import {createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, statSync, openSync, readSync, closeSync,
-  writeSync, rmSync, renameSync, copyFileSync, readFileSync, unlinkSync} from 'node:fs';
+  writeSync, rmSync, renameSync, copyFileSync, readFileSync, writeFileSync, unlinkSync} from 'node:fs';
 import {join, basename} from 'node:path';
 import {randomBytes} from 'node:crypto';
 import {pipeline} from 'node:stream/promises';
@@ -160,10 +160,9 @@ const nuevaEtapa = (dataDir) => {
 };
 const resumenEtapa = (token, dir, extra) => {
   const r = {token, ...comprobarBase(join(dir, 'lab.db')), ...extra};
-  writeFileSyncJson(join(dir, 'etapa.json'), r);
+  writeFileSync(join(dir, 'etapa.json'), JSON.stringify(r));
   return r;
 };
-const writeFileSyncJson = (ruta, v) => { const fd = openSync(ruta, 'w'); try { writeSync(fd, JSON.stringify(v)); } finally { closeSync(fd); } };
 
 // desde un fichero subido (el cuerpo de la petición): .tar.gz exportado aquí o .db suelto
 export async function prepararSubida(req, dataDir) {

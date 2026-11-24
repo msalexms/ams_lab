@@ -16,7 +16,8 @@
     "pines": "node scripts/pines.mjs && node scripts/catalogo.mjs",
     "catalogo": "node scripts/catalogo.mjs",
     "copia": "node scripts/copia.mjs",
-    "ia-simulada": "node scripts/ia-simulada.mjs"
+    "ia-simulada": "node scripts/ia-simulada.mjs",
+    "test": "node --test \"test/*.test.mjs\""
   },
   "engines": {
     "node": ">=24"
