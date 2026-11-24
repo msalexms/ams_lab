@@ -16,9 +16,9 @@ import {CUENTA_PEND, GRUPOS_HIST, HIST, REG, avisoPendientes, cargarHistDe, carg
 import {LOTE, aplicarLote, contarLote, descartarLote, iaLote, vLoteIA} from './lotes.js';
 import {MODELOS_IA, RAZONAR, aplicarIA, avisoModeloAlta, cambiarModeloIA, contarDeteccion, crearDeteccion, enviarIA, enviarVarias, guardarAjustesIA, guardarLoteAltas, iaAbiertas, iaAjustes, iaTarea, llenarModelosAlta, modeloIA, modelosIA, responderIA, vIA, verVistaIA} from './ia.js';
 import {REVISION, aplicarRevisionIA, contarCambios, enviarRevision, verVistaRevision} from './revision.js';
-import {abrirCombo, cerrarCombo, clicEditor, editarTipoCargar, elegirTipo, guardarFicha, guardarForm, separarEnEditor, vBuscar, vComponente, vEditarTipo, vForm, vGlosario, vTipo} from './fichas.js';
+import {abrirCombo, cerrarCombo, CLICS_EDITOR, clicEditor, editarTipoCargar, elegirTipo, guardarFicha, guardarForm, separarEnEditor, vBuscar, vComponente, vEditarTipo, vForm, vGlosario, vTipo} from './fichas.js';
 import {accionSel, colorPin, filaComp, guardarLote, ponerATodas, refrescarBarraSel, salirSeleccion, vInventario, vLote} from './piezas.js';
-import {ajCargar, ajRefrescar, aplicarFormato, cambioAjustes, clicAjustes, contarFormato, subirCopia, vAjustes} from './ajustes.js';
+import {CLICS_AJUSTES, ajCargar, ajRefrescar, aplicarFormato, cambioAjustes, clicAjustes, contarFormato, subirCopia, vAjustes} from './ajustes.js';
 import {anadirNotaPro, anadirTareaPro, cambiarEstadoPro, cargarProyecto, clicProyecto, guardarProyectoForm, subirArchivoPro, vProyecto, vProyectoForm, vProyectos} from './proyectos.js';
 import {fotoEncuadrada, subirFoto} from './fotos.js';
 
@@ -69,137 +69,158 @@ export function contadores() {
 }
 
 // ---------- eventos ----------
-app.addEventListener('click', async (e) => {
-  const el = e.target.closest('[data-cat],[data-cuenta],[data-pf],[data-adj],#quitar-foto,#quitar-pendiente,#marcar-pendiente,#ia-abrir,#borrar,#revisada,#ia-descartar,#ia-quitar,[data-ia-vista],#ia-responder,#ia-guardar-previa,#ia-cambiar-clave,[data-glo],[data-poner-tema],[data-poner-idioma],[data-cat-mover],[data-cat-borrar],[data-cat-borrar-ok],[data-aj-cerrar],[data-aj-tipos],[data-tipo-archivar],[data-tipo-fusionar],[data-tipo-fusionar-ok],[data-tipo-borrar],[data-sitio-borrar],#aj-copia,[data-ia-marcar],#ia-aplicar-cambios,[data-rev-vista],[data-vista-inv],#sel-modo,[data-sel],[data-sel-acc],[data-lote-todas],[data-lote-marcar],#lote-aplicar,#lote-descartar,.combo-op,[data-ed-anadir],[data-ed-quitar],[data-copia-preparar],[data-restaurar],[data-restaurar-cancelar],[data-pend-descartar],[data-hist-grupo],#hist-mas,[data-reg-nivel],#reg-copiar,[data-pro],#det-crear,[data-det-marcar],#lote-guardar,#filtros-abrir,#formato-aplicar,[data-formato-marcar],[data-pines-vista],[data-op]');
-  if (!el || !app.contains(el)) return; // solo botones de la propia vista (no el <html>, que lleva data-* del tema)
-  if (el.dataset.cuenta) { // móvil: el recuadro de la cantidad se convierte en − n + (y se queda así mientras ajustas)
+// Clics de la vista: [selector, qué hace, opciones]. Gana el elemento más cercano al clic que case con algún selector
+// y, de la lista, la primera fila que case con él. {redibujar}: después se vuelve a pintar la vista. Si algo falla se
+// avisa y se redibuja, salvo con {local}: trabajan dentro de formularios a medio rellenar, que se perderían.
+const LOCAL = {local: true}, REDIBUJAR = {redibujar: true};
+// para las que avisan ellas mismas del fallo sin redibujar (y dejan el botón como estaba)
+const avisando = (fn, despues) => async (el) => { try { await fn(el); } catch (err) { toast(err.message, true); despues(el); } };
+const reactivar = (el) => { el.disabled = false; };
+// «Marcar todo / nada» de una lista de casillas
+const marcarTodas = (casillas, clave, contar) => (el) => {
+  document.querySelectorAll(casillas).forEach((x) => (x.checked = el.dataset[clave] === 'todo'));
+  contar();
+};
+const piezaDeLaRuta = () => location.hash.split('/')[2];
+
+const CLICS = [
+  ['[data-cuenta]', (el) => { // móvil: el recuadro de la cantidad se convierte en − n + (y se queda así mientras ajustas)
     ui.cuentaAbierta = Number(el.dataset.cuenta);
     document.querySelectorAll('.fila-pieza.editando').forEach((x) => x.classList.remove('editando'));
     el.closest('.fila-pieza').classList.add('editando');
     el.closest('.fila-pieza').querySelector('[data-adj]')?.focus();
-    return;
-  }
+  }, LOCAL],
   // sin redibujar la vista: el selector de tipo y las tablas editables viven dentro de formularios a medio rellenar
-  if (el.classList.contains('combo-op')) { elegirTipo(el.closest('.combo'), el.dataset.valor); return; }
-  if (el.dataset.op != null) { // una respuesta propuesta por la IA: la pone en su campo (otra vez: la quita)
-    const li = el.closest('li'), campo = li.querySelector('.ia-resp');
-    campo.value = el.getAttribute('aria-pressed') === 'true' ? '' : el.dataset.op;
+  ['.combo-op', (el) => elegirTipo(el.closest('.combo'), el.dataset.valor), LOCAL],
+  ['[data-op]', (el) => { // una respuesta propuesta por la IA: la pone en su campo (otra vez: la quita)
+    const li = el.closest('li');
+    li.querySelector('.ia-resp').value = el.getAttribute('aria-pressed') === 'true' ? '' : el.dataset.op;
     marcarOpciones(li);
-    return;
-  }
-  if (el.id === 'ia-abrir') { // el panel de la IA se abre debajo de la fila de acciones
+  }, LOCAL],
+  ['#ia-abrir', (el) => { // el panel de la IA se abre debajo de la fila de acciones
     const d = $('.ia-revisar');
     d.open = !d.open;
     el.setAttribute('aria-expanded', String(d.open));
     if (d.open) d.querySelector('textarea')?.focus({preventScroll: true});
-    return;
-  }
-  if (el.dataset.pinesVista) {
+  }, LOCAL],
+  ['[data-pines-vista]', (el) => {
     ui.pinesVista = el.dataset.pinesVista;
     const caja = el.closest('.pines');
     caja.dataset.pinesModo = ui.pinesVista;
     caja.querySelectorAll('[data-pines-vista]').forEach((b) => { const on = b.dataset.pinesVista === ui.pinesVista; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
-    return;
-  }
-  if (clicEditor(el)) return;
-  try {
-    if (el.dataset.pro) { await clicProyecto(el); return; }
-    if (el.id === 'sel-modo') { if (ui.seleccionando) salirSeleccion(); else ui.seleccionando = true; route(); return; }
-    if (el.dataset.sel) { if (el.dataset.sel === 'visibles') ui.visibles.forEach((id) => ui.sel.add(id)); else ui.sel.clear(); route(); return; }
-    if (el.dataset.selAcc) { if (!el.disabled) await accionSel(el.dataset.selAcc); return; }
-    if (el.dataset.loteTodas) { ponerATodas(el.dataset.loteTodas); return; }
-    if (el.dataset.loteMarcar) {
-      document.querySelectorAll('.lote-cambio').forEach((x) => { x.checked = el.dataset.loteMarcar === 'todo'; LOTE.desmarcados[x.checked ? 'delete' : 'add'](`${x.dataset.tarea}:${x.value}`); });
-      contarLote(); return;
-    }
-    if (el.id === 'lote-aplicar') { try { await aplicarLote(el); } catch (err) { toast(err.message, true); contarLote(); } return; }
-    if (el.id === 'lote-descartar') { await descartarLote(); return; }
-    if (el.id === 'formato-aplicar') { try { await aplicarFormato(el); } catch (err) { toast(err.message, true); contarFormato(); } return; }
-    if (el.dataset.formatoMarcar) { document.querySelectorAll('.formato-cambio').forEach((x) => (x.checked = el.dataset.formatoMarcar === 'todo')); contarFormato(); return; }
-    if (el.id === 'lote-guardar') { try { await guardarLoteAltas(el); } catch (err) { toast(err.message, true); contarLote(); } return; }
-    if (el.id === 'det-crear') { try { await crearDeteccion(el); } catch (err) { toast(err.message, true); contarDeteccion(); } return; }
-    if (el.dataset.detMarcar) { document.querySelectorAll('.det-ok').forEach((x) => (x.checked = el.dataset.detMarcar === 'todo')); contarDeteccion(); return; }
-    if (el.dataset.pendDescartar) { await descartarPendiente(el.dataset.pendDescartar); return; }
-    if (el.dataset.histGrupo != null) { HIST.grupo = el.dataset.histGrupo; await histCargar(true); return; }
-    if (el.id === 'hist-mas') { el.disabled = true; el.textContent = t('Cargando…'); await histCargar(false); return; }
-    if (el.dataset.regNivel) { REG.nivel = el.dataset.regNivel; REG.datos = null; await regCargar(); return; }
-    if (el.id === 'reg-copiar') {
-      const txt = (REG.datos?.lineas || []).slice().reverse().map((l) => `${l.fecha} ${l.nivel.toUpperCase()} ${l.texto}`).join('\n');
-      try { await navigator.clipboard.writeText(txt); toast(t('Registro copiado')); } catch { toast(t('No se ha podido copiar (hace falta HTTPS o localhost)'), true); }
-      return;
-    }
-    if (el.dataset.vistaInv) { // Lista / Cuadrícula del inventario (atributo propio: no confundir con otras «vistas»)
-      await api('PUT', 'api/ajustes/vista_inventario', {valor: el.dataset.vistaInv});
-      D.ajustes.vista_inventario = el.dataset.vistaInv;
-      route();
-      return;
-    }
-    if (el.id === 'ia-cambiar-clave') { $('#form-ia-config').hidden = false; el.closest('.acciones').hidden = true; $('#form-ia-config [name=clave]').focus(); return; }
-    if (el.dataset.glo) { ui.sinComprobar = el.dataset.glo === 'sin'; route(); return; }
-    if (await clicAjustes(el)) return;
-    if (el.dataset.iaMarcar) { document.querySelectorAll('.ia-cambio').forEach((x) => (x.checked = el.dataset.iaMarcar === 'todo')); contarCambios(); return; }
-    if (el.id === 'ia-aplicar-cambios') { try { await aplicarRevisionIA(el); } catch (err) { el.disabled = false; toast(err.message, true); } return; }
-    if (el.dataset.iaVista) { verVistaIA(el.dataset.iaVista); return; }
-    if (el.dataset.revVista) { verVistaRevision(el.dataset.revVista, REVISION); return; }
-    if (el.id === 'ia-guardar-previa') { verVistaIA('editar'); $('#form-ia-ok').requestSubmit(); return; }
-    if (el.id === 'ia-responder') { try { await responderIA(el); } catch (err) { el.disabled = false; toast(err.message, true); } return; } // sin redibujar: no se pierde lo editado
-    if (el.id === 'ia-quitar') {
-      if (!(await confirmar(t('¿Quitar la clave de OpenCode Go?\nLa IA dejará de funcionar hasta que pongas otra.'), {si: t('Quitar la clave'), peligro: true}))) return;
-      D.ia = await api('PUT', 'api/ia/config', {quitarClave: true});
-      toast(t('Clave quitada'));
-      location.hash = '#/ia';
-      return;
-    }
-    if (el.id === 'ia-descartar') {
-      if (!(await confirmar(t('¿Descartar esta propuesta?\nNo se guarda nada.'), {si: t('Descartar'), peligro: true}))) return;
-      await api('POST', `api/ia/tareas/${el.dataset.id}/descartar`);
-      toast(t('Descartada'));
-      location.hash = el.dataset.volver || '#/ia';
-      return;
-    }
-    if (el.id === 'revisada') {
-      await api('PATCH', `api/tipos/${el.dataset.tipo}`, {revisado: true});
-      D.tipos[el.dataset.tipo].revisado = 1;
-      toast(t('Ficha comprobada: ya no sale el aviso'));
-    } else if (el.dataset.adj) {
-      e.preventDefault();
-      el.disabled = true;
-      const c = await api('POST', `api/componentes/${el.dataset.id}/ajuste`, {delta: Number(el.dataset.adj)});
-      guardarLocal(c);
-      const fila = el.closest('.fila-pieza');
-      if (fila) { // en una lista: solo esa fila, y el foco sigue en el mismo botón (pulsar varias veces seguidas)
-        fila.outerHTML = filaComp(c);
-        app.querySelector(`[data-adj="${el.dataset.adj}"][data-id="${c.id}"]`)?.focus();
-        return;
-      }
-    } else if (el.dataset.cat !== undefined) ui.cat = el.dataset.cat;
-    else if (el.dataset.pf) ui.proFiltro = el.dataset.pf;
-    else if (el.id === 'filtros-abrir') ui.filtros = !ui.filtros;
-    else if (el.id === 'quitar-pendiente' || el.id === 'marcar-pendiente') {
-      const marcar = el.id === 'marcar-pendiente';
-      guardarLocal(await api('PATCH', `api/componentes/${location.hash.split('/')[2]}`, {revisar: marcar}));
-      toast(marcar ? t('Marcada como pendiente') : t('Marca quitada'));
-    } else if (el.id === 'quitar-foto') {
-      if (!(await confirmar(t('¿Quitar la foto de esta pieza?'), {si: t('Quitar'), peligro: true}))) return;
-      guardarLocal(await api('DELETE', `api/componentes/${location.hash.split('/')[2]}/foto`));
-    } else if (el.id === 'borrar') {
-      const id = location.hash.split('/')[2], nombre = comp(id)?.nombre || t('la pieza');
-      const r = await api('DELETE', `api/componentes/${id}`);
-      D.componentes = D.componentes.filter((c) => c.id !== Number(id));
-      contadores();
-      location.hash = '#/';
-      toast(t('Borrada «{nombre}»', {nombre}), false, {texto: t('Deshacer'), fn: async () => {
-        try {
-          const x = await api('POST', 'api/componentes/restaurar', {token: r.deshacer});
-          await cargar(); contadores();
-          location.hash = `#/c/${x.id}`;
-          toast(t('Recuperada'));
-        } catch (err) { toast(err.message, true); }
-      }});
-      return;
-    }
+  }, LOCAL],
+  [CLICS_EDITOR, clicEditor, LOCAL],
+  ['[data-pro]', clicProyecto],
+  // selección de varias piezas y cambios en lote
+  ['#sel-modo', () => { if (ui.seleccionando) salirSeleccion(); else ui.seleccionando = true; }, REDIBUJAR],
+  ['[data-sel]', (el) => { if (el.dataset.sel === 'visibles') ui.visibles.forEach((id) => ui.sel.add(id)); else ui.sel.clear(); }, REDIBUJAR],
+  ['[data-sel-acc]', (el) => !el.disabled && accionSel(el.dataset.selAcc)],
+  ['[data-lote-todas]', (el) => ponerATodas(el.dataset.loteTodas)],
+  ['[data-lote-marcar]', (el) => {
+    document.querySelectorAll('.lote-cambio').forEach((x) => { x.checked = el.dataset.loteMarcar === 'todo'; LOTE.desmarcados[x.checked ? 'delete' : 'add'](`${x.dataset.tarea}:${x.value}`); });
+    contarLote();
+  }],
+  ['#lote-aplicar', avisando(aplicarLote, contarLote)],
+  ['#lote-descartar', descartarLote],
+  ['#formato-aplicar', avisando(aplicarFormato, contarFormato)],
+  ['[data-formato-marcar]', marcarTodas('.formato-cambio', 'formatoMarcar', contarFormato)],
+  ['#lote-guardar', avisando(guardarLoteAltas, contarLote)],
+  ['#det-crear', avisando(crearDeteccion, contarDeteccion)],
+  ['[data-det-marcar]', marcarTodas('.det-ok', 'detMarcar', contarDeteccion)],
+  // actividad: cambios pendientes, historial y registro
+  ['[data-pend-descartar]', (el) => descartarPendiente(el.dataset.pendDescartar)],
+  ['[data-hist-grupo]', (el) => { HIST.grupo = el.dataset.histGrupo; return histCargar(true); }],
+  ['#hist-mas', (el) => { el.disabled = true; el.textContent = t('Cargando…'); return histCargar(false); }],
+  ['[data-reg-nivel]', (el) => { REG.nivel = el.dataset.regNivel; REG.datos = null; return regCargar(); }],
+  ['#reg-copiar', async () => {
+    const txt = (REG.datos?.lineas || []).slice().reverse().map((l) => `${l.fecha} ${l.nivel.toUpperCase()} ${l.texto}`).join('\n');
+    try { await navigator.clipboard.writeText(txt); toast(t('Registro copiado')); } catch { toast(t('No se ha podido copiar (hace falta HTTPS o localhost)'), true); }
+  }],
+  ['[data-vista-inv]', async (el) => { // Lista / Cuadrícula del inventario (atributo propio: no confundir con otras «vistas»)
+    await api('PUT', 'api/ajustes/vista_inventario', {valor: el.dataset.vistaInv});
+    D.ajustes.vista_inventario = el.dataset.vistaInv;
+  }, REDIBUJAR],
+  ['#ia-cambiar-clave', (el) => { $('#form-ia-config').hidden = false; el.closest('.acciones').hidden = true; $('#form-ia-config [name=clave]').focus(); }],
+  ['[data-glo]', (el) => { ui.sinComprobar = el.dataset.glo === 'sin'; }, REDIBUJAR],
+  [CLICS_AJUSTES, clicAjustes],
+  // IA: correcciones y propuestas
+  ['[data-ia-marcar]', marcarTodas('.ia-cambio', 'iaMarcar', contarCambios)],
+  ['#ia-aplicar-cambios', avisando(aplicarRevisionIA, reactivar)],
+  ['[data-ia-vista]', (el) => verVistaIA(el.dataset.iaVista)],
+  ['[data-rev-vista]', (el) => verVistaRevision(el.dataset.revVista, REVISION)],
+  ['#ia-guardar-previa', () => { verVistaIA('editar'); $('#form-ia-ok').requestSubmit(); }],
+  ['#ia-responder', avisando(responderIA, reactivar)], // sin redibujar: no se pierde lo editado
+  ['#ia-quitar', async () => {
+    if (!(await confirmar(t('¿Quitar la clave de OpenCode Go?\nLa IA dejará de funcionar hasta que pongas otra.'), {si: t('Quitar la clave'), peligro: true}))) return;
+    D.ia = await api('PUT', 'api/ia/config', {quitarClave: true});
+    toast(t('Clave quitada'));
+    location.hash = '#/ia';
+  }],
+  ['#ia-descartar', async (el) => {
+    if (!(await confirmar(t('¿Descartar esta propuesta?\nNo se guarda nada.'), {si: t('Descartar'), peligro: true}))) return;
+    await api('POST', `api/ia/tareas/${el.dataset.id}/descartar`);
+    toast(t('Descartada'));
+    location.hash = el.dataset.volver || '#/ia';
+  }],
+  ['#revisada', async (el) => {
+    await api('PATCH', `api/tipos/${el.dataset.tipo}`, {revisado: true});
+    D.tipos[el.dataset.tipo].revisado = 1;
+    toast(t('Ficha comprobada: ya no sale el aviso'));
+  }, REDIBUJAR],
+  // piezas: cantidad, filtros, marca de pendiente, foto y borrar
+  ['[data-adj]', async (el, e) => {
+    e.preventDefault();
+    el.disabled = true;
+    const c = await api('POST', `api/componentes/${el.dataset.id}/ajuste`, {delta: Number(el.dataset.adj)});
+    guardarLocal(c);
+    const fila = el.closest('.fila-pieza');
+    if (!fila) return route();
+    // en una lista: solo esa fila, y el foco sigue en el mismo botón (pulsar varias veces seguidas)
+    fila.outerHTML = filaComp(c);
+    app.querySelector(`[data-adj="${el.dataset.adj}"][data-id="${c.id}"]`)?.focus();
+  }],
+  ['[data-cat]', (el) => { ui.cat = el.dataset.cat; }, REDIBUJAR],
+  ['[data-pf]', (el) => { ui.proFiltro = el.dataset.pf; }, REDIBUJAR],
+  ['#filtros-abrir', () => { ui.filtros = !ui.filtros; }, REDIBUJAR],
+  ['#quitar-pendiente, #marcar-pendiente', async (el) => {
+    const marcar = el.id === 'marcar-pendiente';
+    guardarLocal(await api('PATCH', `api/componentes/${piezaDeLaRuta()}`, {revisar: marcar}));
+    toast(marcar ? t('Marcada como pendiente') : t('Marca quitada'));
+  }, REDIBUJAR],
+  ['#quitar-foto', async () => {
+    if (!(await confirmar(t('¿Quitar la foto de esta pieza?'), {si: t('Quitar'), peligro: true}))) return;
+    guardarLocal(await api('DELETE', `api/componentes/${piezaDeLaRuta()}/foto`));
     route();
-  } catch (err) { toast(err.message, true); route(); }
+  }],
+  ['#borrar', async () => {
+    const id = piezaDeLaRuta(), nombre = comp(id)?.nombre || t('la pieza');
+    const r = await api('DELETE', `api/componentes/${id}`);
+    D.componentes = D.componentes.filter((c) => c.id !== Number(id));
+    contadores();
+    location.hash = '#/';
+    toast(t('Borrada «{nombre}»', {nombre}), false, {texto: t('Deshacer'), fn: async () => {
+      try {
+        const x = await api('POST', 'api/componentes/restaurar', {token: r.deshacer});
+        await cargar(); contadores();
+        location.hash = `#/c/${x.id}`;
+        toast(t('Recuperada'));
+      } catch (err) { toast(err.message, true); }
+    }});
+  }],
+];
+const SEL_CLICS = CLICS.map(([sel]) => sel).join(', ');
+
+app.addEventListener('click', async (e) => {
+  const el = e.target.closest(SEL_CLICS);
+  if (!el || !app.contains(el)) return; // solo botones de la propia vista (no el <html>, que lleva data-* del tema)
+  const [, accion, {local = false, redibujar = false} = {}] = CLICS.find(([sel]) => el.matches(sel));
+  try {
+    await accion(el, e);
+    if (redibujar) route();
+  } catch (err) {
+    toast(err.message, true);
+    if (!local) route();
+  }
 });
 app.addEventListener('change', async (e) => {
   const el = e.target;

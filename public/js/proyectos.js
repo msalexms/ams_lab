@@ -211,7 +211,7 @@ export async function clicProyecto(el) {
     try { await navigator.clipboard.writeText(txt); toast(t('Lista copiada')); } catch { toast(t('No se ha podido copiar (hace falta HTTPS o localhost)'), true); }
   } else if (a === 'borrar') {
     const suyo = [nTareas(p) ? plural(nTareas(p), 'tarea') : '', p.notas ? plural(p.notas, 'nota') : '', p.archivos ? plural(p.archivos, 'archivo') : ''].filter(Boolean);
-    if (!(await confirmar(t('¿Borrar el proyecto «{nombre}»?\n{extra}No se puede deshacer.', {nombre: p.nombre, extra: suyo.length ? t('Se borran también sus {items}. ', {items: suyo.join(', ')}) : ''}), {si: 'Borrar proyecto', peligro: true}))) return;
+    if (!(await confirmar(t('¿Borrar el proyecto «{nombre}»?\n{extra}No se puede deshacer.', {nombre: p.nombre, extra: suyo.length ? t('Se borran también sus {items}. ', {items: suyo.join(', ')}) : ''}), {si: t('Borrar proyecto'), peligro: true}))) return;
     await api('DELETE', base);
     D.proyectos = D.proyectos.filter((x) => x.id !== id);
     if (PRO.id === id) { PRO.id = null; PRO.det = null; }
