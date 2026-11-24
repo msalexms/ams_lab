@@ -42,7 +42,7 @@ function compText(c) {
 }
 
 const unidades = (c) => (c.varios ? MUCHOS : Number(c.cantidad) || 0);
-const qtyText = (c) => (c.varios ? 'muchos' : c.cantidad ?? '?');
+const qtyText = (c) => (c.varios ? t('muchos') : c.cantidad ?? '?');
 function stock(tipo) {
   return Math.max(0, ...list(tipo).map((t) => D.componentes.filter((c) => c.tipo === t).reduce((a, c) => a + unidades(c), 0)));
 }
@@ -56,9 +56,9 @@ const proyectosDe = (tipo) => D.proyectos.filter((p) => (p.material || []).some(
 const voltajeDe = (f) => String(f.voltaje || '').split(' · ')[0];
 
 const fotoUrl = (c) => `fotos/${encodeURIComponent(c.foto)}`;
+// vuelve a preguntar dentro de «ms» si sigue en la misma pantalla (la IA pensando, el registro…)
+const repetirEn = (ms, fn, hash = location.hash) => setTimeout(() => { if (location.hash === hash) fn(); }, ms);
 const vacio = (html) => `<div class="vacio">${html}</div>`;
-
-// aviso abajo; con «accion» ({texto, fn}) lleva un botón (p. ej. «Deshacer») y dura más
 
 // ---------- diálogo de confirmación propio (en vez del confirm() del navegador) ----------
 // confirmar('¿Borrar X?\n\nNo se puede deshacer.', {si: 'Borrar', peligro: true}) → promesa con true o false.
@@ -98,7 +98,7 @@ const campoFoto = (etiqueta, ayuda = '', {varias = 0, principal = false, compact
       <span class="archivo-cruz" aria-hidden="true">+</span><span class="archivo-mas-t">${compacto ? t('Foto') : max > 1 ? t('Añadir fotos') : t('Añadir foto')}</span></label>
   </div>${ayuda ? `<span class="ayuda">${ayuda}</span>` : ''}</div>`;
 };
-const pesoTxt = (bytes) => { const kb = bytes / 1024; return kb < 1024 ? `${Math.max(1, Math.round(kb))} KB` : `${(kb / 1024).toFixed(1).replace('.', I18N.lang() === 'en' ? '.' : ',')} MB`; };
+const tamano = (b) => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1).replace('.', I18N.lang() === 'en' ? '.' : ',')} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const ARCHIVOS = new WeakMap(); // input → las fotos elegidas hasta ahora, en orden
 function ponerArchivos(input, lista) {
   ARCHIVOS.set(input, lista);
@@ -126,7 +126,7 @@ function pintarArchivo(input) {
   caja.classList.toggle('con', fs.length > 0);
   caja.classList.toggle('lleno', fs.length >= max);
   const principal = caja.dataset.principal && fs.length > 1;
-  caja.querySelector('.archivo-lista').innerHTML = fs.map((f, i) => `<span class="archivo-foto" title="${esc(f.name)} · ${pesoTxt(f.size)}"><img src="${caja.urls[i]}" alt="">
+  caja.querySelector('.archivo-lista').innerHTML = fs.map((f, i) => `<span class="archivo-foto" title="${esc(f.name)} · ${tamano(f.size)}"><img src="${caja.urls[i]}" alt="">
     ${principal && i === 0 ? `<span class="archivo-pral">${t('de la pieza')}</span>` : ''}
     <button class="archivo-x" type="button" data-i="${i}" aria-label="${esc(t('Quitar la foto {n}', {n: i + 1}))}">✕</button></span>`).join('');
   const t2 = caja.querySelector('.archivo-mas-t');
@@ -143,20 +143,21 @@ document.addEventListener('click', (e) => {
   ponerArchivos(input, (ARCHIVOS.get(input) || []).filter((_, i) => i !== Number(x.dataset.i)));
 });
 
+// aviso abajo; con «accion» ({texto, fn}, el texto ya traducido) lleva un botón (p. ej. «Deshacer») y dura más
 function toast(msg, mal = false, accion = null) {
-  const t = $('#toast');
-  t.textContent = msg;
+  const caja = $('#toast'); // no llamarla «t»: taparía a la función de traducir
+  caja.textContent = msg;
   if (accion) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'toast-accion';
-    b.textContent = t(accion.texto);
-    b.addEventListener('click', () => { t.className = ''; accion.fn(); }, {once: true});
-    t.append(' ', b);
+    b.textContent = accion.texto;
+    b.addEventListener('click', () => { caja.className = ''; accion.fn(); }, {once: true});
+    caja.append(' ', b);
   }
-  t.className = `show ${mal ? 'mal' : ''} ${accion ? 'con-accion' : ''}`;
+  caja.className = `show ${mal ? 'mal' : ''} ${accion ? 'con-accion' : ''}`;
   clearTimeout(toast.t);
-  toast.t = setTimeout(() => (t.className = ''), accion ? 8000 : 2600);
+  toast.t = setTimeout(() => (caja.className = ''), accion ? 8000 : 2600);
 }
 
 async function api(method, url, body, headers = {}) {
@@ -166,7 +167,7 @@ async function api(method, url, body, headers = {}) {
   let r;
   try { r = await fetch(url, opts); } catch { throw new Error(t('Sin conexión con el servidor: no se ha guardado')); }
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || `Error ${r.status}`);
+  if (!r.ok) throw new Error(data.error ? t(data.error) : `Error ${r.status}`); // los fijos del servidor, traducidos
   return data;
 }
 function guardarLocal(c) {
@@ -331,7 +332,6 @@ async function subirFoto(id, file) {
   return c;
 }
 
-const revisar = (c) => (c.revisar ? ` <span class="etq-pend">${t('pendiente')}</span>` : '');
 const stepper = (c, grande = false) => c.varios
   ? `<span class="muchos">${t('muchos')}</span>`
   : `<div class="stepper ${grande ? 'grande' : ''}"><button data-adj="-1" data-id="${c.id}" aria-label="${esc(t('Quitar uno'))}">−</button>
@@ -422,33 +422,37 @@ const ICO = {
 };
 // la categoría de una pieza: cuadradito de su color + nombre
 const etqCat = (cat, cls = 'pz-cat') => `<span class="${cls}"${conColor(cat)}>${marcaCat}<span class="pz-cat-t">${esc(CATS[cat] || t('Otros'))}</span></span>`;
+// el dibujo de un tipo; sin dibujo propio (o sin tipo), el genérico
+const dibujoDe = (tipo) => `img/tipos/${D.tipos[tipo]?.dibujo ? encodeURIComponent(tipo) : '_pieza'}.svg`;
 // imagen de una pieza: su foto o el dibujo de su tipo sobre el color de su categoría (sin dibujo, solo el color)
 const imgPieza = (c, cls) => (c.foto ? `<span class="${cls}"><img src="${fotoUrl(c)}" alt="" loading="lazy"></span>`
-  : `<span class="${cls} dibujo"${conColor(catOf(c))}>${c.tipo ? `<img src="img/tipos/${esc(c.tipo)}.svg" alt="" loading="lazy" onerror="this.remove()">` : ''}</span>`);
+  : `<span class="${cls} dibujo"${conColor(catOf(c))}><img src="${dibujoDe(c.tipo)}" alt="" loading="lazy"></span>`);
 const cuenta = (c) => `<span class="cuenta num${unidades(c) || c.varios ? '' : ' cero'}">${esc(qtyText(c))}</span>`;
 const etqPend = (c) => (c.revisar ? `<span class="etq-pend">${t('pendiente')}</span>` : '');
 
 // lista: miniatura, nombre y categoría; en escritorio, sitio, tensión e interfaces en columnas y el − n +;
 // en el móvil, la cantidad en un recuadro que al tocarlo se convierte en − n +
+// la columna «Sitio» solo sale si alguna pieza tiene sitio (si no, sería una columna de «—»)
+const haySitios = () => D.componentes.some((c) => c.ubicacion);
 function filaComp(c) {
-  const f = c.tipo && D.tipos[c.tipo] ? g(c.tipo) : null, tipo = tipoEnFila(c);
+  const f = c.tipo && D.tipos[c.tipo] ? g(c.tipo) : null, tipo = tipoEnFila(c), sitios = haySitios();
   return `<div class="fila fila-pieza${ui.cuentaAbierta === c.id ? ' editando' : ''}">
     <a class="fila-main" href="#/c/${c.id}">${imgPieza(c, 'fila-img')}
-      <div><div class="nombre">${esc(c.nombre)}${revisar(c)}</div>
+      <div><div class="nombre">${esc(c.nombre)} ${etqPend(c)}</div>
       <div class="sub">${etqCat(catOf(c))}${tipo ? `<span class="solo-escritorio"> · ${esc(tipo)}</span>` : ''}${c.ubicacion ? `<span class="solo-movil"> · ${esc(c.ubicacion)}</span>` : ''}</div></div></a>
-    <div class="fila-cols solo-escritorio"><span>${esc(c.ubicacion) || '<span class="gris">—</span>'}</span><span>${f ? esc(voltajeDe(f)) : ''}</span>
+    <div class="fila-cols solo-escritorio${sitios ? '' : ' sin-sitio'}">${sitios ? `<span>${esc(c.ubicacion) || '<span class="gris">—</span>'}</span>` : ''}<span>${f ? esc(voltajeDe(f)) : ''}</span>
       <span>${f ? esc(list(f.interfaz).slice(0, 2).join(', ')) : ''}</span></div>
     ${c.varios ? '' : `<button class="cuenta-btn num" type="button" data-cuenta="${c.id}" aria-label="${esc(t('Cambiar la cantidad ({q})', {q: qtyText(c)}))}">${esc(qtyText(c))}</button>`}
     ${stepper(c)}</div>`;
 }
 const cabInventario = () => `<div class="fila fila-cab solo-escritorio" aria-hidden="true"><div class="fila-main">${t('Pieza')}</div>
-  <div class="fila-cols"><span>${t('Sitio')}</span><span>${t('Tensión')}</span><span>${t('Interfaz')}</span></div><div class="fila-cant">${t('Cantidad')}</div></div>`;
+  <div class="fila-cols${haySitios() ? '' : ' sin-sitio'}">${haySitios() ? `<span>${t('Sitio')}</span>` : ''}<span>${t('Tensión')}</span><span>${t('Interfaz')}</span></div><div class="fila-cant">${t('Cantidad')}</div></div>`;
 
 // cuadrícula: foto o dibujo arriba, la cantidad en la esquina y debajo nombre, categoría y sitio
+const tarjetaTxt = (c) => `<span class="tarjeta-txt"><span class="nombre">${esc(c.nombre)}</span>
+  <span class="tarjeta-meta">${etqCat(catOf(c))}<span class="sitio">${esc(c.ubicacion || t('sin sitio'))}</span></span></span>`;
 function tarjetaComp(c) {
-  return `<a class="tarjeta" href="#/c/${c.id}">${imgPieza(c, 'tarjeta-img')}${etqPend(c)}${cuenta(c)}
-    <span class="tarjeta-txt"><span class="nombre">${esc(c.nombre)}</span>
-      <span class="tarjeta-meta">${etqCat(catOf(c))}<span class="sitio">${esc(c.ubicacion || t('sin sitio'))}</span></span></span></a>`;
+  return `<a class="tarjeta" href="#/c/${c.id}">${imgPieza(c, 'tarjeta-img')}${etqPend(c)}${cuenta(c)}${tarjetaTxt(c)}</a>`;
 }
 const vistaInv = () => (D.ajustes.vista_inventario === 'cuadricula' ? 'cuadricula' : 'lista');
 
@@ -496,9 +500,9 @@ function vInventario() {
     <h2 class="lado-t">${t('Mostrar')}</h2>
     <div class="lado-caja lado-mostrar">
       <label class="lado-op"><input type="checkbox" id="rev" ${ui.revisar ? 'checked' : ''}>${t('Con «pendiente»')}<span class="n">${n((c) => c.revisar)}</span></label>
-      <label class="lado-op"><input type="checkbox" id="sin-sitio" ${ui.ubic === '∅' ? 'checked' : ''}>${t('Sin sitio')}<span class="n">${n((c) => !c.ubicacion)}</span></label>
       <label class="lado-op"><input type="checkbox" id="sin-foto" ${ui.sinFoto ? 'checked' : ''}>${t('Sin foto')}<span class="n">${n((c) => !c.foto)}</span></label>
       ${sitios.length ? `<label class="lado-sitio"><span>${t('Sitio')}</span><select id="ubic" class="sel"><option value="">${t('Cualquier sitio')}</option>
+        <option value="∅" ${ui.ubic === '∅' ? 'selected' : ''}>${t('Sin sitio')} (${n((c) => !c.ubicacion)})</option>
         ${sitios.map((u) => `<option ${ui.ubic === u ? 'selected' : ''}>${esc(u)}</option>`).join('')}</select></label>` : ''}
     </div></aside>`;
   const cab = `<div class="inv-cab"><h1>${t('Inventario')} <small>${piezasTxt(todas.length)}</small></h1>
@@ -538,7 +542,7 @@ function filaSel(c) {
   const marcada = ui.sel.has(c.id);
   return `<label class="fila fila-sel${marcada ? ' marcada' : ''}"><input type="checkbox" class="sel-pieza" value="${c.id}" ${marcada ? 'checked' : ''} aria-label="${esc(t('Elegir {n}', {n: c.nombre}))}">
     ${imgPieza(c, 'fila-img')}
-    <span class="fila-sel-txt"><span class="nombre">${esc(c.nombre)}${revisar(c)}</span>
+    <span class="fila-sel-txt"><span class="nombre">${esc(c.nombre)} ${etqPend(c)}</span>
       <span class="sub">${[c.tipo ? g(c.tipo).nombre : '', c.ubicacion].filter(Boolean).map(esc).join(' · ')}</span></span>
     <span class="der num">${esc(qtyText(c))}</span></label>`;
 }
@@ -546,9 +550,7 @@ function tarjetaSel(c) {
   const marcada = ui.sel.has(c.id);
   return `<label class="tarjeta tarjeta-sel${marcada ? ' marcada' : ''}">
     <input type="checkbox" class="sel-pieza" value="${c.id}" ${marcada ? 'checked' : ''} aria-label="${esc(t('Elegir {n}', {n: c.nombre}))}">
-    ${imgPieza(c, 'tarjeta-img')}${cuenta(c)}
-    <span class="tarjeta-txt"><span class="nombre">${esc(c.nombre)}</span>
-      <span class="tarjeta-meta">${etqCat(catOf(c))}<span class="sitio">${esc(c.ubicacion || t('sin sitio'))}</span></span></span></label>`;
+    ${imgPieza(c, 'tarjeta-img')}${cuenta(c)}${tarjetaTxt(c)}</label>`;
 }
 // barra fija abajo con lo que se puede hacer con las elegidas
 function barraSel() {
@@ -599,7 +601,7 @@ async function accionSel(acc) {
     const r = await api('POST', 'api/componentes/lote/borrar', {ids});
     D.componentes = D.componentes.filter((c) => !ids.includes(c.id));
     salirSeleccion(); contadores(); route();
-    toast(t('{piezas} borradas', {piezas: piezasTxt(r.borradas)}), false, {texto: 'Deshacer', fn: async () => {
+    toast(t('{piezas} borradas', {piezas: piezasTxt(r.borradas)}), false, {texto: t('Deshacer'), fn: async () => {
       try { await api('POST', 'api/componentes/restaurar', {tokens: r.deshacer}); await cargar(); contadores(); route(); toast(t('Recuperadas')); }
       catch (err) { toast(err.message, true); }
     }});
@@ -732,7 +734,7 @@ async function iaLote(id) {
   if (!ts.length) { zona.innerHTML = `<p class="gris pad">${t('Ese lote no existe.')}</p>`; return; }
   zona.innerHTML = htmlLote(ts);
   contarLote();
-  if (ts.some((tr) => tr.estado === 'pendiente')) { const h = location.hash; setTimeout(() => { if (location.hash === h) iaLote(id); }, 3000); }
+  if (ts.some((tr) => tr.estado === 'pendiente')) repetirEn(3000, () => iaLote(id));
 }
 async function aplicarLote(boton) {
   const porTarea = {};
@@ -771,7 +773,7 @@ function buscarTodo(query) {
   const proyectos = D.proyectos.filter((p) => matches(textoProyecto(p), query));
   return {piezas, tipos, proyectos};
 }
-const filaTipo = (tp) => `<div class="fila"><a class="fila-main" href="#/g/${esc(tp.k)}"><span class="fila-img dibujo"${conColor(tp.categoria || 'otro')}><img src="img/tipos/${esc(tp.k)}.svg" alt="" loading="lazy" onerror="this.remove()"></span><div><div class="nombre">${esc(tp.nombre)}${tp.revisado === 0 ? ` <span class="etq-pend">${t('sin comprobar')}</span>` : ''}</div>
+const filaTipo = (tp) => `<div class="fila"><a class="fila-main" href="#/g/${esc(tp.k)}"><span class="fila-img dibujo"${conColor(tp.categoria || 'otro')}><img src="${dibujoDe(tp.k)}" alt="" loading="lazy"></span><div><div class="nombre">${esc(tp.nombre)}${tp.revisado === 0 ? ` <span class="etq-pend">${t('sin comprobar')}</span>` : ''}</div>
   <div class="sub">${esc(tp.resumen || '')}</div></div></a>
   <div class="der"><div class="${stock(tp.k) ? '' : 'gris'}">${stock(tp.k) ? t('Tienes {n}', {n: stockText(tp.k)}) : t('No tienes')}</div><div class="sub">${esc(voltajeDe(tp))}</div></div></div>`;
 
@@ -812,9 +814,16 @@ function cajetin(celdas, cols = 2) {
   return `<dl class="cajetin${cols !== 2 ? ` cajetin-${cols}` : ''}">${cs.map((c) =>
     `<div${c.ancho ? ' class="ancho"' : c.span > 1 ? ` style="grid-column:span ${c.span}"` : ''}><dt>${c.k}</dt><dd>${c.v}</dd></div>`).join('')}</dl>`;
 }
+// caja «Esta pieza» (ficha, vista previa del alta y de una corrección): cantidad, sitio, tipo, categoría, sus datos y notas.
+// cantidad y tipo llegan ya en HTML; «cab» y «antes» son lo que va junto al título y debajo de él (solo en la ficha real)
+const cajaEsta = ({cantidad, sitio, tipo, cat, datos, notas, cab = '', antes = ''}) => `<section class="caja fi-esta"><div class="fi-esta-cab"><h2 class="rotulo">${t('Esta pieza')}</h2>${cab}</div>
+  ${antes}${cajetin([[t('Cantidad'), cantidad], [t('Sitio'), esc(sitio || t('Sin sitio'))], [t('Tipo'), tipo, true], [t('Categoría'), etqCat(cat)],
+    ...(list(datos).length ? datos.map(([k, v]) => [esc(k), esc(v)]) : [[t('Datos propios'), '—']])])}
+  ${notas ? `<div class="fi-notas"><h3 class="rotulo">${t('Notas')}</h3><p class="notas">${esc(notas)}</p></div>` : ''}</section>`;
+const cantidadTxt = (varios, n) => (varios ? `<span class="muchos">${t('muchos')}</span>` : `<span class="num">${esc(n === '' || n == null ? '?' : n)}</span>`);
 const imagenGrande = ({foto = '', tipo = '', cat, pie}) => `<figure class="fi-img${foto ? ' con-foto' : ''}"${conColor(cat)}>
   ${foto ? `<a class="fi-img-marco" href="${foto}" target="_blank" aria-label="${esc(t('Ver la foto grande'))}"><img src="${foto}" alt=""></a>`
-    : `<span class="fi-img-marco">${tipo ? `<img src="img/tipos/${esc(tipo)}.svg" alt="" onerror="this.remove()">` : ''}</span>`}
+    : `<span class="fi-img-marco"><img src="${dibujoDe(tipo)}" alt=""></span>`}
   <figcaption>${pie}</figcaption></figure>`;
 const notaOjo = (f) => (f.ojo ? `<div class="ams-aviso aviso-ojo"><b>${ICO.aviso}${t('Ojo')}</b><p>${esc(f.ojo)}</p></div>` : '');
 // disposición fija de la ficha (opción B): la «Ficha del tipo» va siempre en la columna izquierda (bajo la foto y
@@ -842,33 +851,27 @@ function vComponente(id) {
   const ps = conTipo ? proyectosDe(c.tipo) : [];
   const ft = conTipo ? fichaDelTipo(f, c.tipo, ps, `${delTipo > 1 ? t('La comparten tus {n} piezas de este tipo', {n: delTipo}) : t('Común a todas las piezas de este tipo')} ·
     <a href="#/g/${esc(c.tipo)}/editar">${t('Editar la ficha del tipo')}</a>`) : {der: '', izq: ''};
-  const datos = list(c.datos).length ? c.datos.map(([k, v]) => [esc(k), esc(v)]) : [[t('Datos propios'), '—']];
-  const esta = `<section class="caja fi-esta"><div class="fi-esta-cab"><h2 class="rotulo">${t('Esta pieza')}</h2>
-      ${c.revisar ? `<button class="btn mini" id="quitar-pendiente" type="button">${t('Hecho: quitar «pendiente»')}</button>`
-        : `<button class="btn mini" id="marcar-pendiente" type="button">${t('Marcar pendiente')}</button>`}</div>
-    ${c.revisar ? `<p class="fi-pend">${t('La marcaste para mirar algo de ella más tarde.')}</p>` : ''}
-    ${cajetin([[t('Cantidad'), stepper(c, true)], [t('Sitio'), esc(c.ubicacion || t('Sin sitio'))],
-      [t('Tipo'), conTipo ? `<a href="#/g/${esc(c.tipo)}">${esc(f.nombre)}</a>${f.archivado ? t(' (archivado)') : ''}` : t('Sin tipo'), true],
-      [t('Categoría'), etqCat(cat)], ...datos])}
-    ${c.notas ? `<div class="fi-notas"><h3 class="rotulo">${t('Notas')}</h3><p class="notas">${esc(c.notas)}</p></div>` : ''}</section>`;
+  const esta = cajaEsta({cantidad: stepper(c, true), sitio: c.ubicacion, cat, datos: c.datos, notas: c.notas,
+    tipo: conTipo ? `<a href="#/g/${esc(c.tipo)}">${esc(f.nombre)}</a>${f.archivado ? t(' (archivado)') : ''}` : t('Sin tipo'),
+    cab: c.revisar ? `<button class="btn mini" id="quitar-pendiente" type="button">${t('Hecho: quitar «pendiente»')}</button>`
+      : `<button class="btn mini" id="marcar-pendiente" type="button">${t('Marcar pendiente')}</button>`,
+    antes: c.revisar ? `<p class="fi-pend">${t('La marcaste para mirar algo de ella más tarde.')}</p>` : ''});
   return `${migas([`<a href="#/" data-cat="">${t('Inventario')}</a>`, `<a href="#/" data-cat="${esc(cat)}">${esc(CATS[cat] || t('Otros'))}</a>`, `<span>${esc(c.nombre)}</span>`])}
     <article class="fi">
       <div class="fi-izq">
         ${imagenGrande({foto: c.foto ? fotoUrl(c) : '', tipo: conTipo ? c.tipo : '', cat,
           pie: `<span>${c.foto ? t('Foto de la pieza') : conTipo ? t('Dibujo del tipo · aún sin foto') : t('Aún sin foto')}</span>
-            <label class="btn mini">${ICO.camara}${c.foto ? t('Cambiar foto') : t('Añadir foto')}<input type="file" accept="image/*" id="foto2" hidden></label>`})}
+            <label class="btn mini">${ICO.camara}${c.foto ? t('Cambiar foto') : t('Añadir foto')}<input type="file" accept="image/*" id="foto" hidden></label>`})}
         ${esta}
         ${ft.izq}
       </div>
       <div class="fi-der">
-        <header class="fi-cab">${etqCat(cat, 'etq-cat')}<h1>${esc(c.nombre)}${c.revisar ? ` <span class="etq-pend">${t('pendiente')}</span>` : ''}</h1>
+        <header class="fi-cab">${etqCat(cat, 'etq-cat')}<h1>${esc(c.nombre)} ${etqPend(c)}</h1>
           ${conTipo && f.resumen ? `<p class="fi-resumen">${esc(f.resumen)}</p>` : ''}</header>
         <div class="fi-acciones">
           <a class="btn${ia ? '' : ' prim'}" href="#/editar/${c.id}">${ICO.lapiz}${t('Editar')}</a>
-          <label class="btn">${ICO.camara}${t('Foto')}<input type="file" accept="image/*" id="foto" hidden></label>
           ${ia ? `<button class="btn prim" type="button" id="ia-abrir" aria-expanded="false">${ICO.chispa}${t('Corregir con IA')}</button>` : ''}
           ${menuMas([
-            conTipo ? `<a role="menuitem" href="#/g/${esc(c.tipo)}/editar">${t('Editar la ficha del tipo')}</a>` : '',
             c.foto ? `<button role="menuitem" type="button" id="quitar-foto">${t('Quitar la foto')}</button>` : '',
             `<button role="menuitem" type="button" class="peligro" id="borrar">${t('Borrar esta pieza')}</button>`])}
         </div>
@@ -975,12 +978,11 @@ const COLS = {
   conexiones: [{k: 'desde', t: 'Desde', clase: 'mono', max: 80, ph: 'PIR OUT'}, {k: 'hasta', t: 'Hasta', clase: 'mono', max: 80, ph: 'GPIO27'}, {k: 'nota', t: 'Nota', max: 200, ph: 'nota'}],
   pasos: [{k: 'texto', t: 'Paso', area: true, max: 600, ph: 'Qué hay que hacer'}],
 };
-const colorFn = (id) => { const x = FUNC[id] || {color_claro: '#888888', color_oscuro: '#888888'}; return `--cc:${esc(x.color_claro)};--co:${esc(x.color_oscuro)}`; };
 // asa para arrastrar la fila (seis puntos, dibujados: nada de emojis)
 const ASA = '<svg viewBox="0 0 10 16" aria-hidden="true"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></svg>';
 function filaEditor(nombre, valores = []) {
   return `<div class="ed-fila"><button type="button" class="ed-asa" aria-label="${esc(t('Mover la fila: arrástrala, o usa las flechas arriba y abajo'))}">${ASA}</button>${COLS[nombre].map((c, i) => c.funcion
-    ? `<label class="ed-celda ed-fn" style="${colorFn(valores[i] || 'otro')}"><span class="ed-et">${t(c.t)}</span><i class="dot"></i>
+    ? `<label class="ed-celda ed-fn" style="${colorPin(valores[i] || 'otro')}"><span class="ed-et">${t(c.t)}</span><i class="dot"></i>
         <select data-col="${i}">${Object.entries(FUNC).map(([k, f]) => `<option value="${esc(k)}" ${k === (valores[i] || 'otro') ? 'selected' : ''}>${esc(f.nombre)}</option>`).join('')}</select></label>`
     : c.tipos ? `<label class="ed-celda"><span class="ed-et">${t(c.t)}</span><select data-col="${i}" aria-label="${esc(t(c.t))}">${opcionesTiposLista(valores[i] || '').replace(t('Sin tipo'), t(c.tipos))}</select></label>`
     : c.num ? `<label class="ed-celda"><span class="ed-et">${t(c.t)}</span><input data-col="${i}" type="number" min="1" max="9999" inputmode="numeric" aria-label="${esc(t(c.t))}" value="${esc(valores[i] || 1)}"></label>`
@@ -1561,11 +1563,13 @@ const modosIA = (actual) => `<nav class="seg ia-modos" aria-label="${esc(t('Qué
 // enseña el nombre con el que se la vio (va en la pista que se le da al modelo), no la pista entera
 const nombreTareaIA = (tr) => (tr.clase === 'revisar' ? t('Correcciones para «{n}»', {n: tr.objetivo_nombre || '¿?'}) : tr.clase === 'detectar' ? t('Foto con varias piezas')
   : tr.propuesta?.nombre || (String(tr.texto || '').match(/^Esta pieza sale de una foto con varias\. Allí se vio como «([^»]+)»/) || [])[1] || tr.texto || t('Pieza sin nombre'));
+// «Añadir con IA» sin clave puesta
+const iaSinClave = () => `${migas([`<a href="#/">${t('Inventario')}</a>`, `<span>${t('Añadir con IA')}</span>`])}${vacio(`${t('Falta la clave de OpenCode Go. ')}<a class="btn prim" href="#/ia/ajustes">${t('Configurar')}</a>`)}`;
 function vIA(id) {
   if (id === 'ajustes') return `${migas([`<a href="#/ia">${t('Añadir con IA')}</a>`, `<span>${t('Configuración')}</span>`])}<div class="plano" id="ia-ajustes"><p class="gris">${t('Cargando…')}</p></div>`;
   if (id === 'varias') return vIAVarias();
   if (id) return `${migas([`<a class="back" href="#/ia">${t('Añadir con IA')}</a>`, `<span id="ia-miga">${t('Propuesta')}</span>`])}<div class="plano ia-plano" id="ia-zona"><p class="gris">${t('Cargando…')}</p></div>`;
-  if (!D.ia?.activa) return `${migas([`<a href="#/">${t('Inventario')}</a>`, `<span>${t('Añadir con IA')}</span>`])}${vacio(`${t('Falta la clave de OpenCode Go. ')}<a class="btn prim" href="#/ia/ajustes">${t('Configurar')}</a>`)}`;
+  if (!D.ia?.activa) return iaSinClave();
   return `${migas([`<a href="#/">${t('Inventario')}</a>`, `<span>${t('Añadir con IA')}</span>`])}
     <div class="plano">
       ${cabIA(t('Añadir con IA'), t('Haz una foto de la pieza y añade lo que sepas. La IA propone el nombre, el tipo y la ficha; tú lo miras y lo corriges antes de guardar.'))}
@@ -1740,7 +1744,7 @@ function avisoModeloAlta() {
 
 // ---------- foto con varias piezas: el modelo las separa, tú eliges cuáles, y cada una se identifica con su recorte ----------
 function vIAVarias() {
-  if (!D.ia?.activa) return `${migas([`<a href="#/">${t('Inventario')}</a>`, `<span>${t('Añadir con IA')}</span>`])}${vacio(`${t('Falta la clave de OpenCode Go. ')}<a class="btn prim" href="#/ia/ajustes">${t('Configurar')}</a>`)}`;
+  if (!D.ia?.activa) return iaSinClave();
   return `${migas([`<a href="#/">${t('Inventario')}</a>`, `<span>${t('Añadir con IA')}</span>`])}
     <div class="plano">
       ${cabIA(t('Añadir con IA'), t('Pon las piezas separadas sobre un fondo liso y hazles una foto desde arriba. La IA las separa, tú eliges cuáles dar de alta y después identifica cada una con su recorte. Nada se guarda hasta que lo confirmes.'))}
@@ -1889,7 +1893,7 @@ async function iaAbiertas() {
     const filas = [...p.lotes.map(filaLotePendiente), ...p.tareas.map(filaPendiente)];
     zona.innerHTML = n ? `<section class="grupo"><h3 class="grupo-t">${t('Sin terminar')}<span class="n">${n}</span></h3>${filas.slice(0, MAX).join('')}
       <p class="sub ia-abiertas-mas"><a href="#/pendientes">${n > MAX ? t('Ver las {n} en «Cambios pendientes»', {n}) : t('Verlo en «Cambios pendientes»')} →</a></p></section>` : '';
-    if (p.lotes.some((l) => l.estados.pendiente) || p.tareas.some((tr) => tr.estado === 'pendiente')) setTimeout(() => { if (location.hash === '#/ia') iaAbiertas(); }, 4000);
+    if (p.lotes.some((l) => l.estados.pendiente) || p.tareas.some((tr) => tr.estado === 'pendiente')) repetirEn(4000, iaAbiertas, '#/ia');
   } catch {}
 }
 
@@ -1914,8 +1918,7 @@ async function iaTarea(id) {
       zona.innerHTML = vistaEspera(foto, tr.modelo_pedido || D.ia?.modelo, tr.clase === 'revisar' ? t('Repasando la ficha…') : tr.clase === 'detectar' ? t('Separando las piezas…') : t('Analizando…'));
       arrancarContador(zona);
     }
-    const h = location.hash;
-    setTimeout(() => { if (location.hash === h) iaTarea(id); }, 2500);
+    repetirEn(2500, () => iaTarea(id));
     return;
   }
   // pinta el resultado con un fundido corto (sin animación si el sistema pide reducir movimiento)
@@ -2028,11 +2031,7 @@ function tiraFotos(tr, todas = false) {
 // cabecera de las pantallas de la IA (fuera de caja, como la de una ficha) y la confianza como etiqueta
 const cabIA = (titulo, texto = '', extra = '') => `<header class="ia-cab"><h1>${titulo}</h1>${texto ? `<p>${esc(texto)}</p>` : ''}${extra}</header>`;
 const etqConfianza = (c) => `<span class="ams-etiqueta ${c === 'alta' ? 'ams-etiqueta--ok' : c === 'media' ? 'ams-etiqueta--amarilla' : 'ams-etiqueta--mal'}">${t('Confianza {c}', {c: esc(t(c || '?'))})}</span>`;
-const costeTexto = (c) => {
-  if (!c || c.dolares == null) return '';
-  const sep = I18N.lang() === 'en' ? '.' : ',';
-  return `≈ ${c.dolares < 0.0001 ? `<0${sep}0001` : c.dolares.toFixed(4).replace('.', sep)} $`;
-};
+const costeTexto = (c) => (c?.dolares == null ? '' : `≈ ${dolares(c.dolares)}`);
 
 // dudas del modelo, cada una con su hueco para contestar y, si el modelo ve fotos, su foto («¿qué pone en la
 // serigrafía?» → la foto de la serigrafía). Debajo, lo que quieras añadir y más fotos sueltas. «Responder y repensar»
@@ -2074,13 +2073,8 @@ function vistaPreviaIA(b, urlFoto) {
   const cat = f ? (f.categoria || 'otro') : 'otro';
   const ps = tipoId ? proyectosDe(tipoId) : [];
   const ft = f ? fichaDelTipo(f, tipoId, ps, nuevo ? t('Ficha nueva propuesta por la IA (quedará sin comprobar)') : t('Común a todas las piezas de este tipo')) : {der: '', izq: ''};
-  const datos = list(b.datos_pieza).length ? b.datos_pieza.map(([k, v]) => [esc(k), esc(v)]) : [[t('Datos propios'), '—']];
-  const cant = b.varios ? `<span class="muchos">${t('muchos')}</span>` : `<span class="num">${esc(b.cantidad === '' || b.cantidad == null ? '?' : b.cantidad)}</span>`;
-  const esta = `<section class="caja fi-esta"><div class="fi-esta-cab"><h2 class="rotulo">${t('Esta pieza')}</h2></div>
-    ${cajetin([[t('Cantidad'), cant], [t('Sitio'), esc(b.ubicacion || t('Sin sitio'))],
-      [t('Tipo'), f ? `${esc(f.nombre)}${nuevo ? ` <span class="etq-pend">${t('nuevo')}</span>` : ''}` : t('Sin tipo'), true],
-      [t('Categoría'), etqCat(cat)], ...datos])}
-    ${b.notas ? `<div class="fi-notas"><h3 class="rotulo">${t('Notas')}</h3><p class="notas">${esc(b.notas)}</p></div>` : ''}</section>`;
+  const esta = cajaEsta({cantidad: cantidadTxt(b.varios, b.cantidad), sitio: b.ubicacion, cat, datos: b.datos_pieza, notas: b.notas,
+    tipo: f ? `${esc(f.nombre)}${nuevo ? ` <span class="etq-pend">${t('nuevo')}</span>` : ''}` : t('Sin tipo')});
   return `<div class="caja previa-barra"><span class="ams-etiqueta ams-etiqueta--amarilla">${t('Vista previa')}</span>
       <p>${t('Así quedará{extra}. Aún no se ha guardado nada.', {extra: nuevo ? t(' la pieza, y el tipo nuevo «{n}» en el glosario', {n: esc(f.nombre)}) : t(' la pieza')})}</p>
       <button class="btn mini" type="button" data-ia-vista="editar">${t('Volver a editar')}</button></div>
@@ -2144,7 +2138,6 @@ async function aplicarIA(form) {
   location.hash = LOTE.id && ui.origenTarea?.desde === `#/ia/lote/${LOTE.id}` ? ui.origenTarea.desde : `#/c/${r.componente.id}`;
 }
 
-// ---------- Ajustes (fase B): IA, categorías, tipos, sitios, datos y tema ----------
 const plural = (n, uno) => I18N.plural(n, uno);
 
 // ---------- cambios pendientes: correcciones y altas a medias (para no perder un lote al salir de su pantalla) ----------
@@ -2210,7 +2203,7 @@ async function cargarPendientes() {
     <p class="sub">${t('Lo que ya aplicaste o descartaste está en {enlace}.', {enlace: `<a href="#/ajustes/historial?g=ia">${t('Ajustes → Historial')}</a>`})}</p>`;
   if (p.tareas.length) conModelos(() => { if (location.hash === '#/pendientes') cargarPendientes(); });
   const pensando = p.lotes.some((l) => l.estados.pendiente) || p.tareas.some((tr) => tr.estado === 'pendiente');
-  if (pensando) setTimeout(() => { if (location.hash === '#/pendientes') cargarPendientes(); }, 4000);
+  if (pensando) repetirEn(4000, cargarPendientes, '#/pendientes');
 }
 async function descartarPendiente(valor) {
   const [clase, id] = valor.split(':');
@@ -2346,11 +2339,12 @@ async function regCargar() {
     }
   } catch (err) { zona.innerHTML = `<p class="mal pad">${esc(err.message)}</p>`; return; }
   clearTimeout(regCargar.t);
-  regCargar.t = setTimeout(() => { if (location.hash === h) regCargar(); }, 5000);
+  regCargar.t = repetirEn(5000, regCargar, h);
 }
 
 const SECCIONES = {ia: 'IA', categorias: 'Categorías', tipos: 'Tipos', sitios: 'Sitios', formato: 'Uniformar formato', datos: 'Datos y copias', historial: 'Historial', registro: 'Registro'};
 
+// ---------- Ajustes: IA, catálogo, aspecto, datos e historial ----------
 function vAjustes(sec) {
   if (sec && SECCIONES[sec]) {
     const id = sec === 'ia' ? 'ia-ajustes' : 'aj-zona';
@@ -2511,7 +2505,6 @@ function ajSitios(sitios) {
 }
 
 const fechaLarga = (iso) => (iso ? new Date(iso).toLocaleString(I18N.loc(), {day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}) : '');
-const tamano = (b) => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1).replace('.', I18N.lang() === 'en' ? '.' : ',')} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 // copias de cada día, manuales y las que se hacen solas antes de migrar o de restaurar
 const claseCopia = (n) => t(n.startsWith('lab-antes-restaurar') ? 'antes de restaurar' : n.startsWith('lab-antes-') ? 'antes de una migración'
   : /^lab-\d{4}-\d{2}-\d{2}\.db$/.test(n) ? 'diaria' : 'manual');
@@ -2580,7 +2573,7 @@ function subirCopia(file) {
   x.onload = () => {
     let r = {};
     try { r = JSON.parse(x.responseText); } catch {}
-    if (x.status !== 200) { estado.className = 'mal'; estado.textContent = r.error || `Error ${x.status}`; return; }
+    if (x.status !== 200) { estado.className = 'mal'; estado.textContent = r.error ? t(r.error) : `Error ${x.status}`; return; }
     estado.textContent = t('Archivo comprobado: está bien. Mira lo que contiene antes de restaurar.');
     zona.innerHTML = panelRestaurar(r);
     zona.scrollIntoView({block: 'nearest', behavior: 'smooth'});
@@ -2744,7 +2737,6 @@ async function enviarRevision(form) {
   location.hash = `#/ia/${tr.id}`;
 }
 
-// los cambios propuestos: cada uno con su casilla (marcados al empezar), antes tachado y ahora en claro
 // vista previa de una corrección: la ficha tal como quedaría con SOLO los cambios marcados, aplicados aquí (sin guardar
 // nada) con la misma regla que el servidor (server/revision.mjs → aplicarCambios): pines y datos emparejados por su nombre
 const claveTxt = (v) => String(v ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -2788,13 +2780,8 @@ function previaRevision(tr, ids) {
   const ps = tipoId ? proyectosDe(tipoId) : [];
   const ft = tipo ? fichaDelTipo(tipo, tipoId, ps, t('Vista previa con los cambios marcados')) : {der: '', izq: ''};
   const esta = pieza
-    ? `<section class="caja fi-esta"><div class="fi-esta-cab"><h2 class="rotulo">${t('Esta pieza')}</h2></div>
-        ${cajetin([[t('Cantidad'), pc.varios ? `<span class="muchos">${t('muchos')}</span>` : `<span class="num">${esc(qtyText(pc))}</span>`],
-          [t('Sitio'), esc(pc.ubicacion || t('Sin sitio'))],
-          [t('Tipo'), tipo ? esc(tipo.nombre) : t('Sin tipo'), true],
-          [t('Categoría'), etqCat(cat)],
-          ...(pieza.datos_pieza.length ? pieza.datos_pieza.map(([k, v]) => [esc(k), esc(v)]) : [[t('Datos propios'), '—']])])}
-        ${pieza.notas ? `<div class="fi-notas"><h3 class="rotulo">${t('Notas')}</h3><p class="notas">${esc(pieza.notas)}</p></div>` : ''}</section>`
+    ? cajaEsta({cantidad: cantidadTxt(pc.varios, pc.cantidad), sitio: pc.ubicacion, cat, datos: pieza.datos_pieza, notas: pieza.notas,
+      tipo: tipo ? esc(tipo.nombre) : t('Sin tipo')})
     : '';
   const barra = `<div class="caja previa-barra"><span class="ams-etiqueta ams-etiqueta--amarilla">${t('Vista previa')}</span>
     <div class="previa-txt"><p>${marcados.length === 1
@@ -2841,10 +2828,7 @@ function vistaCambios(tr) {
   REVISION = tr;
   const p = tr.propuesta, volver = volverRevision(tr), tipoId = p.objetivo?.tipo_id;
   const piezasTipo = tipoId ? D.componentes.filter((c) => c.tipo === tipoId).length : 0;
-  const fila = (c) => `<label class="ia-cambio-fila"><input type="checkbox" class="ia-cambio" value="${esc(c.id)}" checked>
-    <span><span class="nombre">${esc(c.etiqueta)}${c.tipoCambio === 'nuevo' ? ` <span class="gris">· ${t('nuevo')}</span>` : c.tipoCambio === 'quitado' ? ` <span class="gris">· ${t('se quita')}</span>` : ''}</span>
-      ${c.antes ? `<span class="ia-antes">${esc(c.antes)}</span>` : ''}
-      ${c.despues ? `<span class="ia-ahora">${esc(c.despues)}</span>` : ''}</span></label>`;
+  const fila = (c) => `<label class="ia-cambio-fila"><input type="checkbox" class="ia-cambio" value="${esc(c.id)}" checked><span>${filaCambio(c)}</span></label>`;
   const grupo = (ambito, titulo, ayuda) => {
     const cs = p.cambios.filter((c) => c.ambito === ambito);
     return cs.length ? `<section class="caja bloque-caja ia-grupo"><h3>${titulo}</h3>${ayuda ? `<p class="ayuda">${ayuda}</p>` : ''}${cs.map(fila).join('')}</section>` : '';
@@ -3038,7 +3022,14 @@ app.addEventListener('click', async (e) => {
     } else if (el.dataset.adj) {
       e.preventDefault();
       el.disabled = true;
-      guardarLocal(await api('POST', `api/componentes/${el.dataset.id}/ajuste`, {delta: Number(el.dataset.adj)}));
+      const c = await api('POST', `api/componentes/${el.dataset.id}/ajuste`, {delta: Number(el.dataset.adj)});
+      guardarLocal(c);
+      const fila = el.closest('.fila-pieza');
+      if (fila) { // en una lista: solo esa fila, y el foco sigue en el mismo botón (pulsar varias veces seguidas)
+        fila.outerHTML = filaComp(c);
+        app.querySelector(`[data-adj="${el.dataset.adj}"][data-id="${c.id}"]`)?.focus();
+        return;
+      }
     } else if (el.dataset.cat !== undefined) ui.cat = el.dataset.cat;
     else if (el.dataset.pf) ui.proFiltro = el.dataset.pf;
     else if (el.id === 'filtros-abrir') ui.filtros = !ui.filtros;
@@ -3072,7 +3063,6 @@ app.addEventListener('change', async (e) => {
   const el = e.target;
   if (el.id === 'ubic') { ui.ubic = el.value; route(); }
   if (el.id === 'rev') { ui.revisar = el.checked; route(); }
-  if (el.id === 'sin-sitio') { ui.ubic = el.checked ? '∅' : ''; route(); }
   if (el.id === 'sin-foto') { ui.sinFoto = el.checked; route(); }
   if (el.id === 'pro-estado') { try { await cambiarEstadoPro(el); } catch (err) { toast(err.message, true); route(); } }
   if (el.id === 'pro-archivo' && el.files[0]) { const f = el.files[0]; el.value = ''; try { await subirArchivoPro(f); } catch (err) { toast(err.message, true); } }
@@ -3095,10 +3085,10 @@ app.addEventListener('change', async (e) => {
   }
   if (el.classList.contains('lote-cambio')) { LOTE.desmarcados[el.checked ? 'delete' : 'add'](`${el.dataset.tarea}:${el.value}`); contarLote(); }
   if (el.id === 'aj-importar' && el.files[0]) { subirCopia(el.files[0]); el.value = ''; }
-  if (el.matches('.ed-fn select')) el.closest('.ed-fn').style.cssText = colorFn(el.value); // el punto de color sigue a la función
+  if (el.matches('.ed-fn select')) el.closest('.ed-fn').style.cssText = colorPin(el.value); // el punto de color sigue a la función
   if (el.matches('.ed-pines .ed-fila [data-col="0"]')) separarEnEditor(el);
   if (el.name === 'varios') { const n = el.form.querySelector('[name=cantidad]'); n.disabled = el.checked; if (!el.checked && !n.value) n.value = 1; }
-  if ((el.id === 'foto' || el.id === 'foto2') && el.files[0]) {
+  if (el.id === 'foto' && el.files[0]) {
     try { await subirFoto(Number(location.hash.split('/')[2]), el.files[0]); route(); } catch (err) { toast(err.message, true); }
   }
 });
@@ -3147,7 +3137,7 @@ document.addEventListener('click', (e) => document.querySelectorAll('details.mas
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   cerrarMenuFab();
-  document.querySelectorAll('details.mas[open]').forEach((d) => { d.open = false; if (d.contains(document.activeElement)) d.querySelector('summary')?.focus(); }); // «⋯» y «Añadir pieza»
+  document.querySelectorAll('details.mas[open]').forEach((d) => { d.open = false; if (d.contains(document.activeElement)) d.querySelector('summary')?.focus(); }); // menús «⋯»
 });
 async function fotoDirectaIA(file) {
   cerrarMenuFab();
@@ -3179,7 +3169,7 @@ for (const id of ['fab-camara', 'fab-galeria']) $(`#${id}`).addEventListener('ch
   if (f) try { await fotoDirectaIA(f); } catch (err) { toast(err.message, true); }
 });
 
-// buscar: desde una ficha salta a la lista de su pestaña
+// Ajustes → Tipos: filtra la lista al escribir
 app.addEventListener('input', (e) => {
   if (e.target.id !== 'aj-buscar') return;
   ui.ajBuscar = e.target.value;
