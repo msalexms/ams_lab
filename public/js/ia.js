@@ -273,7 +273,7 @@ function vistaDeteccion(tr) {
   const p = tr.propuesta, url = `fotos/${encodeURIComponent(tr.foto)}`;
   const meta = `<p class="ia-meta"><span>${esc(nombreModelo(tr.modelo))}</span>${costeTexto(p.coste) ? `<span>${esc(costeTexto(p.coste))}</span>` : ''}</p>`;
   return `${cabIA(t('{piezas} en la foto', {piezas: plural(p.piezas.length, 'pieza')}), t('Desmarca las que no quieras y corrige el nombre si hace falta (es solo una pista). Después la IA identifica cada una con su recorte y te las enseña juntas para guardarlas.'), meta)}
-    ${p.dudas?.length ? `<div class="ams-aviso aviso-ojo"><b>${ICO.aviso}${t('Ojo')}</b><p>${p.dudas.map(esc).join(' ')}</p></div>` : ''}
+    ${p.dudas?.length ? `<div class="ams-aviso aviso-ojo"><b>${ICO.aviso}${t('Ojo')}</b><p>${p.dudas.map((d) => esc(t(d))).join(' ')}</p></div>` : ''}
     <div class="det">
       <div class="caja bloque-caja det-foto-caja"><div class="det-foto"><img id="det-img" src="${url}" alt="${esc(t('La foto con las piezas numeradas'))}">
         ${p.piezas.map((x, i) => (x.caja ? `<span class="det-caja" data-i="${i}" style="left:${x.caja.x / 10}%;top:${x.caja.y / 10}%;width:${x.caja.ancho / 10}%;height:${x.caja.alto / 10}%"><b>${i + 1}</b></span>` : '')).join('')}</div></div>
@@ -334,7 +334,7 @@ export function htmlLoteAltas(ts) {
     const tipo = p.tipo_existente ? esc(g(p.tipo_existente).nombre) : p.tipo_nuevo ? `${esc(p.tipo_nuevo.nombre)} <span class="aviso">${t('· tipo nuevo, sin comprobar')}</span>` : t('Sin tipo');
     const estado = {pendiente: t('identificando…'), propuesta: t('confianza {c}', {c: t(p.confianza || '?')}), aplicada: t('guardada'), descartada: t('descartada'), error: t('error')}[tr.estado] || tr.estado;
     const mini = `<span class="fila-img">${tr.foto ? `<img src="fotos/${encodeURIComponent(tr.foto)}" alt="" loading="lazy">` : ''}</span>`;
-    const cuerpo = tr.estado === 'error' ? `<p class="mal">${esc(tr.error || t('Error'))}</p>`
+    const cuerpo = tr.estado === 'error' ? `<p class="mal">${esc(t(tr.error || 'Error'))}</p>`
       : tr.estado === 'propuesta' ? `<p class="sub">${tipo} · ${p.cantidad ?? 1} ${t('ud.')}</p>` : '';
     // la confianza y las dudas como etiquetas; en las demás, su estado
     const etqs = tr.estado === 'propuesta' ? `${etqConfianza(p.confianza)}${p.dudas?.length ? `<span class="ams-etiqueta ams-etiqueta--amarilla">${plural(p.dudas.length, 'duda')}</span>` : ''}`
@@ -367,7 +367,7 @@ export async function guardarLoteAltas(boton) {
   const r = await api('POST', `api/ia/lotes/${encodeURIComponent(LOTE.id)}/guardar`, {ids});
   await cargar(); contadores();
   await iaLote(LOTE.id);
-  toast(t(r.guardadas.length === 1 ? '{piezas} guardada' : '{piezas} guardadas', {piezas: piezasTxt(r.guardadas.length)}) + (r.fallos.length ? `; ${r.fallos.length} (${r.fallos[0].error})` : ''), r.fallos.length > 0);
+  toast(t(r.guardadas.length === 1 ? '{piezas} guardada' : '{piezas} guardadas', {piezas: piezasTxt(r.guardadas.length)}) + (r.fallos.length ? `; ${r.fallos.length} (${t(r.fallos[0].error)})` : ''), r.fallos.length > 0);
 }
 
 // lista de tareas abiertas (debajo del formulario): nada se pierde si cierras la pestaña mientras el modelo piensa
@@ -416,7 +416,7 @@ export async function iaTarea(id) {
     zona.classList.add('aparece');
   };
   if (tr.estado === 'error') {
-    pintar(`${cabIA(t('No ha salido'), tr.error || t('Error desconocido'))}
+    pintar(`${cabIA(t('No ha salido'), t(tr.error || 'Error desconocido'))}
       ${foto ? `<div class="caja bloque-caja">${foto}</div>` : ''}
       <div class="acciones"><a class="btn prim" href="${tr.clase === 'revisar' ? fichaRevision(tr) : tr.clase === 'detectar' ? '#/ia/varias' : '#/ia'}">${t('Probar otra vez')}</a>
         <button class="btn peligro" id="ia-descartar" data-id="${tr.id}">${t('Descartar')}</button></div>`);
@@ -532,7 +532,7 @@ export function dudasIA(tr, p) {
   const ops = (d) => list(p.opciones?.[d]);
   return `<section class="ia-dudas pad" id="ia-dudas" data-libres="${puedeFotos ? libres : 0}">
     <h3>${p.dudas?.length ? (p.dudas.length === 1 ? t('La IA tiene una duda') : t('La IA tiene {n} dudas', {n: p.dudas.length})) : t('¿Algo que aclarar?')}</h3>
-    ${avisos.map((d) => `<p class="ia-aviso">${esc(d)}</p>`).join('')}
+    ${avisos.map((d) => `<p class="ia-aviso">${esc(t(d))}</p>`).join('')}
     ${p.dudas?.length ? `<ol class="ia-preguntas">${p.dudas.map((d, i) => `<li><p>${esc(d)}</p>
       ${ops(d).length ? `<div class="ia-ops" role="group" aria-label="${esc(t('Respuestas propuestas a la duda {n}', {n: i + 1}))}">${ops(d).map((o) =>
         `<button class="ia-op" type="button" data-op="${esc(o)}" aria-pressed="false">${esc(o)}</button>`).join('')}</div>` : ''}

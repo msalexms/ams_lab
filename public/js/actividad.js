@@ -94,6 +94,27 @@ function enlaceHist(r) {
   if (r.objeto === 'proyecto' && proyecto(r.objeto_id)) return `<a href="#/p/${encodeURIComponent(r.objeto_id)}">${esc(r.nombre)}</a>`;
   return esc(r.nombre);
 }
+// el servidor guarda el resumen en español: frases fijas o con datos (las traduce t()), «Campo: antes → después» y
+// «Editada: campos que cambian» (resumenCambios() de server/auditoria.mjs), que se traducen con los rótulos de los cambios
+const PREFIJOS_HIST = new Set(['Editada', 'Corregida con IA', 'Ficha corregida con IA', 'Proyecto editado', 'Tarea cambiada', 'Formato uniformado', 'Ficha editada']);
+// los valores de Ajustes van como su identificador («cuadricula»): con el nombre que enseña la web
+const VALOR_AJUSTE = {auto: 'Automático', claro: 'Claro', noche: 'Noche', lista: 'Lista', cuadricula: 'Cuadrícula', poco: 'Poco', medio: 'Medio', mucho: 'Mucho', en: 'English', es: 'Español'};
+const VARIAS = ' (varias a la vez)';
+function resumenHist(r) {
+  const x = String(r.resumen ?? ''), tr = t(x);
+  if (tr !== x || I18N.lang() !== 'en') return tr;
+  const varias = x.endsWith(VARIAS), base = varias ? x.slice(0, -VARIAS.length) : x, fin = varias ? ` ${t(VARIAS.trim())}` : '';
+  const cambios = r.detalle?.cambios || [], c = cambios[0], vacio = (v) => valorCambio(v) || '—';
+  if (cambios.length === 1 && base.startsWith(`${c.campo}: `)) return `${rotulo(c.campo)}: ${vacio(c.antes)} → ${vacio(c.despues)}${fin}`;
+  const m = base.match(/^(.+?): (.+)$/s);
+  if (m && PREFIJOS_HIST.has(m[1])) {
+    const campos = m[2] === 'sin cambios' ? t(m[2]) : m[2].split(', ').map((k) => rotulo(k[0].toUpperCase() + k.slice(1)).toLowerCase()).join(', ');
+    return `${t(m[1])}: ${campos}${fin}`;
+  }
+  const v = base.match(/^([^:]+): (.*) → (.*)$/s); // ajustes y estado de un proyecto: «Tema: claro → noche»
+  const valor = (s) => t(r.objeto === 'ajustes' ? VALOR_AJUSTE[s] || s : valorCambio(s));
+  return v ? `${rotulo(v[1])}: ${valor(v[2])} → ${valor(v[3])}${fin}` : x;
+}
 function filaHist(r, conObjeto = true) {
   const d = r.detalle || {}, cambios = d.cambios || [];
   const extra = [
@@ -106,7 +127,7 @@ function filaHist(r, conObjeto = true) {
   const objeto = conObjeto && r.nombre ? `<span class="hist-obj">${enlaceHist(r)} <span class="gris">· ${t(OBJETO_HIST[r.objeto] || r.objeto)}</span></span>` : '';
   const cab = `<span class="hist-cuando" title="${esc(fechaCompleta(r.fecha))}">${esc(cuando(r.fecha))}</span>
     <span class="hist-quien hist-${r.quien}">${quienHist(r)}</span>
-    <span class="hist-que">${objeto}<span class="hist-res">${esc(r.resumen)}</span></span>`;
+    <span class="hist-que">${objeto}<span class="hist-res">${esc(resumenHist(r))}</span></span>`;
   if (!cambios.length && !extra.length) return `<div class="hist">${cab}</div>`;
   return `<details class="hist"><summary>${cab}</summary><div class="hist-det">
     ${cambios.map((c) => `<div class="hist-c"><span class="hist-campo">${esc(rotulo(c.campo))}</span>

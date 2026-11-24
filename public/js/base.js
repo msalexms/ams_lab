@@ -247,7 +247,7 @@ export async function cargar() {
   let r;
   try { r = await fetch('api/datos'); } catch { throw new Error(t('sin conexión y sin copia guardada en este dispositivo')); }
   const datos = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(datos.error || `Error ${r.status}`);
+  if (!r.ok) throw new Error(datos.error ? t(datos.error) : `Error ${r.status}`);
   Object.assign(D, datos);
   aplicarIdioma();
   COLOR_CAT = Object.fromEntries(D.categorias.map((c) => [c.id, c.color]));
