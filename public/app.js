@@ -680,10 +680,24 @@ async function guardarLote(form) {
 
 // ---- correcciones de varias piezas: todas en una pantalla; se aplica lo marcado de todas a la vez ----
 const LOTE = {id: null, desmarcados: new Set()};
+// rótulos y valores que escribe el servidor en español (cambios de la IA, de formato y del historial): a la lengua de la web.
+// Solo lo que pone la app («Pin GPIO4», «Dato de la pieza: Color», el nombre de la función de un pin); nunca tus datos
+const rotulo = (s) => {
+  const x = String(s ?? '');
+  const m = x.match(/^(Pin) (.+)$/) || x.match(/^(Dato del tipo|Dato de la pieza|Dato): (.+)$/);
+  return m ? `${t(m[1])}${m[1] === 'Pin' ? ' ' : ': '}${m[2]}` : t(x);
+};
+const VALORES_APP = new Set(['Sin sitio', 'Sin tipo', 'muchas', 'sin contar']);
+const valorCambio = (v) => {
+  const x = String(v ?? '');
+  if (VALORES_APP.has(x)) return t(x);
+  const fn = Object.fromEntries(D.funciones.map((f) => [f.nombre, FUNC[f.id]?.nombre || f.nombre])); // «Otros» → «Other»
+  return x.split(' · ').map((p) => fn[p] ?? p).join(' · ');
+};
 function filaCambio(c, extra = '') {
-  return `<span class="nombre">${esc(c.etiqueta)}${c.tipoCambio === 'nuevo' ? ` <span class="gris">${t('· nuevo')}</span>` : c.tipoCambio === 'quitado' ? ` <span class="gris">${t('· se quita')}</span>` : ''}</span>
-    ${c.antes ? `<span class="ia-antes">${esc(c.antes)}</span>` : ''}
-    ${c.despues ? `<span class="ia-ahora">${esc(c.despues)}</span>` : ''}${extra}`;
+  return `<span class="nombre">${esc(rotulo(c.etiqueta))}${c.tipoCambio === 'nuevo' ? ` <span class="gris">${t('· nuevo')}</span>` : c.tipoCambio === 'quitado' ? ` <span class="gris">${t('· se quita')}</span>` : ''}</span>
+    ${c.antes ? `<span class="ia-antes">${esc(valorCambio(c.antes))}</span>` : ''}
+    ${c.despues ? `<span class="ia-ahora">${esc(valorCambio(c.despues))}</span>` : ''}${extra}`;
 }
 function vLoteIA(id) {
   return `${migas([`<a href="#/pendientes">${t('Cambios pendientes')}</a>`, `<span>${t('Lote')}</span>`])}<div class="plano ia-plano" id="lote-zona" data-lote="${esc(id)}"><p class="gris">${t('Cargando…')}</p></div>`;
@@ -2260,8 +2274,8 @@ function filaHist(r, conObjeto = true) {
     <span class="hist-que">${objeto}<span class="hist-res">${esc(r.resumen)}</span></span>`;
   if (!cambios.length && !extra.length) return `<div class="hist">${cab}</div>`;
   return `<details class="hist"><summary>${cab}</summary><div class="hist-det">
-    ${cambios.map((c) => `<div class="hist-c"><span class="hist-campo">${esc(c.campo)}</span>
-      <span class="ia-antes">${esc(c.antes) || `<span class="gris">(${t('vacío')})</span>`}</span><span class="ia-ahora">${esc(c.despues) || `<span class="gris">(${t('vacío')})</span>`}</span></div>`).join('')}
+    ${cambios.map((c) => `<div class="hist-c"><span class="hist-campo">${esc(rotulo(c.campo))}</span>
+      <span class="ia-antes">${esc(valorCambio(c.antes)) || `<span class="gris">(${t('vacío')})</span>`}</span><span class="ia-ahora">${esc(valorCambio(c.despues)) || `<span class="gris">(${t('vacío')})</span>`}</span></div>`).join('')}
     ${extra.length ? `<p class="sub">${extra.join(' · ')}</p>` : ''}</div></details>`;
 }
 function ajHistorial() {
@@ -2789,7 +2803,7 @@ function previaRevision(tr, ids) {
       : marcados.length
         ? t('Así quedaría con los {n} cambios marcados. Aún no se ha guardado nada.', {n: marcados.length})
         : t('No hay ningún cambio marcado: la ficha se quedaría como está.')}</p>
-      ${marcados.length ? `<p class="sub">${t('Cambia: {lista}', {lista: marcados.map((c) => esc(c.etiqueta)).join(' · ')})}</p>` : ''}</div>
+      ${marcados.length ? `<p class="sub">${t('Cambia: {lista}', {lista: marcados.map((c) => esc(rotulo(c.etiqueta))).join(' · ')})}</p>` : ''}</div>
     <button class="btn mini" type="button" data-rev-vista="cambios">${t('Volver a cambios')}</button></div>`;
   return `${barra}
     <article class="fi">
