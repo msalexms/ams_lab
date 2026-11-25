@@ -72,7 +72,7 @@ function tipoEnFila(c) {
   if (!nuevas.length) return '';
   return norm(t).startsWith(norm(c.nombre)) ? t.slice(c.nombre.length).replace(/^[\s(·:,-]+|[)\s]+$/g, '') || t : t;
 }
-// ---------- disposición AMSTech (mockup aprobado el 23/11/2026) ----------
+// ---------- disposición AMSTech ----------
 // iconos de línea (heredan el color del texto)
 const ico = (d) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 export const ICO = {

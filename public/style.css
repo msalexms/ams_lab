@@ -1,4 +1,4 @@
-/* [AMS] lab — estilo AMSTech (manual de marca v1.5, elegido por el usuario el 23/11/2026; antes «hoja de datos»).
+/* CircuitBin — estilo AMSTech (manual de marca v1.5).
    Los colores, las letras y la forma vienen de public/amstech-ui (tokens.css y componentes.css, compartidos con los demás
    proyectos de AMSTech); aquí solo se traducen a las variables de siempre de la app y se dibujan sus pantallas.
    El tema lo elige el usuario (tabla ajustes): html[data-tema="auto" | "claro" | "noche"]; tokens.css cambia solo.
@@ -1026,7 +1026,7 @@ select.sel { border: var(--ancho-fino) solid var(--borde); border-radius: var(--
 @media (prefers-color-scheme: dark) { :root:not([data-tema="claro"]):not([data-tema="noche"]) .barra a.on svg { color: var(--ams-amarillo); } }
 
 /* =====================================================================================================
-   Disposición del mockup (aprobada el 23/11/2026): inventario con lateral (categorías y «Mostrar»), caja azul
+   Disposición: inventario con lateral (categorías y «Mostrar»), caja azul
    «Añadir con IA» y tarjetas con la cantidad en la esquina; ficha en dos columnas (imagen grande + esta pieza |
    nombre, acciones, avisos, pines y ficha del tipo); en el móvil, tarjetas en lista, tira de categorías y el «+» elevado.
    ===================================================================================================== */

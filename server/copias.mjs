@@ -1,7 +1,8 @@
 // Copias de seguridad automáticas: una al día de la base de datos (VACUUM INTO, completa aunque esté en modo WAL)
 // y de las fotos (solo las nuevas; nunca se borran de la copia, así una foto quitada por error se puede recuperar).
-//   AMS_LAB_COPIAS=/ruta     → carpeta de las copias (por defecto <datos>/copias; mejor en otro disco)
-//   AMS_LAB_COPIAS_MAX=14    → cuántas copias diarias de la base de datos se guardan (0 = no hacer copias)
+//   CIRCUITBIN_COPIAS=/ruta  → carpeta de las copias (por defecto <datos>/copias; mejor en otro disco)
+//   CIRCUITBIN_COPIAS_MAX=14 → cuántas copias diarias de la base de datos se guardan (0 = no hacer copias)
+//   (también valen los nombres antiguos AMS_LAB_COPIAS y AMS_LAB_COPIAS_MAX)
 //   npm run copia            → copia ahora mismo (por ejemplo antes de cambiar el esquema)
 import {mkdirSync, readdirSync, copyFileSync, existsSync, unlinkSync} from 'node:fs';
 import {join} from 'node:path';
@@ -50,7 +51,7 @@ export function copiarFotosNuevas(dataDir, dir) {
 // «base» es una función que da la conexión actual (cambia al restaurar una copia)
 export function programarCopias(base, dataDir) {
   const op = opcionesCopias(dataDir);
-  if (!op.max) return console.log('[copias] desactivadas (AMS_LAB_COPIAS_MAX=0)');
+  if (!op.max) return console.log('[copias] desactivadas (CIRCUITBIN_COPIAS_MAX=0)');
   const intento = () => { try { copiar(base(), dataDir, op); } catch (e) { console.error('[copias] error:', e.message); } };
   intento();
   setInterval(intento, 60 * 60 * 1000).unref();

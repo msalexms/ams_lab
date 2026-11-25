@@ -1,7 +1,9 @@
 node_modules/
 data/
-entrada/*
-!entrada/.gitkeep
+entrada/
 .env
 .env.*
 !.env.example
+# local, no van al repositorio
+CLAUDE.md
+.claude/

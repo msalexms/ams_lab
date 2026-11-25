@@ -1,6 +1,5 @@
-# Construye la imagen Docker y la publica (privada) en ghcr.io/msalexms/circuitbin.
+# Construye la imagen Docker y la publica en ghcr.io/msalexms/circuitbin.
 # En PRs solo comprueba que se construye; en main la publica.
-# El homelab la despliega desde homelab-ops (stacks/ams-lab), fijada por digest.
 name: imagen
 
 on:
@@ -54,7 +53,7 @@ jobs:
           {
             echo "### Imagen publicada"
             echo
-            echo "Para desplegarla, en homelab-ops (stacks/ams-lab/docker-compose.yml):"
+            echo "Para desplegarla fijada por digest, en tu docker-compose.yml:"
             echo
             echo '```'
             echo "image: ghcr.io/msalexms/circuitbin:sha-${GITHUB_SHA::7}@${{ steps.build.outputs.digest }}"
