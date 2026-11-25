@@ -1,5 +1,7 @@
-# Construye la imagen Docker y la publica en ghcr.io/msalexms/circuitbin.
-# En PRs solo comprueba que se construye; en main la publica.
+# Construye la imagen Docker (linux/amd64 y linux/arm64) y la publica en ghcr.io/msalexms/circuitbin.
+# En PRs solo comprueba que se construye; en main la publica con las etiquetas sha-xxxxxxx y latest.
+# Versiones: si la de package.json aún no tiene su tag v<versión>, la imagen sale también con esa etiqueta
+# (y «beta» si es una beta) y se crea el tag y la release de GitHub con su apartado de CHANGELOG.md.
 name: imagen
 
 on:
@@ -8,8 +10,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: imagen-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -18,6 +24,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - id: version
+        name: Versión
+        env:
+          PUBLICAR: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        run: |
+          v=$(node -p "require('./package.json').version")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          nueva=false
+          if [ "$PUBLICAR" = "true" ] && ! git ls-remote --exit-code --tags origin "refs/tags/v$v" > /dev/null; then nueva=true; fi
+          echo "nueva=$nueva" >> "$GITHUB_OUTPUT"
+          case "$v" in *-*) echo "beta=true" >> "$GITHUB_OUTPUT" ;; *) echo "beta=false" >> "$GITHUB_OUTPUT" ;; esac
+          echo "versión $v · nueva: $nueva"
+
+      - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
 
@@ -35,17 +56,44 @@ jobs:
           tags: |
             type=sha,format=short
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.version }},enable=${{ steps.version.outputs.nueva }}
+            type=raw,value=beta,enable=${{ steps.version.outputs.nueva == 'true' && steps.version.outputs.beta == 'true' }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
 
       - id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Release
+        if: steps.version.outputs.nueva == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          V: ${{ steps.version.outputs.version }}
+          BETA: ${{ steps.version.outputs.beta }}
+        run: |
+          # el apartado «## <versión>» de CHANGELOG.md, hasta el siguiente «## »
+          awk -v v="$V" '$0 == "## " v {dentro=1; next} /^## / {dentro=0} dentro' CHANGELOG.md > notas.md
+          {
+            echo
+            echo "### Docker"
+            echo
+            echo '```bash'
+            echo "docker pull ghcr.io/msalexms/circuitbin:$V"
+            echo '```'
+            echo
+            echo "Image for \`linux/amd64\` and \`linux/arm64\` · digest \`${{ steps.build.outputs.digest }}\`"
+          } >> notas.md
+          extra=""
+          if [ "$BETA" = "true" ]; then extra="--prerelease"; fi
+          gh release create "v$V" --target "$GITHUB_SHA" --title "CircuitBin $V" --notes-file notas.md $extra
 
       - name: Resumen
         if: github.event_name != 'pull_request'
@@ -53,6 +101,7 @@ jobs:
           {
             echo "### Imagen publicada"
             echo
+            if [ "${{ steps.version.outputs.nueva }}" = "true" ]; then echo "Versión nueva: **${{ steps.version.outputs.version }}** (release v${{ steps.version.outputs.version }})"; echo; fi
             echo "Para desplegarla fijada por digest, en tu docker-compose.yml:"
             echo
             echo '```'
