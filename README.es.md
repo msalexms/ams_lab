@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker Compose">
   <img src="https://img.shields.io/badge/PWA-Sin%20conexi%C3%B3n-1E1B2E?style=flat-square" alt="PWA sin conexión">
   <img src="https://img.shields.io/badge/Idioma-EN%20%7C%20ES-2B36D9?style=flat-square" alt="Bilingüe inglés y español">
-  <img src="https://img.shields.io/badge/Licencia-MIT-FFE27A?style=flat-square&labelColor=1E1B2E" alt="Licencia MIT">
+  <img src="https://img.shields.io/badge/Licencia-GPLv3-FFE27A?style=flat-square&labelColor=1E1B2E" alt="Licencia GPLv3">
 </p>
 
 <p align="center">
@@ -169,7 +169,7 @@ La IA es **totalmente opcional** — la aplicación funciona al 100 % sin clave 
 
 ## Licencia
 
-Distribuido bajo licencia [MIT](LICENSE).
+Copyright (C) 2026 Alejandro Martín (AMSTech). Distribuido bajo la [Licencia Pública General de GNU v3.0](LICENSE): puedes usarlo, estudiarlo, compartirlo y modificarlo, y cualquier versión que distribuyas tiene que seguir bajo la GPLv3 y con su código fuente disponible.
 
 <p align="center">
   <picture>
