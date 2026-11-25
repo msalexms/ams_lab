@@ -95,6 +95,18 @@ docker compose up -d
 
 Abre **`http://localhost:4321`** (la base de datos y las fotos se guardan en `./data`).
 
+### Imagen ya construida (amd64 y arm64)
+
+Sin clonar nada; funciona en servidores x86 y en una Raspberry Pi 4/5 (sistema de 64 bits):
+
+```bash
+docker run -d --name circuitbin --restart unless-stopped \
+  -p 4321:4321 -v "$PWD/data:/data" -e TZ=Europe/Madrid \
+  ghcr.io/msalexms/circuitbin:latest
+```
+
+Etiquetas: `latest` (lo último de `main`), una versión fija como `0.1.0-beta.1` (ver [Releases](https://github.com/msalexms/circuitbin/releases) y el [registro de cambios](CHANGELOG.md)) y `beta` (la última beta).
+
 ### Node.js 24+ en local
 
 CircuitBin usa el módulo nativo `node:sqlite` incluido en Node 24, sin dependencias nativas externas:
@@ -149,9 +161,9 @@ La IA es **totalmente opcional** — la aplicación funciona al 100 % sin clave 
 | --- | --- |
 | **Servidor y BD** | Node.js 24+ (`node:http`, `node:sqlite`, `node:crypto`, `node:zlib`) sin Express ni ORM |
 | **Interfaz** | HTML + CSS + módulos ES sin compilar (`public/js/*.js`, `public/i18n.js`, `public/style.css`, `public/sw.js`) |
-| **IA** | Vercel AI SDK (`ai`, `@ai-sdk/openai-compatible`, `zod`) con confirmación explícita antes de escribir |
-| **Esquema SQLite** | Modelo versionado (`v9`) documentado en [docs/modelo-datos.md](docs/modelo-datos.md) |
-| **Identidad visual** | Pegatina vectorial Thor Chip-Bin en [docs/logo/circuitbin.svg](docs/logo/circuitbin.svg) y banner en [docs/brand/banner.es.svg](docs/brand/banner.es.svg) ([CLAUDE.md](CLAUDE.md)) |
+| **IA** | Vercel AI SDK (`ai`, `@ai-sdk/openai-compatible`, `@ai-sdk/openai`, `@ai-sdk/anthropic`, `zod`) con confirmación explícita antes de escribir |
+| **Esquema SQLite** | Modelo versionado (`v10`) documentado en [docs/modelo-datos.md](docs/modelo-datos.md) |
+| **Identidad visual** | Pegatina vectorial Thor Chip-Bin en [docs/logo/circuitbin.svg](docs/logo/circuitbin.svg) y banner en [docs/brand/banner.es.svg](docs/brand/banner.es.svg) |
 
 ---
 

@@ -171,7 +171,7 @@ function guardarDatosPieza(id, datos) {
 }
 
 // preferencias que se pueden cambiar desde la web y sus valores válidos (los valores por defecto están en seed/referencia.json)
-const NOMBRE_AJUSTE = {tema: 'Tema', vista_inventario: 'Vista del inventario', fuente: 'Letra', ia_razonar: 'Cuánto razona la IA', idioma: 'Idioma'}; // «Letra» ya no se elige (estilo AMSTech), pero sale en el historial antiguo
+const NOMBRE_AJUSTE = {tema: 'Tema', vista_inventario: 'Vista del inventario', fuente: 'Letra', ia_razonar: 'Cuánto razona la IA', idioma: 'Idioma'}; // «fuente» ya no se elige, pero sigue en el historial
 const AJUSTES = {tema: ['auto', 'claro', 'noche'], vista_inventario: ['lista', 'cuadricula'], ia_razonar: ['poco', 'medio', 'mucho'], idioma: ['en', 'es']};
 
 // ---------- restaurar una copia (Ajustes → Datos) ----------

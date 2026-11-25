@@ -16,7 +16,7 @@ export const COLUMNAS_TAREA = ['hacer', 'curso', 'hecho'];
 const ORIGEN = `TEXT NOT NULL DEFAULT 'seed' CHECK (origen IN ('seed', 'ia', 'usuario'))`;
 const ESTADO_PROYECTO = `TEXT NOT NULL DEFAULT 'idea' CHECK (estado IN ('idea', 'en_marcha', 'pausa', 'terminado'))`;
 const HEX = (col) => `CHECK (${col} GLOB '#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]')`;
-export const COLOR_NEUTRO = '#C9C6DA'; // categorías nuevas o sin color en seed/
+const COLOR_NEUTRO = '#C9C6DA'; // categorías nuevas o sin color en seed/
 const COLOR_CATEGORIA = `TEXT NOT NULL DEFAULT '${COLOR_NEUTRO}' ${HEX('color')}`;
 const AJUSTES = `
   CREATE TABLE ajustes (                    -- preferencias de la aplicación (no del navegador)
@@ -53,7 +53,7 @@ const ESQUEMA = `
     categoria_id  TEXT NOT NULL REFERENCES categorias(id) ON UPDATE CASCADE,
     resumen       TEXT,
     voltaje       TEXT,
-    usos          TEXT,          -- textos largos guardados pero no mostrados (decisión del usuario, 03/11/2026)
+    usos          TEXT,          -- textos largos guardados pero no mostrados
     conexion      TEXT,
     advertencias  TEXT,
     origen        ${ORIGEN},

@@ -66,7 +66,7 @@ export const nombreInterfaz = (texto) => partes(interfaz(texto))[0];
 
 // nombres de datos («Corriente máx.»): para compararlos, sin acentos, sin puntos y con máximo/mínimo abreviados
 const abreviar = (s) => s.replace(/\bm[áa]xim[oa]s?\b\.?/gi, 'máx.').replace(/\bm[íi]nim[oa]s?\b\.?/gi, 'mín.').replace(/\bm[áa]x\b(?!\.)/gi, 'máx.').replace(/\bm[íi]n\b(?!\.)/gi, 'mín.');
-export const claveComparar = (k) => sinAcentos(abreviar(limpio(k))).replace(/[.:]/g, '').replace(/\s+/g, ' ').trim();
+const claveComparar = (k) => sinAcentos(abreviar(limpio(k))).replace(/[.:]/g, '').replace(/\s+/g, ' ').trim();
 // vocab: Map de claveComparar → la forma ya escrita (se usa esa); sin vocabulario, solo las reglas
 export function claveDato(texto, vocab = null) {
   const s = mayuscula(siglas(abreviar(limpio(texto).replace(/\s*:+$/, ''))).replace(/máx\./gi, 'máx.').replace(/mín\./gi, 'mín.'));
