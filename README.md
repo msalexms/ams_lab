@@ -95,6 +95,18 @@ docker compose up -d
 
 Open **`http://localhost:4321`** (database and photos persist under `./data`).
 
+### Prebuilt Image (amd64 & arm64)
+
+No clone needed — works on x86 servers and on a Raspberry Pi 4/5 (64-bit OS):
+
+```bash
+docker run -d --name circuitbin --restart unless-stopped \
+  -p 4321:4321 -v "$PWD/data:/data" -e TZ=Europe/Madrid \
+  ghcr.io/msalexms/circuitbin:latest
+```
+
+Tags: `latest` (newest build of `main`), a fixed version such as `0.1.0-beta.1` (see [Releases](https://github.com/msalexms/circuitbin/releases) and the [changelog](CHANGELOG.md)), and `beta` (newest beta).
+
 ### Local Node.js 24+
 
 CircuitBin uses Node 24's built-in `node:sqlite` module — no native compilation needed:
