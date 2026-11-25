@@ -1,4 +1,4 @@
-// «Corregir con IA» (antes «Revisar con IA») (fase C): el modelo devuelve la ficha (y la pieza) corregida ENTERA; aquí se compara con lo que hay
+// «Corregir con IA»: el modelo devuelve la ficha (y la pieza) corregida ENTERA; aquí se compara con lo que hay
 // y se sacan los cambios campo a campo, para que el usuario marque cuáles aplicar. Al aplicar se comprueba que lo de
 // «antes» sigue igual (si alguien editó la ficha entretanto, no se pisa: hay que pedir otra revisión).
 import {leerFicha, guardarTipo} from './db.mjs';

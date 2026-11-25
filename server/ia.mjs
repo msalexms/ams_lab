@@ -42,7 +42,7 @@ const arr = (v) => (Array.isArray(v) ? v : v ? [v] : []);
 // [clave, valor] desde {clave: valor}, [[clave, valor]], [{dato, valor}] o ["clave: valor"]
 // valores que no aportan nada («no aplica», «desconocido»…): se descartan
 const VACIO = /^(no aplica|n\/?a|no procede|desconocid[oa]s?|sin datos|ninguno|ninguna|-+|—|\?+)(?=$|[\s(.,;:])/i;
-export const paresDe = (v) => (Array.isArray(v) ? v : Object.entries(v || {}))
+const paresDe = (v) => (Array.isArray(v) ? v : Object.entries(v || {}))
   .map((p) => (typeof p === 'string' ? p.split(/:\s*/, 2) : Array.isArray(p) ? p : [p?.dato ?? p?.clave, p?.valor]))
   .map(([k, val]) => [txt(k, 60), txt(val, 200)]).filter(([k, val]) => k && val && !VACIO.test(val)).slice(0, 30);
 
@@ -114,8 +114,8 @@ function crearModelo(m, clave, sesion) {
 //   · API chat-completions: el nivel de esfuerzo del catálogo (poco = el más bajo, medio = el de en medio, mucho = el máximo).
 //   · API messages (tipo Claude): poco = sin «pensamiento» (lo más barato); medio y mucho = pensamiento con presupuesto.
 // Más razonamiento: más margen de respuesta y más tiempo de espera.
-export const NIVELES_RAZONAR = ['poco', 'medio', 'mucho'];
-export const nivelRazonar = (db) => {
+const NIVELES_RAZONAR = ['poco', 'medio', 'mucho'];
+const nivelRazonar = (db) => {
   const v = db.prepare("SELECT valor FROM ajustes WHERE clave = 'ia_razonar'").get()?.valor;
   return NIVELES_RAZONAR.includes(v) ? v : 'poco';
 };
@@ -411,7 +411,7 @@ export function extraerJson(texto) {
 
 // segunda barrera: si la respuesta no cumple el esquema estricto pero es aprovechable, se normaliza y cada corrección
 // queda como «duda» para que el usuario la vea al revisar. Solo se rechaza si no hay ni un nombre.
-export const rescatar = (db, ctx, texto) => rescatarObjeto(db, ctx, extraerJson(texto));
+const rescatar = (db, ctx, texto) => rescatarObjeto(db, ctx, extraerJson(texto));
 function rescatarObjeto(db, ctx, p) {
   if (!p || typeof p !== 'object') return null;
   // envoltorios típicos: {"pieza": {...}}, {"data": {...}}, {"properties": {...}}
@@ -630,7 +630,7 @@ const esquemaDetectar = z.object({
   dudas: z.array(z.string()),
 });
 // limpia lo que devuelve el modelo: recuadros dentro de la imagen (en milésimas), nombres con tope, sin entradas vacías
-export function normalizarDeteccion(o) {
+function normalizarDeteccion(o) {
   const lista = arr(Array.isArray(o) ? o : o?.piezas).filter((p) => p && typeof p === 'object');
   // algunos modelos dan fracciones (0–1) aunque se les pidan milésimas
   const nums = lista.flatMap((p) => [p.x, p.y, p.ancho, p.alto].map(Number)).filter(Number.isFinite);
