@@ -1,7 +1,7 @@
 {
   "name": "circuitbin",
   "description": "Self-hosted electronics component inventory with real photos, color-coded pinouts, stock-matched projects & AI part identification",
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "homepage": "https://github.com/msalexms/circuitbin#readme",
   "repository": {
     "type": "git",
