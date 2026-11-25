@@ -1,5 +1,5 @@
 // Copia de seguridad ahora mismo (base de datos + fotos nuevas): npm run copia
-// En Docker: docker compose exec ams-lab npm run copia
+// En Docker: docker compose exec circuitbin npm run copia
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {join} from 'node:path';

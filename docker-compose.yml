@@ -2,10 +2,10 @@
 # La base de datos y las fotos quedan en ./data; cada día se hace una copia en ./data/copias (mejor en otro disco: ver abajo).
 # Solo red local / Tailscale. Para usarla sin conexión en el móvil hace falta HTTPS: `tailscale serve --bg 4321` (README).
 services:
-  ams-lab:
+  circuitbin:
     build: .
-    image: ams-lab:latest
-    container_name: ams-lab
+    image: circuitbin:latest
+    container_name: circuitbin
     restart: unless-stopped
     init: true
     ports:
@@ -16,4 +16,4 @@ services:
       # - AMS_LAB_COPIAS_MAX=14           # copias diarias que se guardan (0 = ninguna)
     volumes:
       - ./data:/data
-      # - /mnt/otro-disco/ams-lab-copias:/copias
+      # - /mnt/otro-disco/circuitbin-copias:/copias

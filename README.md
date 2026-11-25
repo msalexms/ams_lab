@@ -120,7 +120,7 @@ npm start
 | `IA_CLAVE` | — | *(optional)* | Pre-configure OpenCode Go API key at startup |
 | `IA_MODELO` | — | *(auto)* | Initial AI model identifier |
 
-*All legacy `AMS_LAB_*` environment variables and `ghcr.io/msalexms/ams-lab` container upgrades remain 100% compatible.*
+*The image is published as `ghcr.io/msalexms/circuitbin` (formerly `ghcr.io/msalexms/ams-lab`, which no longer receives updates). Legacy `AMS_LAB_*` environment variables remain 100% compatible.*
 
 ---
 
