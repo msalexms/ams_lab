@@ -120,7 +120,7 @@ npm start
 | `IA_CLAVE` | — | *(opcional)* | Clave de OpenCode Go al arrancar |
 | `IA_MODELO` | — | *(automático)* | Identificador inicial del modelo de IA |
 
-*Todas las variables heredadas `AMS_LAB_*` y la imagen `ghcr.io/msalexms/ams-lab` siguen siendo 100 % compatibles.*
+*La imagen se publica como `ghcr.io/msalexms/circuitbin` (antes `ghcr.io/msalexms/ams-lab`, que ya no recibe versiones nuevas). Las variables heredadas `AMS_LAB_*` siguen siendo 100 % compatibles.*
 
 ---
 
