@@ -149,9 +149,9 @@ AI assistance is **100% optional** — CircuitBin works completely offline witho
 | --- | --- |
 | **Runtime & DB** | Node.js 24+ (`node:http`, `node:sqlite`, `node:crypto`, `node:zlib`) — zero Express or ORM dependencies |
 | **Frontend** | Vanilla JS ES modules, no build step (`public/js/*.js`, `public/i18n.js`, `public/style.css`, Service Worker `public/sw.js`) |
-| **AI Integration** | Vercel AI SDK (`ai`, `@ai-sdk/openai-compatible`, `zod`) behind an explicit user confirmation workflow |
-| **Schema** | Versioned SQLite (`v9`) documented in [docs/modelo-datos.md](docs/modelo-datos.md) |
-| **Brand Assets** | Custom Thor Chip-Bin sticker in [docs/logo/circuitbin.svg](docs/logo/circuitbin.svg) & banner in [docs/brand/banner.svg](docs/brand/banner.svg) ([CLAUDE.md](CLAUDE.md)) |
+| **AI Integration** | Vercel AI SDK (`ai`, `@ai-sdk/openai-compatible`, `@ai-sdk/openai`, `@ai-sdk/anthropic`, `zod`) behind an explicit user confirmation workflow |
+| **Schema** | Versioned SQLite (`v10`) documented in [docs/modelo-datos.md](docs/modelo-datos.md) |
+| **Brand Assets** | Custom Thor Chip-Bin sticker in [docs/logo/circuitbin.svg](docs/logo/circuitbin.svg) & banner in [docs/brand/banner.svg](docs/brand/banner.svg) |
 
 ---
 

@@ -38,7 +38,7 @@ const plegable = (titulo, html, n = null) => (html ? `<details class="plegable">
 export const menuMas = (items) => `<details class="mas"><summary class="btn" aria-label="${esc(t('Más acciones'))}">⋯</summary>
   <div class="mas-menu" role="menu">${items.filter(Boolean).join('')}</div></details>`;
 
-// ---------- fichas de pieza y de tipo: dos columnas (mockup del 23/11/2026) ----------
+// ---------- fichas de pieza y de tipo: dos columnas ----------
 // izquierda: la imagen grande y lo de esta pieza (o tus piezas del tipo); derecha: nombre, acciones, avisos, pines y ficha del tipo.
 // En el móvil todo va en una columna: imagen, nombre, acciones, avisos, esta pieza, pines y ficha del tipo.
 // cajetín de 2, 3 o 4 columnas: una celda que se queda sola en su fila se estira para no dejar huecos
