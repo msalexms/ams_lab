@@ -4,6 +4,11 @@ Each version that lands on `main` is published automatically: the Docker image g
 release is created from the matching section below. To ship a new version, bump `version` in `package.json`
 (`npm version <x.y.z> --no-git-tag-version`), add its section here and merge.
 
+## Unreleased
+
+- License changed from MIT to the GNU General Public License v3.0 (GPL-3.0-only). Versions up to 0.1.0-beta.1 were
+  released under MIT.
+
 ## 0.1.0-beta.1
 
 First public beta of CircuitBin.

@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker Compose">
   <img src="https://img.shields.io/badge/PWA-Offline-1E1B2E?style=flat-square" alt="Offline PWA">
   <img src="https://img.shields.io/badge/Language-EN%20%7C%20ES-2B36D9?style=flat-square" alt="Bilingual EN and ES">
-  <img src="https://img.shields.io/badge/License-MIT-FFE27A?style=flat-square&labelColor=1E1B2E" alt="MIT License">
+  <img src="https://img.shields.io/badge/License-GPLv3-FFE27A?style=flat-square&labelColor=1E1B2E" alt="GPLv3 License">
 </p>
 
 <p align="center">
@@ -169,7 +169,7 @@ AI assistance is **100% optional** — CircuitBin works completely offline witho
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Copyright (C) 2026 Alejandro Martín (AMSTech). Released under the [GNU General Public License v3.0](LICENSE): you can use, study, share and modify it, and any version you distribute must stay under the GPLv3 with its source code available.
 
 <p align="center">
   <img src="public/amstech-ui/logo/sello-en.svg" alt="Built by AMSTech" width="210">
