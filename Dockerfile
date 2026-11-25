@@ -1,5 +1,5 @@
-# [AMS] lab — imagen para el homelab. Node 24 (node:sqlite) + dependencias de npm solo para la IA (AI SDK y zod).
-#   docker build -t ams-lab .        (o docker compose up -d --build)
+# CircuitBin — imagen para el homelab. Node 24 (node:sqlite) + dependencias de npm solo para la IA (AI SDK y zod).
+#   docker build -t circuitbin .        (o docker compose up -d --build)
 FROM node:24-alpine
 RUN apk add --no-cache su-exec
 ENV NODE_ENV=production AMS_LAB_DATA=/data PORT=4321
